@@ -1,0 +1,27 @@
+// CEO 지시 등록. 같은 Discord 메시지로는 지시가 하나만 생긴다 (4장).
+import { eq } from 'drizzle-orm';
+import { emit, inTx, nextSeqId, nowIso, type Ctx } from '../context.ts';
+import { orders } from '../db/schema.ts';
+import { NotFoundError } from '../errors.ts';
+
+export type OrderRow = typeof orders.$inferSelect;
+
+export function getOrder(c: Ctx, id: string): OrderRow {
+  const row = c.db.select().from(orders).where(eq(orders.id, id)).get();
+  if (!row) throw new NotFoundError(`지시 ${id}`);
+  return row;
+}
+
+export function registerOrder(c: Ctx, input: { discordMessageId: string; rawText: string }): { order: OrderRow; created: boolean } {
+  return inTx(c, (t) => {
+    const existing = t.db.select().from(orders).where(eq(orders.discordMessageId, input.discordMessageId)).get();
+    if (existing) return { order: existing, created: false };
+    const order = t.db
+      .insert(orders)
+      .values({ id: nextSeqId(t, 'orders', 'O'), discordMessageId: input.discordMessageId, rawText: input.rawText, createdAt: nowIso(t) })
+      .returning()
+      .get();
+    emit(t, 'order.created', { orderId: order.id, discordMessageId: order.discordMessageId });
+    return { order, created: true };
+  });
+}

@@ -1,9 +1,9 @@
-﻿# 0단계 #3: RAM 16GB 관찰. 일정 간격으로 메모리와 페이지 파일을 CSV에 기록한다. 읽기만 한다.
-#   powershell -NoProfile -ExecutionPolicy Bypass -File stage0\ram-watch.ps1 -Minutes 30 [-IntervalSec 5]
+﻿# 0단계 #3: RAM 관찰(연구실 PC 64GB). 일정 간격으로 메모리와 페이지 파일을 CSV에 기록한다. 읽기만 한다.
+#   powershell -NoProfile -ExecutionPolicy Bypass -File stage0\ram-watch.ps1 -Minutes 10 [-IntervalSec 5]
 # 측정하는 동안 헤르메스, Ollama(모델 올림), Node, Claude Code를 실제처럼 돌린다.
 # 성능 카운터 이름은 한국어 Windows에서 바뀌므로 Get-Counter 대신 CIM 클래스를 쓴다.
 param(
-  [int]$Minutes = 30,
+  [int]$Minutes = 10,
   [int]$IntervalSec = 5
 )
 $ErrorActionPreference = 'Continue'

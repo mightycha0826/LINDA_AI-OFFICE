@@ -32,7 +32,7 @@ foreach ($d in $dimms) {
 }
 $slots = (Get-CimInstance Win32_PhysicalMemoryArray | Measure-Object -Property MemoryDevices -Sum).Sum
 if ($slots) { Say "  메모리 슬롯: $($dimms.Count) / $slots 사용 중 (증설 여지 확인용)" }
-if ($ramGB -lt 15) { Check '확인 필요' "RAM $ramGB GB — 설계 기준 16GB보다 작아요" } else { Check '통과' "RAM $ramGB GB" }
+if ($ramGB -lt 60) { Check '확인 필요' "RAM $ramGB GB — 설계 기준 64GB보다 작아요(3장)" } else { Check '통과' "RAM $ramGB GB" }
 
 # --- GPU ---
 Say ''
@@ -60,7 +60,7 @@ $c = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
 $freeGB = [math]::Round($c.FreeSpace / 1GB, 1)
 Say ''
 Say "-- C: 남은 공간 $freeGB GB / 전체 $([math]::Round($c.Size / 1GB)) GB"
-if ($freeGB -lt 50) { Check '확인 필요' "C: 남은 공간 $freeGB GB — 모델 약 16GB + 저장소·worktree 여유를 생각하면 빠듯해요" } else { Check '통과' "C: 남은 공간 $freeGB GB" }
+if ($freeGB -lt 60) { Check '확인 필요' "C: 남은 공간 $freeGB GB — 설계 기준 여유 60GB 이상(3장). 모델을 받기 전이면 약 16GB가 더 줄어요" } else { Check '통과' "C: 남은 공간 $freeGB GB" }
 
 $pf = Get-CimInstance Win32_PageFileUsage
 foreach ($p in $pf) { Say "-- 페이지 파일: $($p.Name), 할당 $($p.AllocatedBaseSize) MB, 현재 사용 $($p.CurrentUsage) MB, 최대 사용 $($p.PeakUsage) MB" }

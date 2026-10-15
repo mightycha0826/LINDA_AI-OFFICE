@@ -184,8 +184,8 @@ Oct 15, 2026 · @주인 (v2: 회의록, 거울 채널, 포인트 디자인 시�
 **하드웨어**
 
 - GPU: RTX 3060 12GB. 14B Q4 모델 하나(약 10GB)가 상한이라 한 번에 한 모델만 올린다. 모니터는 가능하면 메인보드 내장 그래픽에 연결해 VRAM을 아낀다.
-- RAM: 16GB. 돌아가지만 빠듯하다. 그 PC에서는 다른 작업을 최소화하고, 화면은 폰이나 다른 기기에서 본다. 0단계에서 부족하면 32GB로 늘린다.
-- 저장공간: 모델 약 16GB. 완료된 티켓 worktree는 자동 삭제한다.
+- RAM: 64GB(DDR5 16GB × 4, 슬롯 4개 모두 사용). 2026-10-15 실측으로 확인했다. 헤르메스, Ollama, Node, Claude Code를 같이 띄워도 여유가 있다. 남는 RAM은 OS 파일 캐시로 쓰여 모델 교체 때 디스크 대신 메모리에서 읽을 수 있다.
+- 저장공간: 모델 약 16GB. C:에 **여유 공간 60GB 이상**을 둔다(모델, 등록 저장소, 티켓 worktree와 의존성 설치, DB와 백업). 2026-10-15 실측 기준 남은 공간은 23GB이고 주인이 확보한다. 완료된 티켓 worktree는 자동 삭제한다.
 - 두 번째 3060은 보류. 0단계에서 모델 교체 지연이 실제 병목으로 확인되면 산다.
 
 **Windows 설정 (필수)**
@@ -221,6 +221,7 @@ Oct 15, 2026 · @주인 (v2: 회의록, 거울 채널, 포인트 디자인 시�
 | rules | 회고에서 나온 규칙 | CEO 승인된 것만 적용 |
 | meeting_minutes | 회의록 | 회의 1건당 1행. 코드가 회의 기록에서 생성 |
 | events | 화면용 이벤트 기록 | 추가만 가능, 순번 자동 증가 |
+| system\_state | 회사 전체 상태(`/정지` 여부, 형식 오류로 멈춘 계획 작성 등) | 키 하나에 값 하나 |
 
 **주요 필드** (TypeScript 표기, Drizzle 스키마로 옮긴다)
 
@@ -329,7 +330,8 @@ interface UsageEntry {
   budget: 'dev' | 'research' | 'review' | 'local';
   ticketId?: string;
   inputTokens: number;  outputTokens: number;
-  estimatedPct: number;                // 한도 대비 추정 %
+  estimatedPct: number;                // 5시간 한도 대비 추정 %
+  estimatedWeeklyPct: number;          // 주간 한도 대비 추정 %. 같은 호출이라도 두 값은 다르다
   source: 'reported' | 'estimated';    // CLI가 알려준 값인지 추정인지
   createdAt: string;
 }
@@ -367,7 +369,7 @@ interface OfficeEvent {
 **지켜야 할 불변 조건** (코드와 DB 제약으로 강제)
 
 - `tickets.status`는 5장 전환표에 있는 전환으로만 바뀐다.
-- `tickets.reviewerId`의 두뇌 제공자는 `assigneeId`의 두뇌 제공자와 달라야 한다.
+- `tickets.reviewerId`의 두뇌 모델은 `assigneeId`의 두뇌 모델과 달라야 한다. 모델은 Ollama면 모델 이름(qwen3:14b, gemma4:12b), Claude Code면 claude, Codex면 gpt로 본다. 그래서 Qwen 문서를 Gemma가 검토하는 짝(2장)은 허용된다.
 - `approvals`는 `pending`에서 한 번만 결정된다. 조건부 업데이트(`WHERE status = 'pending'`)로 버튼 두 번 클릭을 막는다.
 - `approvals.decidedByDiscordId`는 설정에 등록된 CEO 계정 ID와 같아야 한다.
 - `plans`는 최신 버전만 `awaiting-ceo`가 될 수 있다. 새 버전이 생기면 이전 버전은 `superseded`가 된다.
@@ -418,8 +420,8 @@ type TicketStatus =
 | in\_progress | ticket.submitted | 출력 JSON 형식 통과 | in\_review | 담당자 |
 | in\_review | review.passed | 결재 불필요 | done | 검토자 |
 | in\_review | review.passed | 결재 필요 | awaiting\_approval | 검토자 |
-| in\_review | review.failed | reworkCount < 2 | rework | 검토자 |
-| in\_review | review.failed | reworkCount ≥ 2 | meeting | 검토자 |
+| in\_review | review.failed | 반려 횟수(이번 반려 포함) < 2 | rework | 검토자 |
+| in\_review | review.failed | 반려 횟수(이번 반려 포함) ≥ 2 | meeting | 검토자 |
 | rework | rework.started | — | in\_progress | 오케스트레이터 |
 | meeting | meeting.agreed | 담당자·검토자 합의 | in\_progress | 오케스트레이터 |
 | meeting | meeting.failed | 회의 최대 2라운드 후 불합의 | blocked | 오케스트레이터 |
@@ -427,16 +429,31 @@ type TicketStatus =
 | awaiting\_approval | approval.rejected | CEO 계정 | rework | 결재 봇 |
 | blocked | ceo.retry / ceo.direct | CEO 계정 | in\_progress | 결재 봇 |
 | blocked | ceo.cancel | CEO 계정 | cancelled | 결재 봇 |
-| (done, cancelled 제외 전부) | system.pause | 한도 도달, 인터넷 끊김, 시스템 이상, `/정지` | paused | 오케스트레이터 |
-| paused | system.resume | 원인 해소 또는 `/재개` | pausedFrom | 오케스트레이터 |
+| in\_progress, in\_review, rework | guard.pingpong | 핑퐁 감지 | meeting | 오케스트레이터 |
+| meeting | guard.pingpong | 회의 중 핑퐁 감지 | blocked | 오케스트레이터 |
+| (done, cancelled, paused 제외 전부) | system.pause | 한도 도달, 인터넷 끊김, 시스템 이상, `/정지` | paused | 오케스트레이터 |
+| paused | system.resume | 멈춘 이유가 풀림(아래 표) | pausedFrom | 오케스트레이터 · 결재 봇 |
+
+**멈춘 이유와 풀리는 조건** (정지 이유는 티켓마다 하나만 기록한다)
+
+| 멈춘 이유 | 풀리는 조건 |
+| --- | --- |
+| `/정지` | `/재개` |
+| 한도 소진 | 한도가 다시 참. `/재개`로는 풀리지 않는다 |
+| 인터넷 끊김 | 연결 복구 |
+| 시스템 이상(형식 오류 2회 포함) | 복구 확인 또는 `/재개` |
+| 턴·토큰 상한 초과 | `/재개`(처음 상한만큼 한 번 더 줌) 또는 상한 상향. 자동으로 풀리지 않는다 |
+
+`/정지` 중에는 다른 이유로 멈춘 티켓도 `/재개` 전까지 풀리지 않는다.
 
 **핵심 규칙**
 
 - 개발자가 "완료"라고 말해도 바로 완료가 되지 않는다. `in_review`를 거치지 않는 길은 표에 없다.
 - 회의에서 합의해 `in_progress`로 돌아간 티켓이 다시 반려되면 매번 회의를 다시 연다(`reworkCount ≥ 2`). 회의가 불합의로 끝나면 `blocked`로 가서 CEO가 정한다.
+- 반려 횟수는 `review.failed` 때 먼저 1 올리고 판정한다. CEO 결재 반려(`approval.rejected`)는 반려 횟수에 넣지 않는다.
 - 반려는 **작업 시작 전에 정해진 완료 조건**으로만 판정한다. 검토자가 나중에 기준을 바꾸면 반려가 끝없이 반복되기 때문이다.
-- 같은 담당자·검토자 쌍이 메시지를 3번 연속 주고받기만 하고 상태가 바뀌지 않으면 오케스트레이터가 강제로 `meeting` 또는 `blocked`로 보낸다(핑퐁 차단).
-- 티켓 하나에 턴 상한과 토큰 상한을 둔다. 넘으면 `paused`로 보내고 다음 보고에 올린다.
+- 같은 담당자·검토자 쌍이 메시지를 3번 연속 주고받기만 하고 상태가 바뀌지 않으면 오케스트레이터가 `guard.pingpong`으로 강제로 보낸다(핑퐁 차단): 작업·검토·재작업 중이면 `meeting`, 회의 중이면 `blocked`. 다른 사람의 메시지가 끼거나 상태가 바뀌면 다시 센다.
+- 티켓 하나에 턴 상한과 토큰 상한을 둔다. 기본값은 토큰 = PM 예상치의 2배(최소 2만), 턴 = 40이고 `/설정`에서 바꾼다. 넘으면 `paused`로 보내고 다음 보고에 올린다.
 
 **회의록**
 
@@ -447,7 +464,7 @@ type TicketStatus =
 
 ## 6. 직원별 작업 방식
 
-직원마다 받는 입력과 내야 하는 출력이 정해져 있고, 출력은 전부 JSON이다. 오케스트레이터가 Zod로 검사해서 형식이 틀리면 오류 내용을 붙여 한 번 다시 시키고, 또 틀리면 티켓을 `paused`로 보내고 시스템 이상으로 기록한다.
+직원마다 받는 입력과 내야 하는 출력이 정해져 있고, 출력은 전부 JSON이다. 오케스트레이터가 Zod로 검사해서 형식이 틀리면 오류 내용을 붙여 한 번 다시 시키고, 또 틀리면 티켓을 `paused`로 보내고 시스템 이상으로 기록한다. 계획서(PM)가 두 번 틀리면 티켓이 아직 없으므로 그 지시의 계획 작성을 멈추고, CEO가 다시 시도시킬 때까지 기다린다. 코드 규칙 위반(없는 직원, 같은 모델 검토자, 완료 조건에 없는 기준으로 판정 등)도 형식 오류와 같이 다룬다.
 
 **공통 입력 (역할 카드)**
 
@@ -691,7 +708,7 @@ GPT는 리뷰어 혼자 써서 칸막이가 없다. 관문 검사가 정기 보�
 - 개발자 몫 소진: 개발 티켓을 `paused`로 보내고, 한도가 다시 채워지면 이어간다.
 - 리서치 몫 소진: 로컬 Qwen3-14B + SearXNG로 바꿔서 계속한다. 결과물에 "저정밀 모드로 작성됨"을 붙이고 정기 보고에 알린다.
 - GPT 소진: 코드 리뷰와 관문 검사가 멈춘다. 티켓은 `in_review`에서 대기하고, 정기 보고는 관문 없이 "관문 미통과" 표시를 달고 나간다.
-- 동시 실행: Claude Code는 한 번에 한 작업, Codex도 한 번에 한 작업만 돌린다. RAM 16GB와 한도를 동시에 지키기 위해서다.
+- 동시 실행: Claude Code는 한 번에 한 작업, Codex도 한 번에 한 작업만 돌린다. 한도를 지키고, 같은 저장소를 두 작업이 동시에 건드리지 않게 하기 위해서다.
 
 **측정 방식과 불확실성**
 
@@ -1219,7 +1236,7 @@ type ReasonCategory =
 | --- | --- | --- | --- | --- |
 | 1 | 헤르메스 + Qwen3-14B 도구 호출 | Ollama에 연결하고 도구를 쓰는 과제 5개 | 5개 중 4개 이상 성공 | 비서실장 두뇌를 키우거나 로컬 비중 축소 |
 | 2 | 모델 교체 속도 | Qwen ↔ Gemma 번갈아 호출 | 교체 30초 이내 | 두 번째 GPU 검토 |
-| 3 | RAM 16GB | 헤르메스, Ollama, Node, Claude Code를 동시에 띄우고 관찰 | 스왑 없이 동작 | 32GB 증설 |
+| 3 | RAM 64GB · 저장공간 | 헤르메스, Ollama, Node, Claude Code를 동시에 띄우고 관찰. 모델을 받은 뒤 C: 여유 공간 확인 | 스왑 없이 동작, C: 여유 60GB 이상 | 디스크 정리 또는 증설 |
 | 4 | Claude Code 자동 실행 | worktree에서 `claude -p` + JSON 출력 + push 차단 설정 | 사람 개입 없이 결과, push 시도 거부 | 실행 방식 재설계 |
 | 5 | Claude 사용량 읽기 | 자동 실행 후 사용량 정보 확인 | % 또는 토큰 수 확보 | 토큰 수로 추정 |
 | 6 | Codex 자동 실행 (Windows) | `codex exec` 읽기 전용 모드 | 결과 JSON, 파일 수정 불가 | WSL2에서 실행 |
@@ -1318,7 +1335,8 @@ type ReasonCategory =
 - [ ] 헤르메스 Discord 연결의 버튼 지원 여부 (0단계 7). 결재는 어차피 시스템 봇
 - [ ] 헤르메스의 다른 에이전트 연결 기능(v0.20.0의 A2A)의 실제 스펙. 지금 설계에는 MCP만 쓴다
 - [ ] 학교 네트워크 방화벽 (0단계 8)
-- [ ] RAM 16GB로 충분한가 (0단계 3)
+- [x] RAM이 충분한가 → 64GB로 확인 (2026-10-15 env.ps1). 동시 실행 관찰은 0단계 3에서
+- [ ] C: 여유 공간 60GB 이상 확보 (주인, 0단계 3에서 확인)
 - [ ] ChatGPT Plus의 제3자 도구 사용 공식 약관 (0단계 9)
 
 **나중에 정할 것**

@@ -32,7 +32,7 @@
 | 5 | #4·#5 Claude Code 자동 실행과 사용량 | |
 | 6 | #6 Codex 자동 실행 | |
 | 7 | #1 헤르메스 도구 호출, #7 헤르메스 Discord | 헤르메스 설치가 가장 손이 많이 감 |
-| 8 | #3 RAM 16GB | 위 프로그램을 모두 설치한 뒤에 동시에 띄움 |
+| 8 | #3 RAM 64GB · 저장공간 | 위 프로그램과 모델을 모두 설치한 뒤에 확인 |
 
 ---
 
@@ -105,24 +105,27 @@ node stage0\model-swap.mjs --rounds 5
 
 ---
 
-## #3 RAM 16GB
+## #3 RAM 64GB · 저장공간
 
-- **통과 기준:** 헤르메스, Ollama(모델 올라간 상태), Node, Claude Code를 동시에 띄우고 30분 관찰했을 때 스왑 없이 동작.
-- **실패하면:** 32GB 증설.
+연구실 PC는 RAM 64GB로 확인됐다(2026-10-15 env.ps1, 설계 3장 수정). RAM은 확인만 하고, 실제 위험은 저장공간이다.
 
-스크립트 기준(제안): 남은 메모리 최솟값 1GB 이상, 페이지 파일 사용량 증가 256MB 이하, 초당 페이지 수가 지속적으로 높지 않음. 최종 판정은 CSV를 보고 같이 한다.
+- **통과 기준:** 헤르메스, Ollama(모델 올라간 상태), Node, Claude Code를 동시에 띄우고 관찰했을 때 스왑 없이 동작. 그리고 두 모델을 받은 뒤 C: 여유 공간이 60GB 이상.
+- **실패하면:** 디스크 정리 또는 증설.
 
-1. 측정을 시작한다(30분, 5초 간격):
+스크립트 기준(제안): 남은 메모리 최솟값 1GB 이상, 페이지 파일 사용량 증가 256MB 이하, 초당 페이지 수가 지속적으로 높지 않음. 64GB라 10분이면 충분하다.
+
+1. 두 모델을 받은 뒤 `env.ps1`을 다시 돌려 C: 여유 공간을 확인한다. 60GB 미만이면 `[확인 필요]`로 나온다.
+2. 측정을 시작한다(10분, 5초 간격):
 
    ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File stage0\ram-watch.ps1 -Minutes 30
+   powershell -NoProfile -ExecutionPolicy Bypass -File stage0\ram-watch.ps1 -Minutes 10
    ```
 
-2. 측정이 도는 동안 다른 창에서 실제처럼 일을 시킨다.
+3. 측정이 도는 동안 다른 창에서 실제처럼 일을 시킨다.
    - 헤르메스와 대화 몇 번
    - `node stage0\model-swap.mjs --rounds 3`
    - `claude-headless.ps1` 한 번
-3. 끝나면 요약과 CSV 경로가 나온다.
+4. 끝나면 요약과 CSV 경로가 나온다.
 
 ---
 

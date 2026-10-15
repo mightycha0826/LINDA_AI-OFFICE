@@ -6,12 +6,13 @@
     "packages/*"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -p tsconfig.json",
+    "sim": "npm run sim -w @ai-office/orchestrator"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
