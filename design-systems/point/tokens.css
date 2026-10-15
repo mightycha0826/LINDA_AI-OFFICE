@@ -1,0 +1,118 @@
+/* tokens.css — tokens.json에서 생성한 파일. 직접 고치지 말고 tokens.json을 고친 뒤 다시 생성한다. */
+/* 색은 조합 1(코발트와 주황) 기본값. 실제 앱은 Point.theme(조합-1, 모드)로 덮어쓴다. */
+
+@font-face { font-family: 'Paperlogy'; src: url('fonts/Paperlogy-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Paperlogy'; src: url('fonts/Paperlogy-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+
+:root {
+  --font-sans: 'Paperlogy', system-ui, sans-serif;
+  --font-icon: 'Material Symbols Rounded';
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --row: #f3f3f3;
+  --track: #dadada;
+  --control: #8a8a8a;
+  --ink: #111111;
+  --ink-muted: #5c5c5c;
+  --primary: #2f45d8;
+  --on-primary: #ffffff;
+  --primary-mark: #2f45d8;
+  --primary-text: #2f45d8;
+  --primary-icon: #2f45d8;
+  --on-primary-icon: #ffffff;
+  --point: #f27a0a;
+  --point-mark: #e37309;
+  --point-icon: #da6e09;
+  --danger: #ce2f27;
+  --danger-on-bg: #dc3229;
+  --danger-line: #e5342b;
+  --badge-bg: #ffffff;
+  --toast-bg: #111111;
+  --toast-ink: #ffffff;
+  --toast-action: #373737;
+  --toast-icon: #e5342b;
+  --toast-primary-icon: #4054db;
+  --focus: #141414;
+  --combo-01-primary: #2f45d8;
+  --combo-01-point: #f27a0a;
+  --combo-02-primary: #2f6bea;
+  --combo-02-point: #66bbe4;
+  --combo-03-primary: #00804f;
+  --combo-03-point: #f2a900;
+  --combo-04-primary: #5b45e0;
+  --combo-04-point: #e83e7a;
+  --combo-05-primary: #f04a1a;
+  --combo-05-point: #22329c;
+  --combo-06-primary: #0a6767;
+  --combo-06-point: #f27a0a;
+  --combo-07-primary: #22329c;
+  --combo-07-point: #8dbf1f;
+  --combo-08-primary: #842467;
+  --combo-08-point: #f2a900;
+  --combo-09-primary: #167835;
+  --combo-09-point: #8dbf1f;
+  --combo-10-primary: #1e9bd7;
+  --combo-10-point: #f04a1a;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-sm: 14px;
+  --radius-md: 18px;
+  --radius-lg: 28px;
+  --radius-full: 999px;
+  --size-touch: 44px;
+  --size-button: 48px;
+  --size-row: 56px;
+  --size-tabbar: 64px;
+  --shadow-card: 0 12px 32px rgba(17,17,17,0.08);
+  --shadow-toast: 0 12px 32px rgba(17,17,17,0.16);
+  --shadow-dock: 0 -1px 0 #dadada;
+  --state-hover: 0.08;
+  --state-pressed: 0.16;
+  --state-disabled: 0.4;
+  --text-title-size: 28px; --text-title-line: 36px; --text-title-weight: 700;
+  --text-heading-size: 20px; --text-heading-line: 28px; --text-heading-weight: 700;
+  --text-subtitle-size: 18px; --text-subtitle-line: 26px; --text-subtitle-weight: 700;
+  --text-body-size: 16px; --text-body-line: 24px; --text-body-weight: 400;
+  --text-row-size: 15px; --text-row-line: 22px; --text-row-weight: 400;
+  --text-label-size: 14px; --text-label-line: 20px; --text-label-weight: 700;
+  --text-caption-size: 13px; --text-caption-line: 18px; --text-caption-weight: 700;
+  --text-tab-size: 12px; --text-tab-line: 16px; --text-tab-weight: 400;
+  --text-count-size: 30px; --text-count-line: 36px; --text-count-weight: 700;
+}
+
+[data-theme="dark"] {
+  --bg: #1e1e1e;
+  --surface: #262626;
+  --row: #2e2e2e;
+  --track: #3d3d3d;
+  --control: #808080;
+  --ink: #f2f2f2;
+  --ink-muted: #a8a8a8;
+  --primary: #596ae0;
+  --on-primary: #ffffff;
+  --primary-mark: #485bdd;
+  --primary-text: #7a88e6;
+  --primary-icon: #5d6ee1;
+  --on-primary-icon: #ffffff;
+  --point: #f27a0a;
+  --point-mark: #f27a0a;
+  --point-icon: #f27a0a;
+  --danger: #ed716b;
+  --danger-on-bg: #e95049;
+  --danger-line: #e5342b;
+  --badge-bg: #3b3b3b;
+  --toast-bg: #3f3f3f;
+  --toast-ink: #f2f2f2;
+  --toast-action: #545454;
+  --toast-icon: #ea5951;
+  --toast-primary-icon: #7684e5;
+  --focus: #eeeeee;
+  --shadow-card: 0 0 0 1px rgba(255,255,255,0.06);
+  --shadow-toast: 0 0 0 1px rgba(255,255,255,0.08), 0 12px 32px rgba(0,0,0,0.5);
+  --shadow-dock: 0 -1px 0 #3d3d3d;
+}

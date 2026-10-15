@@ -1,0 +1,161 @@
+{
+  "v": 3,
+  "layout": "files",
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-13T09:13:00Z"
+  },
+  "title": "포인트 디자인 시스템",
+  "namespace": "Point",
+  "libraries": [],
+  "sections": {},
+  "groups": [
+    "Icons"
+  ],
+  "assetGroups": {
+    "Icons": {
+      "name": "Icons",
+      "tile": "s",
+      "order": [
+        "add.svg",
+        "arrow_upward.svg",
+        "check.svg",
+        "check_circle.svg",
+        "checklist.svg",
+        "calendar_month.svg",
+        "bar_chart.svg",
+        "settings.svg",
+        "warning.svg",
+        "info.svg",
+        "error.svg",
+        "delete.svg",
+        "refresh.svg",
+        "cloud_off.svg",
+        "progress_activity.svg",
+        "more_horiz.svg",
+        "light_mode.svg",
+        "dark_mode.svg"
+      ],
+      "files": {
+        "add.svg": {
+          "name": "add.svg",
+          "blob": "990cee8eb51360dcf36ecb5ca378b7db",
+          "size": 464,
+          "type": "image/svg+xml"
+        },
+        "arrow_upward.svg": {
+          "name": "arrow_upward.svg",
+          "blob": "b27278a0e5d02230415f4e273d431a5b",
+          "size": 297,
+          "type": "image/svg+xml"
+        },
+        "check.svg": {
+          "name": "check.svg",
+          "blob": "031ccd8551ab403da0c4dad130743229",
+          "size": 246,
+          "type": "image/svg+xml"
+        },
+        "check_circle.svg": {
+          "name": "check_circle.svg",
+          "blob": "e1170cfd20c119c7688078cba7c557d8",
+          "size": 542,
+          "type": "image/svg+xml"
+        },
+        "checklist.svg": {
+          "name": "checklist.svg",
+          "blob": "66f7ba9f6ec4ad8b4eac037063be04d0",
+          "size": 712,
+          "type": "image/svg+xml"
+        },
+        "calendar_month.svg": {
+          "name": "calendar_month.svg",
+          "blob": "e24b414fb37d8b8186cfbf21812ace82",
+          "size": 1049,
+          "type": "image/svg+xml"
+        },
+        "bar_chart.svg": {
+          "name": "bar_chart.svg",
+          "blob": "f4b588dc3432bd4a47cbeb37583ee295",
+          "size": 644,
+          "type": "image/svg+xml"
+        },
+        "settings.svg": {
+          "name": "settings.svg",
+          "blob": "4433809feaa9f97b97f5574254fa09b7",
+          "size": 1026,
+          "type": "image/svg+xml"
+        },
+        "warning.svg": {
+          "name": "warning.svg",
+          "blob": "a3ad8c7dafc6394327d09760ee040665",
+          "size": 527,
+          "type": "image/svg+xml"
+        },
+        "info.svg": {
+          "name": "info.svg",
+          "blob": "7d02b9014e0207c0b22c1ff9ea732603",
+          "size": 826,
+          "type": "image/svg+xml"
+        },
+        "error.svg": {
+          "name": "error.svg",
+          "blob": "de1a244bcd5069855ad91e09aab778e4",
+          "size": 813,
+          "type": "image/svg+xml"
+        },
+        "delete.svg": {
+          "name": "delete.svg",
+          "blob": "381f423d694059fd25d62c9220c39a14",
+          "size": 850,
+          "type": "image/svg+xml"
+        },
+        "refresh.svg": {
+          "name": "refresh.svg",
+          "blob": "366e49eeb84d069567de3afc478a39e1",
+          "size": 486,
+          "type": "image/svg+xml"
+        },
+        "cloud_off.svg": {
+          "name": "cloud_off.svg",
+          "blob": "8c272ac7ef105489e16f0fa7dbf9c073",
+          "size": 593,
+          "type": "image/svg+xml"
+        },
+        "progress_activity.svg": {
+          "name": "progress_activity.svg",
+          "blob": "6696ef4cee56cba01b0a52f0a5a029c9",
+          "size": 388,
+          "type": "image/svg+xml"
+        },
+        "more_horiz.svg": {
+          "name": "more_horiz.svg",
+          "blob": "8cb256d1f7e03c14763971076e638b75",
+          "size": 444,
+          "type": "image/svg+xml"
+        },
+        "light_mode.svg": {
+          "name": "light_mode.svg",
+          "blob": "c6563d232eb5d08930297eee28add1bd",
+          "size": 1616,
+          "type": "image/svg+xml"
+        },
+        "dark_mode.svg": {
+          "name": "dark_mode.svg",
+          "blob": "179e55e4f6f339b0b7923a8ce57e6116",
+          "size": 480,
+          "type": "image/svg+xml"
+        }
+      }
+    }
+  },
+  "blobs": {},
+  "docs": {
+    "sections": []
+  },
+  "lastChange": {
+    "by": "주인",
+    "via": "Claude",
+    "at": "2026-10-13T11:54:26Z",
+    "note": "버튼 글자 흰색 고정, 주간 날짜 줄, 아이콘, Svelte 컴포넌트 추가"
+  }
+}

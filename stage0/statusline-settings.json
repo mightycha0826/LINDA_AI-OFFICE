@@ -1,0 +1,6 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "node C:/ai-office/office/stage0/statusline-probe.mjs"
+  }
+}
