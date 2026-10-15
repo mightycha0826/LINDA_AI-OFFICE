@@ -127,6 +127,19 @@ Say "  자동 로그인: $auto (비밀번호 값은 읽지 않아요)"
 if ($auto -eq '켜짐') { Check '통과' '자동 로그인 켜짐' } else { Check '확인 필요' '자동 로그인이 꺼져 있어요. 정전 뒤 재부팅하면 pm2가 시작되지 않아요(3장)' }
 Check '확인 필요' 'BIOS 정전 후 자동 켜짐은 스크립트로 확인할 수 없어요. 직접 확인해 주세요'
 
+# --- 저장된 GitHub 자격 증명 (11장 이중 잠금) ---
+# AI가 띄운 git은 자격 증명 도우미를 끄고 실행하지만, 저장된 GitHub 로그인이 없으면 한 겹 더 안전하다.
+# 목록의 대상 이름만 보고, 비밀번호나 토큰 값은 읽지 않는다.
+Say '-- 저장된 GitHub 자격 증명'
+$gh = @(cmdkey /list 2>$null | Select-String -Pattern 'github' -SimpleMatch | ForEach-Object { $_.Line.Trim() })
+if ($gh.Count -gt 0) {
+  foreach ($l in $gh) { Say "  $l" }
+  Check '확인 필요' 'Windows 자격 증명 관리자에 GitHub 로그인이 저장돼 있어요. 이 PC의 GitHub 푸시는 Git 고양이의 토큰으로만 하므로 지우는 걸 권해요(11장)'
+} else {
+  Say '  없음'
+  Check '통과' '저장된 GitHub 자격 증명 없음'
+}
+
 # --- 작업 공간 ---
 Say ''
 Say '-- 작업 공간'

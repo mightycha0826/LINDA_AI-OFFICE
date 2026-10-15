@@ -1,5 +1,6 @@
 // 오케스트레이터 엔진. 직원 호출 순서를 돌리고, 결과를 core의 규칙 함수로만 반영한다.
 // AI는 출력(JSON)만 낸다. 상태 전환, 결재, 한도, 상한 판단은 모두 core가 한다 (설계 원칙 1).
+// 한 바퀴(step) 안에서 일은 동시에 시작되고, 실제 호출은 차선(Claude 1 · Codex 1 · GPU 대기열 1)이 줄을 세운다 (8장).
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
@@ -11,10 +12,15 @@ import {
   ReviewOutputSchema,
   type DevOutput,
   type DocOutput,
+  type TicketType,
 } from '@ai-office/shared';
-import type { Brain, BrainTask, TestRunner } from './brains/brain.ts';
+import { BrainError, type BrainTask, type TestRunner } from './brains/brain.ts';
+import { Lanes } from './brains/lanes.ts';
+import type { BrainFor } from './brains/registry.ts';
+import { estimatePct } from './brains/usage-estimate.ts';
+import { Connectivity } from './connectivity.ts';
 import { decideApproval, requestApproval, type DecideInput } from './core/approvals.ts';
-import { budgetOf, enforceBudgets, isExhausted, recordUsage, type EmployeeRow } from './core/budget.ts';
+import { blockBudget, budgetOf, enforceBudgets, isExhausted, recordUsage, type EmployeeRow } from './core/budget.ts';
 import { isOverCap, recordMessage, recordTurn } from './core/guards.ts';
 import { agendaFromLastReview, concludeMeeting, saveMinutes, type RoundPositions } from './core/meeting.ts';
 import { registerOrder } from './core/orders.ts';
@@ -25,29 +31,49 @@ import type { TicketEvent } from './core/transitions.ts';
 import { clearState, emit, getState, inTx, isStopped, setState, type Ctx } from './context.ts';
 import { employees, messages, orders, tickets } from './db/schema.ts';
 import { FormatError, NotCeoError, NotFoundError, OfficeError } from './errors.ts';
+import { renderTask } from './staff/prompts.ts';
+import { roleCard } from './staff/role-cards.ts';
+import { listProjects } from './workspace/projects.ts';
+import type { Workspace } from './workspace/worktrees.ts';
 
 export interface EngineDeps {
   ctx: Ctx;
-  /** 직원에게 맞는 두뇌. 1단계는 모두 MockLLM. */
-  brainFor: (employee: EmployeeRow) => Brain;
+  /** 직원에게 맞는 두뇌 (brains/registry.ts). 테스트는 MockLLM. */
+  brainFor: BrainFor;
   tests: TestRunner;
+  workspace: Workspace;
+  connectivity?: Connectivity;
   log?: (line: string) => void;
+}
+
+interface CallOptions {
+  check?: (out: never) => string[];
+  lowPrecision?: boolean;
+  workdir?: string;
+  ticketType?: TicketType;
 }
 
 const orchestrator = { kind: 'orchestrator' } as const;
 const planBlockedKey = (orderId: string) => `planBlocked:${orderId}`;
+const isCloud = (e: EmployeeRow) => e.brain.provider === 'claude-code' || e.brain.provider === 'codex';
 
 export class Engine {
   private readonly c: Ctx;
-  private readonly brainFor: (e: EmployeeRow) => Brain;
+  private readonly brainFor: BrainFor;
   private readonly tests: TestRunner;
+  private readonly workspace: Workspace;
+  readonly connectivity: Connectivity;
+  readonly lanes = new Lanes();
   private readonly log: (line: string) => void;
+  private readonly inFlight = new Set<string>();
   private controller = new AbortController();
 
   constructor(deps: EngineDeps) {
     this.c = deps.ctx;
     this.brainFor = deps.brainFor;
     this.tests = deps.tests;
+    this.workspace = deps.workspace;
+    this.connectivity = deps.connectivity ?? new Connectivity(deps.ctx);
     this.log = deps.log ?? (() => {});
   }
 
@@ -73,7 +99,7 @@ export class Engine {
     clearState(this.c, planBlockedKey(orderId));
   }
 
-  /** /정지: 진행 중인 AI 호출을 끊고 모든 티켓을 멈춘다. */
+  /** /정지: 진행 중인 AI 호출(자식 프로세스 포함)을 끊고 모든 티켓을 멈춘다. */
   stop(discordUserId: string): string[] {
     return stopAll(this.c, discordUserId, () => {
       this.controller.abort();
@@ -90,36 +116,38 @@ export class Engine {
   /** 할 수 있는 일을 한 바퀴 돈다. 실제로 한 일의 수를 돌려준다. */
   async step(): Promise<number> {
     if (isStopped(this.c)) return 0;
-    let actions = 0;
+    let actions = (await this.connectivity.refresh()).length;
     const budget = enforceBudgets(this.c);
     actions += budget.paused.length + budget.resumed.length;
 
-    const planning = this.c.db.select().from(orders).where(eq(orders.status, 'planning')).all();
-    for (const o of planning) {
-      if (isStopped(this.c)) return actions;
-      if (await this.advancePlanning(o.id)) actions++;
+    const jobs: Promise<boolean>[] = [];
+    for (const o of this.c.db.select().from(orders).where(eq(orders.status, 'planning')).all()) {
+      jobs.push(this.once(`order:${o.id}`, () => this.advancePlanning(o.id)));
     }
-
     const active = this.c.db
       .select()
       .from(tickets)
       .where(inArray(tickets.status, ['rework', 'in_progress', 'in_review', 'meeting']))
       .orderBy(sql`rowid`)
       .all();
-    for (const tk of active) {
-      if (isStopped(this.c)) return actions;
-      try {
-        if (await this.advanceTicket(getTicket(this.c, tk.id))) actions++;
-      } catch (err) {
-        if (err instanceof OfficeError && err.code !== 'format-error') {
-          // 그사이 상태가 바뀌었거나(정지, 상한) 규칙이 거부함. 결과는 버리고 다음 바퀴에 다시 본다.
-          this.log(`${tk.id}: ${err.message}`);
-          continue;
-        }
-        if ((err as Error).name === 'AbortError') return actions;
-        throw err;
+    for (const tk of active) jobs.push(this.once(tk.id, () => this.advanceTicket(getTicket(this.c, tk.id))));
+
+    let unexpected: unknown;
+    for (const r of await Promise.allSettled(jobs)) {
+      if (r.status === 'fulfilled') {
+        if (r.value) actions++;
+        continue;
       }
+      const err = r.reason as Error;
+      if (err.name === 'AbortError') continue;
+      if (err instanceof OfficeError) {
+        // 그사이 상태가 바뀌었거나(정지, 상한) 규칙이 거부함. 결과는 버리고 다음 바퀴에 다시 본다.
+        this.log(err.message);
+        continue;
+      }
+      unexpected ??= err;
     }
+    if (unexpected) throw unexpected;
     return actions;
   }
 
@@ -133,6 +161,17 @@ export class Engine {
     throw new OfficeError('runaway', `${maxSteps}바퀴를 돌아도 끝나지 않았어요`);
   }
 
+  /** 같은 대상의 일이 겹쳐 돌지 않게 한다. */
+  private async once(key: string, fn: () => Promise<boolean>): Promise<boolean> {
+    if (this.inFlight.has(key) || isStopped(this.c)) return false;
+    this.inFlight.add(key);
+    try {
+      return await fn();
+    } finally {
+      this.inFlight.delete(key);
+    }
+  }
+
   // --- 계획 -------------------------------------------------------------------
 
   private async advancePlanning(orderId: string): Promise<boolean> {
@@ -143,41 +182,51 @@ export class Engine {
       startGateReview(c, plan.id);
       return true;
     }
-    if (plan?.status === 'gate-review') {
-      const gate = this.employee(GATE_REVIEWER_ID);
-      if (isExhausted(c, 'review')) return false; // GPT 소진: 관문 검사는 기다린다
-      const out = await this.callStructured(gate, 'gate', GateOutputSchema, { plan }, { orderId });
-      const outcome = recordGateResult(c, plan.id, out);
-      this.log(`${plan.id} v${plan.version} 관문: ${outcome}`);
-      return true;
-    }
-    if (plan && plan.status !== 'revision-requested') return false;
-
-    const pm = this.employee('pm');
-    const order = c.db.select().from(orders).where(eq(orders.id, orderId)).get()!;
-    const staff = c.db.select().from(employees).all().map((e) => ({ id: e.id, role: e.role, brain: e.brain }));
-    const afterGateRejection = !!plan && plan.ceoNote === null;
-    const feedback = plan ? (afterGateRejection ? (plan.gateResult?.issues ?? []) : [plan.ceoNote ?? '']) : [];
-    let out;
     try {
-      out = await this.callStructured(pm, 'plan', PmPlanOutputSchema, { order: { id: order.id, rawText: order.rawText }, staff, feedback }, { orderId }, (o) =>
-        checkPlanRules(c, o),
-      );
+      if (plan?.status === 'gate-review') {
+        const gate = this.employee(GATE_REVIEWER_ID);
+        if (this.spendMode(gate) !== 'ok') return false; // GPT 소진이나 인터넷 끊김: 관문 검사는 기다린다
+        const out = await this.callStructured(gate, 'gate', GateOutputSchema, { plan }, { orderId }, { workdir: this.workspace.sandbox(`gate-${orderId}`) });
+        const outcome = recordGateResult(c, plan.id, out);
+        this.log(`${plan.id} v${plan.version} 관문: ${outcome}`);
+        return true;
+      }
+      if (plan && plan.status !== 'revision-requested') return false;
+
+      const pm = this.employee('pm');
+      if (this.spendMode(pm) !== 'ok') return false;
+      const order = c.db.select().from(orders).where(eq(orders.id, orderId)).get()!;
+      const staff = c.db.select().from(employees).all().filter((e) => e.brain.provider !== 'none').map((e) => ({ id: e.id, role: e.role, brain: e.brain }));
+      const projects = listProjects(c).map((p) => ({ id: p.id, repoUrl: p.repoUrl, testCommand: p.testCommand }));
+      const afterGateRejection = !!plan && plan.ceoNote === null;
+      const input = {
+        order: { id: order.id, rawText: order.rawText },
+        staff,
+        projects,
+        ...(plan && !afterGateRejection ? { ceoNote: plan.ceoNote ?? '' } : {}),
+        ...(plan && afterGateRejection ? { gateIssues: plan.gateResult?.issues ?? [] } : {}),
+      };
+      const out = await this.callStructured(pm, 'plan', PmPlanOutputSchema, input, { orderId }, { check: (o: z.infer<typeof PmPlanOutputSchema>) => checkPlanRules(c, o) });
+      const created = createPlanVersion(c, orderId, out, { afterGateRejection });
+      startGateReview(c, created.id);
+      this.log(`${created.id} v${created.version} 작성`);
+      return true;
     } catch (err) {
-      if (err instanceof FormatError) {
+      if (err instanceof BrainError && (err.failure === 'offline' || err.failure === 'limit')) {
+        this.handleQuietFailure(err, plan?.status === 'gate-review' ? this.employee(GATE_REVIEWER_ID) : this.employee('pm'));
+        return false;
+      }
+      if (err instanceof FormatError || err instanceof BrainError) {
+        const issues = err instanceof FormatError ? err.issues : err.message;
         inTx(c, (t) => {
-          setState(t, planBlockedKey(orderId), err.issues);
-          recordMessage(t, { orderId, fromId: 'orchestrator', kind: 'system', content: `계획서 형식 오류 2회로 멈춤: ${err.issues}` });
+          setState(t, planBlockedKey(orderId), issues);
+          recordMessage(t, { orderId, fromId: 'orchestrator', kind: 'system', content: `계획 작성을 멈춤(다시 시도 필요): ${issues}` });
           emit(t, 'plan.status', { orderId, status: 'format-error' });
         });
         return true;
       }
       throw err;
     }
-    const created = createPlanVersion(c, orderId, out, { afterGateRejection });
-    startGateReview(c, created.id);
-    this.log(`${created.id} v${created.version} 작성`);
-    return true;
   }
 
   // --- 티켓 -------------------------------------------------------------------
@@ -199,24 +248,53 @@ export class Engine {
   }
 
   /** 이 직원이 지금 AI를 부를 수 있는가. 리서치 몫 소진이면 로컬(저정밀)로 바꾼다. */
-  private spendMode(e: EmployeeRow): 'ok' | 'low-precision' | 'wait' {
+  private spendMode(e: EmployeeRow): 'ok' | 'low-precision' | 'wait' | 'offline' {
     const b = budgetOf(e);
+    // 인터넷이 끊기면 클라우드 직원(개발자·리뷰어·경영전략)은 멈춘다 (3장)
+    if (isCloud(e) && !this.connectivity.isOnline()) return 'offline';
     if (!b || b === 'local' || !isExhausted(this.c, b)) return 'ok';
     return b === 'research' ? 'low-precision' : 'wait';
+  }
+
+  /** 인터넷이 끊겨 클라우드 직원이 일할 수 없으면 티켓을 멈춘다(연결되면 이어감). */
+  private pauseIfOffline(tk: TicketRow, people: EmployeeRow[]): boolean {
+    if (!people.some((p) => this.spendMode(p) === 'offline')) return false;
+    applyTicketEvent(this.c, tk.id, { type: 'system.pause', reason: 'offline' }, orchestrator);
+    return true;
+  }
+
+  /** 클라우드 직원이 일할 폴더: 코딩이면 worktree, 아니면 빈 샌드박스. 로컬 모델은 폴더가 필요 없다. */
+  private workdirFor(tk: TicketRow, e: EmployeeRow, lowPrecision: boolean): string | undefined {
+    if (!isCloud(e) || lowPrecision) return undefined;
+    return getTicket(this.c, tk.id).worktreePath ?? this.workspace.sandbox(tk.id);
   }
 
   private async work(tk: TicketRow): Promise<boolean> {
     const c = this.c;
     const assignee = this.employee(tk.assigneeId);
+    if (this.pauseIfOffline(tk, [assignee])) return true;
     const mode = this.spendMode(assignee);
     if (mode === 'wait') return false; // 개발 몫 소진은 enforceBudgets가 멈춘다
     if (this.pauseIfOverCap(tk)) return true;
-    if (mode === 'low-precision') this.markLowPrecision(tk);
+    const lowPrecision = mode === 'low-precision';
+    if (lowPrecision) this.markLowPrecision(tk);
+
+    let worktree: string | undefined;
+    if (tk.type === 'coding') {
+      try {
+        worktree = (await this.workspace.ensureWorktree(getTicket(c, tk.id))).path;
+      } catch (err) {
+        if (!(err instanceof OfficeError)) throw err;
+        this.pauseSystemError(tk, `작업 공간 준비 실패: ${err.message}`);
+        return true;
+      }
+    }
 
     const schema = tk.type === 'coding' ? DevOutputSchema : DocOutputSchema;
-    const out = await this.ticketCall(tk, assignee, 'work', schema, { ticket: this.ticketInput(tk), feedback: this.feedbackFor(tk) }, mode === 'low-precision');
+    const input = { ticket: this.ticketInput(tk), feedback: this.feedbackFor(tk), ...(worktree ? { worktree } : {}) };
+    const out = await this.ticketCall(tk, assignee, 'work', schema, input, { lowPrecision, ...this.dir(this.workdirFor(tk, assignee, lowPrecision)) });
     if (!out || getTicket(c, tk.id).status !== 'in_progress') return true; // 그사이 멈췄으면 결과는 버린다
-    const note = mode === 'low-precision' ? '저정밀 모드로 작성됨\n' : '';
+    const note = lowPrecision ? '저정밀 모드로 작성됨\n' : '';
     recordMessage(c, { ticketId: tk.id, orderId: tk.orderId, fromId: assignee.id, toId: tk.reviewerId, kind: 'handoff', content: note + JSON.stringify(out) });
     applyTicketEvent(c, tk.id, { type: 'ticket.submitted' }, { kind: 'employee', id: assignee.id });
     return true;
@@ -225,12 +303,16 @@ export class Engine {
   private async review(tk: TicketRow): Promise<boolean> {
     const c = this.c;
     const reviewer = this.employee(tk.reviewerId);
+    if (this.pauseIfOffline(tk, [reviewer])) return true;
     const mode = this.spendMode(reviewer);
     if (mode === 'wait') return false; // GPT 소진: in_review에서 기다린다
     if (this.pauseIfOverCap(tk)) return true;
+    const lowPrecision = mode === 'low-precision';
 
     // 테스트는 개발자의 말이 아니라 오케스트레이터가 직접 돌린 결과만 쓴다 (6장)
-    const tests = tk.type === 'coding' ? await this.tests.run(tk.id, this.controller.signal) : null;
+    const coding = tk.type === 'coding';
+    const tests = coding ? await this.tests.run(tk.id, this.controller.signal) : null;
+    const diff = coding ? await this.workspace.reviewDiff(getTicket(c, tk.id)) : '';
     const handoff = c.db
       .select()
       .from(messages)
@@ -244,17 +326,18 @@ export class Engine {
       reviewer,
       'review',
       ReviewOutputSchema,
-      { ticket: this.ticketInput(tk), submission: handoff?.content ?? '', tests },
-      mode === 'low-precision',
-      // 반려는 작업 시작 전에 정해진 완료 조건으로만 판정한다
-      (r) => {
-        const judged = new Set(r.criteria.map((x) => x.criterion));
-        const unknown = [...judged].filter((x) => !criteria.has(x));
-        const missing = [...criteria].filter((x) => !judged.has(x));
-        return [
-          ...unknown.map((x) => `완료 조건에 없는 기준으로 판정함: ${x}`),
-          ...missing.map((x) => `판정하지 않은 완료 조건: ${x}`),
-        ];
+      { ticket: this.ticketInput(tk), submission: submissionForReview(handoff?.content ?? ''), tests, ...(diff ? { diff } : {}) },
+      {
+        lowPrecision,
+        ...this.dir(this.workdirFor(tk, reviewer, lowPrecision)),
+        // 반려는 작업 시작 전에 정해진 완료 조건으로만 판정한다
+        check: (r: z.infer<typeof ReviewOutputSchema>) => {
+          const judged = new Set(r.criteria.map((x) => x.criterion));
+          return [
+            ...[...judged].filter((x) => !criteria.has(x)).map((x) => `완료 조건에 없는 기준으로 판정함: ${x}`),
+            ...[...criteria].filter((x) => !judged.has(x)).map((x) => `판정하지 않은 완료 조건: ${x}`),
+          ];
+        },
       },
     );
     if (!out || getTicket(c, tk.id).status !== 'in_review') return true; // 그사이 멈췄으면 결과는 버린다
@@ -286,6 +369,7 @@ export class Engine {
   private async meeting(tk: TicketRow): Promise<boolean> {
     const c = this.c;
     const people = [this.employee(tk.assigneeId), this.employee(tk.reviewerId)];
+    if (this.pauseIfOffline(tk, people)) return true;
     if (people.some((p) => this.spendMode(p) === 'wait')) return false;
     if (this.pauseIfOverCap(tk)) return true;
 
@@ -294,11 +378,15 @@ export class Engine {
     for (let round = 1; round <= c.config.meetingMaxRounds; round++) {
       const positions: RoundPositions['positions'] = [];
       for (const p of people) {
-        const position = await this.ticketCall(tk, p, 'meeting', MeetingPositionSchema, {
-          ticket: this.ticketInput(tk),
-          agenda,
-          previousRounds: rounds,
-        });
+        const lowPrecision = this.spendMode(p) === 'low-precision';
+        const position = await this.ticketCall(
+          tk,
+          p,
+          'meeting',
+          MeetingPositionSchema,
+          { ticket: this.ticketInput(tk), agenda, previousRounds: rounds },
+          { lowPrecision, ...this.dir(this.workdirFor(tk, p, lowPrecision)) },
+        );
         if (!position) return true;
         positions.push({ employeeId: p.id, position });
         const other = people.find((x) => x.id !== p.id)!;
@@ -340,6 +428,10 @@ export class Engine {
     return e;
   }
 
+  private dir(workdir: string | undefined): { workdir?: string } {
+    return workdir ? { workdir } : {};
+  }
+
   private ticketInput(tk: TicketRow) {
     return { id: tk.id, title: tk.title, type: tk.type, acceptanceCriteria: tk.acceptanceCriteria };
   }
@@ -362,38 +454,61 @@ export class Engine {
     return true;
   }
 
+  private pauseSystemError(tk: TicketRow, message: string): void {
+    recordMessage(this.c, { ticketId: tk.id, orderId: tk.orderId, fromId: 'orchestrator', kind: 'system', content: message, countsForPingpong: false });
+    const now = getTicket(this.c, tk.id);
+    if (now.status !== 'paused' && now.status !== 'done' && now.status !== 'cancelled') {
+      applyTicketEvent(this.c, tk.id, { type: 'system.pause', reason: 'system-error' }, orchestrator);
+    }
+  }
+
   private markLowPrecision(tk: TicketRow): void {
-    if (tk.lowPrecision) return;
+    if (getTicket(this.c, tk.id).lowPrecision) return;
     this.c.db.update(tickets).set({ lowPrecision: true }).where(eq(tickets.id, tk.id)).run();
     emit(this.c, 'ticket.status', { ticketId: tk.id, from: tk.status, to: tk.status, event: 'low-precision' });
   }
 
-  /** 티켓 작업 호출. 형식 오류가 두 번이면 티켓을 멈추고(system-error) null을 돌려준다. */
-  private async ticketCall<S extends z.ZodType>(
-    tk: TicketRow,
-    e: EmployeeRow,
-    task: BrainTask,
-    schema: S,
-    input: unknown,
-    lowPrecision = false,
-    check?: (out: z.infer<S>) => string[],
-  ): Promise<z.infer<S> | null> {
+  /** 인터넷 끊김은 연결 상태에, 한도 도달은 몫에 기록한다. 티켓 처리는 다음 바퀴의 규칙이 한다. */
+  private handleQuietFailure(err: BrainError, e: EmployeeRow): void {
+    if (err.failure === 'offline') this.connectivity.markOffline(err.message);
+    if (err.failure === 'limit') {
+      const b = budgetOf(e);
+      if (b && b !== 'local') blockBudget(this.c, b, err.resetsAt);
+    }
+    this.log(err.message);
+  }
+
+  /** 티켓 작업 호출. 실패하면 종류에 맞게 티켓을 멈추고 null을 돌려준다. */
+  private async ticketCall<S extends z.ZodType>(tk: TicketRow, e: EmployeeRow, task: BrainTask, schema: S, input: unknown, opts: CallOptions = {}): Promise<z.infer<S> | null> {
     try {
-      return await this.callStructured(e, task, schema, input, { ticketId: tk.id, orderId: tk.orderId }, check, lowPrecision);
+      return await this.callStructured(e, task, schema, input, { ticketId: tk.id, orderId: tk.orderId }, { ...opts, ticketType: tk.type });
     } catch (err) {
-      if (!(err instanceof FormatError)) throw err;
-      recordMessage(this.c, { ticketId: tk.id, orderId: tk.orderId, fromId: 'orchestrator', kind: 'system', content: `형식 오류 2회로 멈춤 (${e.id}): ${err.issues}`, countsForPingpong: false });
-      const now = getTicket(this.c, tk.id);
-      if (now.status !== 'paused' && now.status !== 'done' && now.status !== 'cancelled') {
-        applyTicketEvent(this.c, tk.id, { type: 'system.pause', reason: 'system-error' }, orchestrator);
+      if (err instanceof FormatError) {
+        this.pauseSystemError(tk, `형식 오류 2회로 멈춤 (${e.id}): ${err.issues}`);
+        return null;
       }
-      return null;
+      if (err instanceof BrainError) {
+        if (err.failure === 'offline' || err.failure === 'limit') {
+          this.handleQuietFailure(err, e);
+          if (err.failure === 'offline' && getTicket(this.c, tk.id).status !== 'paused') {
+            applyTicketEvent(this.c, tk.id, { type: 'system.pause', reason: 'offline' }, orchestrator);
+          }
+          return null;
+        }
+        this.pauseSystemError(tk, `두뇌 호출 실패 2회로 멈춤 (${e.id}): ${err.message}`);
+        return null;
+      }
+      if (err instanceof OfficeError && err.code === 'workdir') {
+        this.pauseSystemError(tk, err.message);
+        return null;
+      }
+      throw err;
     }
   }
 
   /**
    * AI를 부르고 출력을 Zod로 검사한다. 틀리면 오류를 붙여 한 번 다시 시키고, 또 틀리면 FormatError (6장).
-   * 호출마다 사용량과 티켓 턴·토큰을 기록한다.
+   * 시간 초과·비정상 종료도 한 번 다시 시도한다. 호출마다 사용량과 티켓 턴·토큰을 기록한다.
    */
   private async callStructured<S extends z.ZodType>(
     e: EmployeeRow,
@@ -401,34 +516,75 @@ export class Engine {
     schema: S,
     input: unknown,
     refs: { ticketId?: string; orderId?: string },
-    check?: (out: z.infer<S>) => string[],
-    lowPrecision = false,
+    opts: CallOptions = {},
   ): Promise<z.infer<S>> {
-    const brain = this.brainFor(e);
+    const lowPrecision = opts.lowPrecision ?? false;
+    const brain = this.brainFor(e, { lowPrecision });
     const budget = lowPrecision ? 'local' : (budgetOf(e) ?? 'local');
+    const lane = lowPrecision ? null : e.brain.provider === 'claude-code' ? 'claude' : e.brain.provider === 'codex' ? 'codex' : null;
+    const system = roleCard(this.c, e, task, schema, opts.ticketType);
     let previousError: string | undefined;
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const res = await brain.call({
-        employee: e,
-        task,
-        schemaName: task,
-        input,
-        attempt,
-        lowPrecision,
-        signal: this.controller.signal,
-        ...refs,
-        ...(previousError ? { previousError } : {}),
+      let res;
+      try {
+        res = await this.lanes.run(lane, () =>
+          brain.call({
+            employee: e,
+            task,
+            schema,
+            input,
+            prompt: { system, user: renderTask(task, input, previousError) },
+            attempt,
+            lowPrecision,
+            signal: this.controller.signal,
+            ...refs,
+            ...(opts.workdir ? { workdir: opts.workdir } : {}),
+            ...(previousError ? { previousError } : {}),
+          }),
+        );
+      } catch (err) {
+        if (err instanceof BrainError && (err.failure === 'timeout' || err.failure === 'crash') && attempt === 1) {
+          this.log(`${e.id} ${task} 실패(1회, 다시 시도): ${err.message}`);
+          continue;
+        }
+        throw err;
+      }
+      const tokens = res.usage.inputTokens + res.usage.outputTokens;
+      const est = estimatePct(this.c.config, budget, tokens);
+      recordUsage(this.c, {
+        budget,
+        inputTokens: res.usage.inputTokens,
+        outputTokens: res.usage.outputTokens,
+        estimatedPct: res.usage.estimatedPct ?? est.fiveHour,
+        estimatedWeeklyPct: res.usage.estimatedWeeklyPct ?? est.weekly,
+        source: res.usage.source,
+        ...(refs.ticketId ? { ticketId: refs.ticketId } : {}),
       });
-      recordUsage(this.c, { budget, inputTokens: res.usage.inputTokens, outputTokens: res.usage.outputTokens, estimatedPct: res.usage.estimatedPct, estimatedWeeklyPct: res.usage.estimatedWeeklyPct, source: res.usage.source, ...(refs.ticketId ? { ticketId: refs.ticketId } : {}) });
-      if (refs.ticketId) recordTurn(this.c, refs.ticketId, res.usage.inputTokens + res.usage.outputTokens);
+      if (refs.ticketId) recordTurn(this.c, refs.ticketId, tokens);
 
       const parsed = schema.safeParse(res.output);
-      const problems = parsed.success ? (check?.(parsed.data as z.infer<S>) ?? []) : [z.prettifyError(parsed.error)];
+      const problems = parsed.success ? ((opts.check as ((o: z.infer<S>) => string[]) | undefined)?.(parsed.data as z.infer<S>) ?? []) : [z.prettifyError(parsed.error)];
       if (problems.length === 0) return parsed.data as z.infer<S>;
       previousError = problems.join('\n');
       this.log(`${e.id} ${task} 형식 오류(${attempt}회): ${previousError}`);
     }
-    throw new FormatError(previousError ?? '알 수 없음');
+    throw new FormatError(previousError ?? '두뇌 호출이 두 번 실패했어요');
+  }
+}
+
+/**
+ * 리뷰어에게 넘길 제출물. 개발자의 자기 점검(criteriaSelfCheck)은 뺀다 (6장, 2단계 결정 B).
+ * 판정이 개발자의 자기 평가에 끌려가지 않게 하기 위해서다.
+ */
+export function submissionForReview(content: string): unknown {
+  const brace = content.indexOf('{');
+  const note = brace > 0 ? content.slice(0, brace).trim() : '';
+  try {
+    const out = JSON.parse(brace >= 0 ? content.slice(brace) : content) as Record<string, unknown>;
+    delete out.criteriaSelfCheck;
+    return note ? { note, ...out } : out;
+  } catch {
+    return content;
   }
 }
 

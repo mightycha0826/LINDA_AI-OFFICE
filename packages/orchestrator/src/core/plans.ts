@@ -5,7 +5,7 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { brainModel, type PmPlanOutput } from '@ai-office/shared';
 import { emit, inTx, nextSeqId, nowIso, type Ctx } from '../context.ts';
-import { employees, orders, plans, tickets } from '../db/schema.ts';
+import { employees, orders, plans, projects, tickets } from '../db/schema.ts';
 import { NotFoundError, OfficeError, PlanRuleError } from '../errors.ts';
 import { expirePendingApprovals, requestApproval, type ApprovalDecision } from './approvals.ts';
 import { saveMinutes } from './meeting.ts';
@@ -40,6 +40,10 @@ export function isLatestPlanVersion(c: Ctx, plan: PlanRow): boolean {
 export function checkPlanRules(c: Ctx, out: PmPlanOutput): string[] {
   const problems: string[] = [];
   const staff = new Map(c.db.select().from(employees).all().map((e) => [e.id, e]));
+  if (out.tickets.some((t) => t.type === 'coding')) {
+    if (!out.projectId) problems.push('코딩 티켓이 있으면 projectId(등록된 프로젝트)가 필요함');
+    else if (!c.db.select().from(projects).where(eq(projects.id, out.projectId)).get()) problems.push(`등록되지 않은 프로젝트: ${out.projectId}`);
+  }
   out.tickets.forEach((tk, i) => {
     const label = `티켓 ${i + 1}(${tk.title})`;
     const a = staff.get(tk.assignee);
@@ -86,6 +90,7 @@ export function createPlanVersion(c: Ctx, orderId: string, out: PmPlanOutput, op
         questions: out.questions,
         tickets: out.tickets,
         tempStaff: out.tempStaff,
+        projectId: out.projectId ?? null,
         estimate: out.estimate,
         // 관문 반려 뒤 고친 버전은 반려 횟수를 이어 간다. CEO 수정 요청 뒤에는 새로 센다.
         gateAttempts: opts.afterGateRejection && prev ? prev.gateAttempts : 0,
@@ -204,7 +209,7 @@ export function applyCeoPlanDecision(c: Ctx, planId: string, decision: ApprovalD
   }
 
   c.db.update(plans).set({ status: 'approved', ceoNote: note }).where(eq(plans.id, planId)).run();
-  c.db.update(orders).set({ status: 'in-progress' }).where(eq(orders.id, plan.orderId)).run();
+  c.db.update(orders).set({ status: 'in-progress', projectId: plan.projectId }).where(eq(orders.id, plan.orderId)).run();
   emit(c, 'plan.status', { planId, orderId: plan.orderId, version: plan.version, status: 'approved' });
 
   const caps = c.config.ticketCaps;

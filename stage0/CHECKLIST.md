@@ -42,8 +42,9 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File stage0\env.ps1
 ```
 
-- 확인하는 것: Windows 버전, RAM 총량과 슬롯, CPU, GPU와 VRAM(`nvidia-smi`), 모니터가 어느 그래픽에 연결됐는지 참고용 목록, C: 남은 공간, 도구 버전(node, npm, git, ollama, claude, codex, gitleaks, tailscale, pm2, hermes), 절전 설정, Windows 업데이트 사용 시간, 자동 로그인 여부(켜짐/꺼짐만, 비밀번호는 읽지 않음), 페이지 파일.
+- 확인하는 것: Windows 버전, RAM 총량과 슬롯, CPU, GPU와 VRAM(`nvidia-smi`), 모니터가 어느 그래픽에 연결됐는지 참고용 목록, C: 남은 공간, 도구 버전(node, npm, git, ollama, claude, codex, gitleaks, tailscale, pm2, hermes), 절전 설정, Windows 업데이트 사용 시간, 자동 로그인 여부(켜짐/꺼짐만, 비밀번호는 읽지 않음), 페이지 파일, Windows 자격 증명 관리자에 저장된 GitHub 로그인(대상 이름만).
 - 통과 기준: 없음(기준 정보). 다만 3장 "Windows 설정 (필수)" 중 아직 안 된 것이 `[확인 필요]`로 나온다. 정전 후 자동 켜짐은 BIOS 설정이라 스크립트로 못 본다. 직접 확인한다.
+- 저장된 GitHub 로그인이 나오면: 회사 코드는 이것 없이도 안전하게 막아 두지만(11장), 이 PC의 GitHub 푸시는 Git 고양이의 토큰으로만 하므로 지우는 걸 권한다. 지울지는 주인이 정한다. 지우려면 "자격 증명 관리자 → Windows 자격 증명 → github 항목 제거".
 
 ---
 

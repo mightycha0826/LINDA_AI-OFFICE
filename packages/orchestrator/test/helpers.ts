@@ -1,4 +1,10 @@
 import { and, eq } from 'drizzle-orm';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Connectivity } from '../src/connectivity.ts';
+import { registerProject } from '../src/workspace/projects.ts';
+import { MockWorkspace } from '../src/workspace/mock-workspace.ts';
 import type { OfficeEventType } from '@ai-office/shared';
 import type { TestRunner } from '../src/brains/brain.ts';
 import { MockLlm, type MockHandler, type MockOptions } from '../src/brains/mock.ts';
@@ -18,16 +24,31 @@ export const orchestrator = { kind: 'orchestrator' } as const;
 
 type ConfigOver = Omit<Parameters<typeof makeConfig>[0], 'ceoDiscordId'>;
 
-export function setup(opts: { handlers?: Partial<Record<BrainTask, MockHandler>>; mock?: MockOptions; config?: ConfigOver; tests?: TestRunner } = {}) {
+/** 테스트마다 따로 쓰는 임시 작업 공간 (C:\ai-office는 건드리지 않는다) */
+export function tempRoot(): string {
+  return mkdtempSync(join(tmpdir(), 'ai-office-test-'));
+}
+
+export function setup(
+  opts: { handlers?: Partial<Record<BrainTask, MockHandler>>; mock?: MockOptions; config?: ConfigOver; tests?: TestRunner; probe?: () => Promise<boolean> } = {},
+) {
   const db = openDb(':memory:');
   const clock = new FakeClock();
-  const config = makeConfig({ ceoDiscordId: CEO, ...opts.config });
+  const root = tempRoot();
+  const config = makeConfig({
+    ceoDiscordId: CEO,
+    ...opts.config,
+    paths: { wt: join(root, 'wt'), data: join(root, 'data'), repos: join(root, 'repos'), ...opts.config?.paths },
+  });
   const ctx: Ctx = { db, config, clock };
   seedStaff(ctx);
+  registerProject(ctx, { id: 'demo', repoUrl: 'https://github.com/owner/demo.git', localPath: join(root, 'repos', 'demo'), testCommand: 'npm test' });
   const mock = new MockLlm(opts.handlers, opts.mock);
   const tests: TestRunner = opts.tests ?? { run: async () => ({ passed: true, summary: 'mock: 12 passed' }) };
-  const engine = new Engine({ ctx, brainFor: () => mock, tests });
-  return { db, clock, config, ctx, mock, engine };
+  const workspace = new MockWorkspace(root);
+  const connectivity = new Connectivity(ctx, opts.probe ?? (async () => true));
+  const engine = new Engine({ ctx, brainFor: () => mock, tests, workspace, connectivity });
+  return { db, clock, config, ctx, mock, engine, workspace, root };
 }
 export type Setup = ReturnType<typeof setup>;
 

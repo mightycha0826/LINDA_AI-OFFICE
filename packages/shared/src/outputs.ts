@@ -21,6 +21,8 @@ export const PmPlanOutputSchema = z.object({
   questions: z.array(text),
   tickets: z.array(PlannedTicketSchema).min(1).max(6),
   tempStaff: z.array(z.object({ role: text, reason: text })),
+  /** 코딩 티켓이 있으면 등록된 프로젝트 ID가 필요하다 (11장: 등록된 저장소만 건드린다) */
+  projectId: z.string().optional(),
   estimate: z.object({
     claudeDevPct: z.number().min(0),
     claudeResearchPct: z.number().min(0),

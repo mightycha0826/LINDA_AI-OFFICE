@@ -13,12 +13,22 @@ import { openDb } from '../db/client.ts';
 import { events, meetingMinutes, orders, tickets } from '../db/schema.ts';
 import { Engine } from '../engine.ts';
 import { seedStaff } from '../seed.ts';
+import { Connectivity } from '../connectivity.ts';
+import { MockWorkspace } from '../workspace/mock-workspace.ts';
+import { registerProject } from '../workspace/projects.ts';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const CEO = '100000000000000001';
 const db = openDb(':memory:');
 const clock = new FakeClock('2026-10-15T08:00:00+09:00');
-const ctx: Ctx = { db, config: makeConfig({ ceoDiscordId: CEO }), clock };
+// 시뮬레이션은 임시 폴더만 쓴다 (C:\ai-office는 건드리지 않음)
+const root = mkdtempSync(join(tmpdir(), 'ai-office-sim-'));
+const paths = { wt: join(root, 'wt'), data: join(root, 'data'), repos: join(root, 'repos') };
+const ctx: Ctx = { db, config: makeConfig({ ceoDiscordId: CEO, paths }), clock };
 seedStaff(ctx);
+registerProject(ctx, { id: 'demo', repoUrl: 'https://github.com/owner/demo.git', localPath: join(paths.repos, 'demo'), testCommand: 'npm test' });
 
 // 지시 원문에 들어 있는 표시로 시나리오를 고른다
 const scenarioOf = (req: BrainRequest) => {
@@ -52,6 +62,8 @@ const engine = new Engine({
   ctx,
   brainFor: () => mock,
   tests: { run: async () => ({ passed: true, summary: 'mock: 12 passed' }) },
+  workspace: new MockWorkspace(root),
+  connectivity: new Connectivity(ctx, async () => true),
 });
 
 const say = (s: string) => console.log(s);

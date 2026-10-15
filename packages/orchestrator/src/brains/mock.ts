@@ -35,6 +35,7 @@ export function planOutput(over: Partial<PmPlanOutput> = {}): PmPlanOutput {
     ],
     tempStaff: [],
     estimate: { claudeDevPct: 5, claudeResearchPct: 0, gptPct: 3, hours: 1 },
+    projectId: 'demo',
     ...over,
   };
 }

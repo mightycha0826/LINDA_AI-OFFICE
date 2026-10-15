@@ -1,0 +1,11 @@
+{
+  "ceoDiscordId": "여기에 주인 Discord 사용자 ID(숫자)",
+  "paths": {
+    "wt": "C:\\ai-office\\wt",
+    "data": "C:\\ai-office\\data",
+    "repos": "C:\\ai-office\\repos"
+  },
+  "ollama": { "host": "http://127.0.0.1:11434" },
+  "claude": { "bin": "claude" },
+  "codex": { "bin": "codex", "promptVia": "stdin" }
+}

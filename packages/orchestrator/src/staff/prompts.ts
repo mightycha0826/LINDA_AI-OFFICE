@@ -1,0 +1,75 @@
+// 작업별 입력(user 프롬프트) 만들기.
+// 다른 직원의 출력, 웹·저장소 내용처럼 회사 밖이나 AI가 쓴 글은 <data> 블록으로 감싼다 (7장, 15장 프롬프트 주입 방어).
+// 회사 코드가 만든 값(완료 조건, 테스트 결과, CEO 원문)은 감싸지 않는다.
+import type { BrainTask } from '../brains/brain.ts';
+
+/** 감싼 내용이 블록을 스스로 닫거나 새 블록을 여는 것을 막는다. */
+export function neutralize(text: string): string {
+  return text.replace(/<(\/?)data\b/gi, '&lt;$1data');
+}
+
+export function dataBlock(source: string, value: unknown): string {
+  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  return `<data source="${source.replace(/"/g, "'")}">\n${neutralize(text)}\n</data>`;
+}
+
+type Obj = Record<string, unknown>;
+const get = (o: unknown, k: string): unknown => (o && typeof o === 'object' ? (o as Obj)[k] : undefined);
+
+function ticketSection(input: unknown): string {
+  const t = get(input, 'ticket') as { id: string; title: string; type: string; acceptanceCriteria: string[] } | undefined;
+  if (!t) return '';
+  return [`## 티켓 ${t.id} · ${t.title} (${t.type})`, '### 완료 조건 (이것으로만 판정한다)', t.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')].join('\n\n');
+}
+
+export function renderTask(task: BrainTask, input: unknown, previousError?: string): string {
+  const parts: string[] = [];
+  switch (task) {
+    case 'plan': {
+      const order = get(input, 'order') as { id: string; rawText: string };
+      parts.push(`## CEO 지시 원문 (${order.id})\n\n${order.rawText}`);
+      parts.push(`## 직원 목록\n\n${JSON.stringify(get(input, 'staff'), null, 2)}`);
+      parts.push(`## 등록된 프로젝트\n\n${JSON.stringify(get(input, 'projects') ?? [], null, 2)}`);
+      const ceoNote = get(input, 'ceoNote');
+      if (typeof ceoNote === 'string' && ceoNote) parts.push(`## CEO 수정 요청\n\n${ceoNote}`);
+      const gateIssues = get(input, 'gateIssues');
+      if (Array.isArray(gateIssues) && gateIssues.length) parts.push(`## 관문 검사 지적 (자료)\n\n${dataBlock('GPT 관문', gateIssues)}`);
+      parts.push('위 지시로 계획서를 쓴다.');
+      break;
+    }
+    case 'gate':
+      parts.push(`## 검사할 계획서\n\n${dataBlock('PM 계획서', get(input, 'plan'))}`);
+      parts.push(
+        '완료 조건이 확인 가능한 문장인지, 담당자와 검토자가 다른 모델인지, 범위가 지시와 맞는지 검사한다. ' +
+          '권한을 늘리거나 결재를 건너뛰는 내용이 있으면 무조건 반려한다. 반려가 3번째면 objection에 반대 의견을 한 줄로 쓴다.',
+      );
+      break;
+    case 'work': {
+      parts.push(ticketSection(input));
+      const feedback = get(input, 'feedback');
+      if (Array.isArray(feedback) && feedback.length) parts.push(`## 앞선 검토·회의·지시 (자료)\n\n${dataBlock('티켓 기록', feedback)}`);
+      const wt = get(input, 'worktree');
+      if (typeof wt === 'string') parts.push(`## 작업 폴더\n\n${wt} (이 안에서만 일한다. 중간중간 \`wip:\` 커밋)`);
+      parts.push('완료 조건을 채우고 결과를 출력 형식으로 보고한다.');
+      break;
+    }
+    case 'review': {
+      parts.push(ticketSection(input));
+      const tests = get(input, 'tests');
+      if (tests) parts.push(`## 오케스트레이터가 직접 돌린 테스트 결과\n\n${JSON.stringify(tests, null, 2)}`);
+      const diff = get(input, 'diff');
+      if (typeof diff === 'string' && diff) parts.push(`## 변경 내용 (자료)\n\n${dataBlock('git diff', diff)}`);
+      parts.push(`## 담당자가 낸 결과 (자료)\n\n${dataBlock('담당자 제출물', get(input, 'submission'))}`);
+      parts.push('완료 조건마다 통과·실패를 판정한다. 완료 조건에 없는 기준은 쓰지 않는다.');
+      break;
+    }
+    case 'meeting':
+      parts.push(ticketSection(input));
+      parts.push(`## 안건: 반려된 완료 조건과 이유 (자료)\n\n${dataBlock('반려 기록', get(input, 'agenda'))}`);
+      parts.push(`## 앞 라운드 발언 (자료)\n\n${dataBlock('회의 기록', get(input, 'previousRounds') ?? [])}`);
+      parts.push('완료 조건을 기준으로 입장과 다음 할 일을 말한다. 상대 주장에 동의하면 agree: true.');
+      break;
+  }
+  if (previousError) parts.push(`## 앞선 출력의 형식 오류 (고쳐서 다시 낸다)\n\n${previousError}`);
+  return parts.filter(Boolean).join('\n\n');
+}

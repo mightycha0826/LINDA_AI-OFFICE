@@ -32,6 +32,51 @@ export const ConfigSchema = z
     maxGateRejections: count,
     /** 부재 모드 전환 시간(분), 10장 */
     absenceMinutes: count,
+    /** 작업 공간 (3장: C:\ai-office\ 아래에만 둔다) */
+    paths: z.object({
+      /** 티켓 worktree와 샌드박스. AI 직원은 이 안에서만 일한다 (7장) */
+      wt: z.string().min(1),
+      /** 오케스트레이터 전용 파일(프롬프트, 스키마, 설정). worktree 밖이라 AI가 고칠 수 없다 */
+      data: z.string().min(1),
+      /** 등록된 저장소 (11장: C:\ai-office\repos\<id>) */
+      repos: z.string().min(1),
+    }),
+    ollama: z.object({
+      host: z.url(),
+      numCtx: count,
+      timeoutSec: count,
+      keepAlive: z.string(),
+      /** GPU 대기열: 이보다 오래 기다린 요청은 모델이 달라도 먼저 처리한다 */
+      maxWaitSec: count,
+    }),
+    claude: z.object({
+      bin: z.string().min(1),
+      /** 테스트에서 가짜 CLI를 node로 띄울 때 쓰는 앞 인자 */
+      binArgs: z.array(z.string()),
+      timeoutMin: count,
+      maxTurns: count,
+    }),
+    codex: z.object({
+      bin: z.string().min(1),
+      binArgs: z.array(z.string()),
+      timeoutMin: count,
+      /** 0단계 #6에서 확인: 프롬프트를 stdin으로 넘길지 인자로 넘길지 */
+      promptVia: z.enum(['stdin', 'arg']),
+    }),
+    tests: z.object({ timeoutMin: count }),
+    /**
+     * 토큰 → 한도 % 환산 계수 (8장 측정 방식). 0단계 #5 전까지는 임시값이고,
+     * 처음 1~2주 동안 실제 사용량 화면과 비교해 맞춘다. 화면과 보고에는 항상 "추정치"로 표시한다.
+     */
+    calibration: z.object({
+      claude: z.object({ tokensPerFiveHourPct: count, tokensPerWeeklyPct: count }),
+      gpt: z.object({ tokensPerFiveHourPct: count, tokensPerWeeklyPct: count }),
+    }),
+    connectivity: z.object({
+      /** 클라우드 두뇌가 닿는지 확인할 주소 */
+      probeUrls: z.array(z.url()).min(1),
+      probeTimeoutSec: count,
+    }),
   })
   .superRefine((c, ctx) => {
     const { claude, gpt } = c.limits;
@@ -53,6 +98,17 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
   meetingMaxRounds: 2,
   maxGateRejections: 2,
   absenceMinutes: 20,
+  paths: { wt: 'C:\\ai-office\\wt', data: 'C:\\ai-office\\data', repos: 'C:\\ai-office\\repos' },
+  ollama: { host: 'http://127.0.0.1:11434', numCtx: 16_384, timeoutSec: 600, keepAlive: '30m', maxWaitSec: 120 },
+  claude: { bin: 'claude', binArgs: [], timeoutMin: 30, maxTurns: 40 },
+  codex: { bin: 'codex', binArgs: [], timeoutMin: 15, promptVia: 'stdin' },
+  tests: { timeoutMin: 15 },
+  // 임시값. 0단계 #5와 첫 1~2주 운영으로 보정한다.
+  calibration: {
+    claude: { tokensPerFiveHourPct: 20_000, tokensPerWeeklyPct: 100_000 },
+    gpt: { tokensPerFiveHourPct: 20_000, tokensPerWeeklyPct: 100_000 },
+  },
+  connectivity: { probeUrls: ['https://api.anthropic.com', 'https://api.openai.com'], probeTimeoutSec: 5 },
 };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };

@@ -6,7 +6,7 @@
 // - 임시 직원이 Claude를 쓰면 개발 몫에서 가져간다.
 import { and, eq, gte, inArray, sum } from 'drizzle-orm';
 import type { UsageBudget, UsageProvider, UsageSource } from '@ai-office/shared';
-import { emit, inTx, isStopped, newId, nowIso, type Ctx } from '../context.ts';
+import { emit, getState, inTx, isStopped, newId, nowIso, setState, type Ctx } from '../context.ts';
 import { employees, tickets, usage } from '../db/schema.ts';
 import { applyTicketEvent } from './tickets.ts';
 
@@ -55,15 +55,35 @@ export interface BudgetStatus {
   fiveHour: { used: number; limit: number | null };
   weekly: { used: number; limit: number | null };
   exhausted: boolean;
+  /** 제공자가 "한도 도달"을 알려 와서 막아 둔 경우, 풀리는 시각 */
+  blockedUntil: string | null;
+}
+
+const blockKey = (b: UsageBudget) => `budgetBlocked:${b}`;
+/** 초기화 시각을 모를 때 막아 두는 시간 */
+const DEFAULT_BLOCK_MS = HOUR;
+
+/**
+ * 제공자가 한도 도달을 알려 왔다. 우리 추정치와 상관없이 그 몫을 막는다.
+ * 추정 계수가 틀려도 실제 한도를 넘겨 계속 부르지 않게 하기 위해서다.
+ */
+export function blockBudget(c: Ctx, b: UsageBudget, resetsAt?: string): string {
+  const fallback = new Date(c.clock.now().getTime() + DEFAULT_BLOCK_MS).toISOString();
+  const until = resetsAt && new Date(resetsAt).getTime() > c.clock.now().getTime() ? resetsAt : fallback;
+  setState(c, blockKey(b), until);
+  emit(c, 'usage.updated', { budget: b, blockedUntil: until, reason: 'provider-limit' });
+  return until;
 }
 
 export function budgetStatus(c: Ctx, b: UsageBudget): BudgetStatus {
   const five = usedPct(c, b, 'fiveHour');
   const week = usedPct(c, b, 'weekly');
-  if (b === 'local') return { budget: b, fiveHour: { used: five, limit: null }, weekly: { used: week, limit: null }, exhausted: false };
+  if (b === 'local') return { budget: b, fiveHour: { used: five, limit: null }, weekly: { used: week, limit: null }, exhausted: false, blockedUntil: null };
   const l5 = limitOf(c, b, 'fiveHour');
   const lw = limitOf(c, b, 'weekly');
-  return { budget: b, fiveHour: { used: five, limit: l5 }, weekly: { used: week, limit: lw }, exhausted: five >= l5 || week >= lw };
+  const until = getState<string | null>(c, blockKey(b), null);
+  const blockedUntil = until && new Date(until).getTime() > c.clock.now().getTime() ? until : null;
+  return { budget: b, fiveHour: { used: five, limit: l5 }, weekly: { used: week, limit: lw }, exhausted: five >= l5 || week >= lw || !!blockedUntil, blockedUntil };
 }
 
 export function isExhausted(c: Ctx, b: UsageBudget): boolean {

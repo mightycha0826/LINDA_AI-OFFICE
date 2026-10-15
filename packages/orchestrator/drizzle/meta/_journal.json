@@ -15,6 +15,13 @@
       "when": 1792053066844,
       "tag": "0001_safety_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792053987346,
+      "tag": "0002_plan_project",
+      "breakpoints": true
     }
   ]
 }

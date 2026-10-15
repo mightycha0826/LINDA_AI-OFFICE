@@ -95,6 +95,7 @@ export const plans = sqliteTable(
     questions: text('questions', { mode: 'json' }).$type<string[]>().notNull(),
     tickets: text('tickets', { mode: 'json' }).$type<PlannedTicket[]>().notNull(),
     tempStaff: text('temp_staff', { mode: 'json' }).$type<{ role: string; reason: string }[]>().notNull(),
+    projectId: text('project_id').references(() => projects.id),
     estimate: text('estimate', { mode: 'json' }).$type<PlanEstimate>().notNull(),
     gateResult: text('gate_result', { mode: 'json' }).$type<GateOutput>(),
     gateAttempts: integer('gate_attempts').notNull().default(0),
