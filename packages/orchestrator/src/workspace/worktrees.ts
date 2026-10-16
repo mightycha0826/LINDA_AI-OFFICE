@@ -7,8 +7,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join, relative, resolve } from 'node:path';
 import { emit, type Ctx } from '../context.ts';
 import type { TicketRow } from '../core/tickets.ts';
-import { orders, tickets } from '../db/schema.ts';
+import { orders, plans, tickets } from '../db/schema.ts';
 import { OfficeError } from '../errors.ts';
+import { applyPointSystem } from '../design/apply-point.ts';
+import { DS_LINT_CRITERION } from '../design/ds-lint.ts';
 import { runProcess } from '../brains/process.ts';
 import { devSettings } from './claude-settings.ts';
 import { assertInside, sandboxDir, worktreePathFor } from './paths.ts';
@@ -110,6 +112,10 @@ export class GitWorkspace implements Workspace {
     mkdirSync(join(common, 'info'), { recursive: true });
     const current = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
     if (!current.split(/\r?\n/).includes('.claude/')) writeFileSync(exclude, `${current.replace(/\s*$/, '')}\n.claude/\n`, 'utf8');
+
+    // 디자인 조합이 붙은 UI 티켓: 포인트 디자인 시스템 파일과 고른 조합을 넣어 둔다 (17장)
+    const plan = ticket.planId ? c.db.select().from(plans).where(eq(plans.id, ticket.planId)).get() : undefined;
+    if (plan?.designCombo && ticket.acceptanceCriteria.includes(DS_LINT_CRITERION)) applyPointSystem(path, plan.designCombo);
 
     c.db.update(tickets).set({ worktreePath: path, branch }).where(eq(tickets.id, ticket.id)).run();
     emit(c, 'ticket.status', { ticketId: ticket.id, from: ticket.status, to: ticket.status, event: 'worktree.created', branch });

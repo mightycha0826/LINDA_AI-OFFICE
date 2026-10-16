@@ -23,6 +23,35 @@ export interface MessageInput {
   countsForPingpong?: boolean;
 }
 
+/**
+ * 화면 말풍선용 한 줄 요약 (12장: 40자 이내). 직원 출력은 JSON이 많아서 원문을 자르면 괄호만 보인다.
+ * JSON이면 summary → verdict/reason → document 첫 줄 순으로 고르고, 아니면 앞부분을 쓴다.
+ */
+export function messageSummary(content: string, max = 40): string {
+  const clip = (x: string) => {
+    const one = x.replace(/\s+/g, ' ').trim();
+    return one.length > max ? `${one.slice(0, max - 1)}…` : one;
+  };
+  const at = content.indexOf('{');
+  if (at >= 0) {
+    try {
+      const j = JSON.parse(content.slice(at)) as Record<string, unknown>;
+      const prefix = content.slice(0, at).trim();
+      const str = (k: string) => (typeof j[k] === 'string' && (j[k] as string).trim() ? (j[k] as string) : null);
+      const verdict = j.verdict === 'pass' ? '통과' : j.verdict === 'fail' ? '반려' : null;
+      const doc = str('document')
+        ?.replace(/^#+\s*/gm, '')
+        .split('\n')
+        .find((l) => l.trim());
+      const pick = str('summary') ?? (verdict ? [verdict, str('reason') ?? str('feedback')].filter(Boolean).join(': ') : null) ?? str('claim') ?? str('message') ?? doc ?? null;
+      if (pick) return clip(prefix && prefix.length < 20 ? `${prefix} ${pick}` : pick);
+    } catch {
+      /* JSON이 아니면 원문 */
+    }
+  }
+  return clip(content);
+}
+
 export function recordMessage(c: Ctx, m: MessageInput): { messageId: string; pingpong: boolean } {
   return inTx(c, (t) => {
     const id = newId();
@@ -42,7 +71,7 @@ export function recordMessage(c: Ctx, m: MessageInput): { messageId: string; pin
         createdAt: nowIso(t),
       })
       .run();
-    emit(t, 'message.sent', { messageId: id, ticketId: m.ticketId ?? null, from: m.fromId, to: m.toId ?? null, kind: m.kind, summary: m.content.slice(0, 40) });
+    emit(t, 'message.sent', { messageId: id, ticketId: m.ticketId ?? null, from: m.fromId, to: m.toId ?? null, kind: m.kind, summary: messageSummary(m.content) });
 
     if (!m.ticketId || m.countsForPingpong === false) return { messageId: id, pingpong: false };
     const tk = getTicket(t, m.ticketId);

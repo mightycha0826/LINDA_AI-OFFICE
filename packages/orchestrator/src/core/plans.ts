@@ -12,6 +12,7 @@ import { saveMinutes } from './meeting.ts';
 import { applyTicketEvent } from './tickets.ts';
 import { checkTempRules, dismissAllTemps, hireTemp, isTempRef, tempRef } from '../staff/temp-staff.ts';
 import type { Actor } from './transitions.ts';
+import { DS_LINT_CRITERION } from '../design/ds-lint.ts';
 
 export type PlanRow = typeof plans.$inferSelect;
 
@@ -127,6 +128,12 @@ export function createPlanVersion(c: Ctx, orderId: string, out: PmPlanOutput, op
 }
 
 /** 디자인 시스템 담당이 고른 조합을 초안에 붙인다 (CEO가 계획서와 함께 승인한다). */
+/** 17장: 디자인 조합이 붙은 계획서의 개발(UI) 티켓에는 "디자인 시스템 lint 통과"가 자동으로 붙는다 */
+export function withDesignLint(criteria: string[], type: string, hasDesign: boolean): string[] {
+  if (!hasDesign || type !== 'coding' || criteria.includes(DS_LINT_CRITERION)) return criteria;
+  return [...criteria, DS_LINT_CRITERION];
+}
+
 export function setDesignCombo(c: Ctx, planId: string, combo: DesignComboOutput): void {
   inTx(c, (t) => {
     const plan = getPlan(t, planId);
@@ -268,7 +275,7 @@ export function applyCeoPlanDecision(c: Ctx, planId: string, decision: ApprovalD
         type: tk.type,
         assigneeId,
         reviewerId: tk.reviewer,
-        acceptanceCriteria: tk.acceptanceCriteria,
+        acceptanceCriteria: withDesignLint(tk.acceptanceCriteria, tk.type, !!plan.designCombo),
         needsCeoApproval: tk.needsCeoApproval,
         estimatedTokens: tk.estimatedTokens,
         tokenCap: Math.max(caps.minTokens, Math.ceil(tk.estimatedTokens * caps.tokenMultiplier)),

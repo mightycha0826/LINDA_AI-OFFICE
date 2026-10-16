@@ -29,6 +29,35 @@
 | P | `/프로젝트` 명령으로 저장소 등록(받아 온 뒤 등록) | 16장 4단계 "프로젝트 등록" | — |
 | Q | `/push`는 바로 답하고 검사(테스트 재실행 포함)는 뒤에서. 결과는 결재함 버튼이나 #막힘으로 | Discord는 3초 안에 답해야 함 | — |
 
+## 5단계: 사무실 화면
+
+| # | 결정 | 이유 | 바꾸려면 |
+| --- | --- | --- | --- |
+| R | 조합 번호는 답이 없어 **조합 1(코발트와 주황)** | 12장 "답이 없으면 조합 1" | `config.screen.combo` (1~10) |
+| S | 막힘은 머리 위 **`point-icon` 경고 아이콘**. 빨강은 시스템 오류에만 | 12장 안에서 풍경 표("빨간 느낌표")와 스타일 역할 매핑("막힘 = point-icon 경고, 빨강은 오류에만")이 부딪혔다. 포인트 시스템 원칙을 따름 | `OfficeMap.tsx`의 `ao-over--warn` |
+| T | 화면 서버는 오케스트레이터 안에서 127.0.0.1:8780. Tailscale 주소는 설정에 추가. GET/HEAD만, Host 머리글 확인 | 12장 보안(localhost·Tailscale만, 쓰기 API 없음). Host 확인은 DNS 재바인딩 방지 | `config.screen.hosts`, `allowedHostnames` |
+| U | "밤, 부재 모드" 조명은 20시~7시 **또는 CEO 부재**일 때 | 12장 표가 둘을 한 줄로 묶었음 | `App.tsx`의 `night` |
+| V | 화면 테마는 시스템 → 라이트 → 다크 버튼. 고른 값은 그 브라우저에만 | 12장 "화면 테마는 사용자가 고른다" | — |
+| W | 폰 아래쪽 탭 [사무실] [업무] [자원], 로그는 [업무] 안에서 전환 | 12장은 폰 탭 3개에 로그 자리가 없었음 | `App.tsx` |
+| X | 패널 탭·상세 시트·사용량 막대·티켓 카드는 `point.extra.css`에 **임시** 초안 | 포인트 시스템에 없는 것(17장 규칙). 새 색·글꼴 없음 | **CEO 스크린샷 결재 필요** → candidates.md |
+| Y | 사용량 막대는 몫을 다 쓰면 `point` 색. 지도 예산 게이지만 90%부터 빨강 | 빨강은 오류에만. 게이지는 12장 표가 빨강을 지정 | `point.extra.css`, `OfficeMap.tsx` |
+| Z | 말풍선 글: 직원 JSON 출력에서 summary → 판정·이유 → 문서 첫 줄을 골라 40자 | 원문을 자르면 `{"document":"#…`만 보였음 | `core/guards.ts`의 `messageSummary` |
+| AA | 디자인 lint: CSS 전체 + TS/TSX 인라인 스타일 문자열. 사무실 화면도 테스트로 검사. 조합이 붙은 개발 티켓은 오케스트레이터가 테스트와 함께 lint를 돌려 어기면 실패 | 17장 "lint 통과"를 AI 말이 아니라 코드로 확인 | `design/ds-lint.ts` |
+| AB | 포인트 적용 스크립트: 조합이 붙은 UI 티켓의 worktree에 `design-systems/point/` 복사본과 `point-theme.json`을 넣는다(커밋에 들어감) | 17장 "적용은 스크립트가 한다" | `design/apply-point.ts` |
+| AC | 미리보기 `npm run demo:screen`: 메모리 DB, MockLLM 지연, 결재는 6초 뒤 자동 "승인"(**미리보기 스크립트에만**), 푸시는 이벤트만 흉내 | 화면을 실제 Discord 없이 확인 | `sim/screen-demo.ts` |
+
+### 5단계 확인한 것
+
+- 브라우저 미리보기(내장 브라우저)로 PC 폭 라이트·다크, 폰 폭(375px) 사무실·업무 탭과 티켓 상세 시트를 봤다. 콘솔 오류 없음(서버 재시작 때 SSE 재연결 기록만).
+- 테스트 363개 통과(화면 서버 10, 디자인 lint·적용 11, 화면 연출 3 추가). `npm run lint:ds` 통과.
+
+### 5단계 주인이 할 일
+
+1. 처음 화면을 스크린샷으로 확인(17장). `npm run build:screen` 뒤 `npm run demo:screen`을 켜고 http://127.0.0.1:8780 을 연다.
+2. 임시 초안(X)을 결재하면 `design-systems/candidates.md`에 올린다. 고칠 점이 있으면 알려 준다.
+3. 폰에서 보려면 Tailscale 주소(예: 100.x.y.z)와 MagicDNS 이름을 `config.screen.hosts`·`allowedHostnames`에 넣는다.
+4. 캐릭터 그림은 13장 규격으로 Claude Design에 맡기고 `assets/characters/<세트>/`만 바꾼다. 지금은 단색 임시 그림이다.
+
 ### 4단계 실제 연결 전에 주인이 할 일
 
 1. gitleaks 8.19 이상을 설치한다(`winget install gitleaks` 등). 없으면 고양이는 푸시하지 않는다.

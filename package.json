@@ -11,9 +11,12 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p packages/office-ui/tsconfig.json",
     "sim": "npm run sim -w @ai-office/orchestrator",
-    "smoke": "npm run smoke -w @ai-office/orchestrator --"
+    "smoke": "npm run smoke -w @ai-office/orchestrator --",
+    "build:screen": "npm run build -w @ai-office/office-ui",
+    "demo:screen": "npm run demo:screen -w @ai-office/orchestrator",
+    "lint:ds": "node packages/orchestrator/src/design/ds-lint-cli.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

@@ -2,7 +2,7 @@
 // - 비서실장(헤르메스 cron)이 보고문을 submit_report로 낸다. GPT 관문을 거쳐 시스템 봇이 #보고에 올린다(3단계 결정 A).
 //   관문 반려는 최대 2회, 그다음에도 반려면 반대 의견을 붙여 올린다. GPT 한도가 떨어졌으면 "관문 미통과"를 달고 올린다.
 // - 점검 시각에서 reportGraceMin분이 지나도 보고가 없으면 시스템 봇이 데이터만으로 대신 보고한다.
-import { getState, setState, type Ctx } from '../context.ts';
+import { emit, getState, setState, type Ctx } from '../context.ts';
 import type { Engine } from '../engine.ts';
 import { buildReportData, formatReportData } from '../reports.ts';
 import { currentSlot, localTime } from '../discord/schedule.ts';
@@ -57,6 +57,8 @@ export class ReportService {
       : '- 없음';
     await this.port.send({ channel: 'reports', content: `**정기 보고 · ${slot}**\n${body}\n\n${gateLabel}\n\n**결재 대기 (여기서 한 번에 처리)**\n${approvals}` });
     this.markDone(slot);
+    // 사무실 화면: 비서실장이 서류를 들고 CEO실로 걸어간다 (12장)
+    emit(this.c, 'employee.move', { employeeId: 'chief-of-staff', to: 'ceo', slot });
   }
 
   async submit(text: string, slot = this.slotNow()): Promise<SubmitResult> {

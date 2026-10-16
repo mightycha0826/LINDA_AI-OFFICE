@@ -130,6 +130,17 @@ export const ConfigSchema = z
       gitleaksArgs: z.array(z.string()),
       timeoutMin: count,
     }),
+    /** 사무실 화면 (12장). 보기 전용. localhost와 Tailscale 주소에서만 연다 */
+    screen: z.object({
+      port: z.number().int().min(1024).max(65535),
+      /** 열 주소. 127.0.0.1 말고는 Tailscale 주소(100.x.y.z)만 적는다 */
+      hosts: z.array(z.string().min(1)).min(1),
+      /** 브라우저가 보내는 Host 이름으로 허용할 것 (예: Tailscale MagicDNS 이름) */
+      allowedHostnames: z.array(z.string()),
+      /** 포인트 디자인 시스템 조합 1~10 (17장). 5단계 시작 때 CEO에게 묻고, 답이 없으면 1 */
+      combo: z.number().int().min(1).max(10),
+      companyName: z.string().min(1),
+    }),
   })
   .superRefine((c, ctx) => {
     const { claude, gpt } = c.limits;
@@ -170,6 +181,7 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
   screenUrl: '',
   mirror: { flushSec: 5, maxChars: 300 },
   gitcat: { authorName: 'Git 고양이', authorEmail: 'git-cat@ai-office.local', maxFileMB: 50, gitleaksBin: 'gitleaks', gitleaksArgs: [], timeoutMin: 20 },
+  screen: { port: 8780, hosts: ['127.0.0.1'], allowedHostnames: ['localhost', '127.0.0.1'], combo: 1, companyName: 'AI 사무실' },
 };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };

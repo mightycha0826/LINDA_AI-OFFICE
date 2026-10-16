@@ -1,6 +1,7 @@
 // 오케스트레이터 서비스 (3장). pm2가 띄운다: npm start (또는 ecosystem.config.cjs).
 // 설정은 C:\ai-office\data\config.json, 비밀 값은 secrets.json, DB는 office.db (모두 저장소 밖).
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createBrainRegistry } from './brains/registry.ts';
 import { ChiefTools } from './chief/tools.ts';
 import { ReportService } from './chief/report-service.ts';
@@ -15,6 +16,8 @@ import { Notifier } from './discord/notifier.ts';
 import { refreshPresence } from './discord/presence.ts';
 import { Engine } from './engine.ts';
 import { startInternalApi } from './http/internal-api.ts';
+import { defaultScreenDirs, startScreenServer } from './http/screen-server.ts';
+import { gpuReader } from './screen/gpu.ts';
 import { loadSecrets } from './secrets.ts';
 import { seedStaff } from './seed.ts';
 import { loadSettingOverrides } from './settings.ts';
@@ -61,6 +64,13 @@ if (secrets.discordToken && config.discord.guildId) {
 const api = await startInternalApi({ port: config.internalApi.port, token: secrets.internalApiToken, tools: new ChiefTools(ctx, engine, reports, gitcat), log });
 log(`내부 API 127.0.0.1:${config.internalApi.port}`);
 
+// 사무실 화면 (12장): localhost와 설정한 Tailscale 주소에서만 연다. 보기 전용.
+const startedAt = new Date().toISOString();
+const readGpu = gpuReader();
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const screens = await startScreenServer({ c: ctx, ...defaultScreenDirs(repoRoot), extras: async () => ({ startedAt, gpu: await readGpu() }), log });
+log(`사무실 화면 ${config.screen.hosts.map((h) => `http://${h}:${config.screen.port}`).join(', ')}`);
+
 /** 같은 일이 겹쳐 돌지 않게 주기적으로 부른다 */
 function every(ms: number, name: string, fn: () => Promise<unknown>): NodeJS.Timeout {
   let running = false;
@@ -93,6 +103,7 @@ async function shutdown(): Promise<void> {
   log('끝내는 중…');
   for (const t of timers) clearInterval(t);
   api.close();
+  for (const s of screens) s.close();
   await bot?.stop();
   process.exit(0);
 }

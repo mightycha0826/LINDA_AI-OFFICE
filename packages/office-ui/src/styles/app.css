@@ -1,0 +1,505 @@
+/* 사무실 화면 배치. 색·글꼴·간격은 포인트 토큰만 쓴다 (ds-lint가 검사). */
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+* {
+  box-sizing: border-box;
+}
+.material-symbols-rounded {
+  font-family: var(--font-icon);
+  font-variation-settings: 'FILL' 0, 'wght' 400;
+}
+.ao-num {
+  font-variant-numeric: tabular-nums;
+}
+.ao-muted {
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: 400;
+  margin: 0;
+}
+.ao-warn {
+  color: var(--point-icon);
+  font-size: 20px;
+}
+.ao-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary-text);
+  font: inherit;
+  font-weight: var(--text-caption-weight);
+  cursor: pointer;
+}
+
+.ao-boot {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+
+/* 상단 바 */
+.ao-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--track);
+}
+.ao-top__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.ao-top__title h1 {
+  margin: 0;
+  font-size: var(--text-heading-size);
+  line-height: var(--text-heading-line);
+  font-weight: var(--text-heading-weight);
+}
+.ao-top__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.ao-top__time {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--text-caption-weight);
+}
+.ao-top__next {
+  color: var(--ink-muted);
+}
+.ao-refresh {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+}
+
+/* PC: 왼쪽 60% 지도 + 오른쪽 40% 패널 */
+.ao-main {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  align-items: start;
+}
+.ao-map-wrap {
+  position: sticky;
+  top: var(--space-5);
+}
+.ao-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* 폰: 아래쪽 탭 [사무실] [업무] [자원], 지도는 가로 스크롤 상자 */
+.ao-mobile {
+  padding: var(--space-4) var(--space-5) calc(var(--size-tabbar) + var(--space-6));
+}
+.ao-map-scroll {
+  overflow-x: auto;
+  margin: 0 calc(var(--space-5) * -1);
+  padding: 0 var(--space-5);
+}
+.ao-map-scroll .ao-map {
+  width: 720px;
+}
+.ao-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+}
+/* 이 화면의 아래쪽 탭은 세 개 (12장: 사무실·업무·자원) */
+.ao-dock .pt-tabbar {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ao-dock .pt-tab[aria-current='page'] {
+  color: var(--primary-text);
+  font-weight: var(--text-label-weight);
+}
+.ao-dock .pt-tab {
+  border: 0;
+  background: none;
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+/* 업무 탭 */
+.ao-work,
+.ao-res,
+.ao-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.ao-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ao-group__title {
+  margin: 0;
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  font-weight: var(--text-label-weight);
+  color: var(--ink-muted);
+}
+.ao-group__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ao-done summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+.ao-approval {
+  color: var(--ink);
+  text-decoration: none;
+}
+.ao-approval:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* 로그 */
+.ao-log__filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ao-log__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ao-log__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--row);
+}
+.ao-log__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.ao-log__text {
+  font-size: var(--text-row-size);
+  line-height: var(--text-row-line);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 상세 */
+.ao-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: var(--text-row-size);
+  line-height: var(--text-row-line);
+}
+.ao-dl dt {
+  color: var(--ink-muted);
+}
+.ao-dl dd {
+  margin: 0;
+}
+.ao-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ao-detail__title {
+  margin: 0;
+  font-size: var(--text-subtitle-size);
+  line-height: var(--text-subtitle-line);
+  font-weight: var(--text-subtitle-weight);
+}
+.ao-detail__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.ao-detail__text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.ao-criteria {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ao-criteria li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.ao-crit--pass {
+  color: var(--primary-icon);
+}
+.ao-crit--fail {
+  color: var(--point-icon);
+}
+.ao-crit--none {
+  color: var(--control);
+}
+.ao-minutes {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--row);
+}
+.ao-minutes__head {
+  margin: 0;
+  font-weight: var(--text-label-weight);
+}
+.ao-minutes ul {
+  margin: var(--space-1) 0;
+  padding-left: var(--space-5);
+}
+
+/* 사무실 지도: 24 × 16 격자를 폭에 맞춰 늘리고 줄인다 */
+.ao-map {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  container-type: inline-size;
+  user-select: none;
+}
+.ao-map__floor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ao-night {
+  fill: var(--ink);
+  opacity: 0.24;
+  pointer-events: none;
+}
+[data-theme='dark'] .ao-night {
+  fill: var(--bg);
+  opacity: 0.48;
+}
+.ao-room-label,
+.ao-room-note {
+  position: absolute;
+  color: var(--ink-muted);
+  font-size: var(--text-tab-size);
+  line-height: var(--text-tab-line);
+  font-weight: var(--text-caption-weight);
+  pointer-events: none;
+}
+.ao-room-note {
+  transform: translateX(-50%);
+  font-weight: 400;
+}
+.ao-tray-badge {
+  position: absolute;
+  transform: translate(-50%, -100%);
+}
+.ao-mailbox-mark {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+.ao-blink {
+  animation: ao-blink 0.4s steps(2, jump-none) infinite;
+}
+@keyframes ao-blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.2;
+  }
+}
+
+/* 캐릭터: 기준점(발 중앙)을 지도 좌표에 맞춘다. 표시 크기 64px = 지도 폭 960의 1/15 */
+.ao-char {
+  position: absolute;
+  width: 0;
+  height: 0;
+  z-index: 2;
+}
+.ao-char__body {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6.667cqw;
+  height: 6.667cqw;
+  padding: 0;
+  border: 0;
+  background: none;
+  transform: translate(-50%, -94%);
+  cursor: pointer;
+}
+.ao-char__body:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.ao-sprite {
+  width: 100%;
+  height: 100%;
+  background-repeat: no-repeat;
+  background-position: 0% 0%;
+  image-rendering: auto;
+}
+.ao-sprite--missing {
+  border-radius: var(--radius-full);
+  background: var(--control);
+}
+.ao-sprite--paused {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+@keyframes ao-sprite {
+  from {
+    background-position-x: 0%;
+  }
+  to {
+    background-position-x: 100%;
+  }
+}
+.ao-nametag {
+  position: absolute;
+  top: var(--space-1);
+  left: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--badge-bg);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+  font-size: var(--text-tab-size);
+  line-height: var(--text-tab-line);
+  font-weight: var(--text-caption-weight);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.ao-nametag__brain {
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+/* 지도가 좁으면 이름표가 겹치니 두뇌 이름은 넓을 때만 (직원을 누르면 상세에 나온다) */
+@container (max-width: 640px) {
+  .ao-nametag__brain {
+    display: none;
+  }
+}
+.ao-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--track);
+  vertical-align: middle;
+}
+.ao-dot--working,
+.ao-dot--reviewing,
+.ao-dot--meeting {
+  background: var(--primary-icon);
+}
+.ao-dot--blocked {
+  background: var(--point-icon);
+}
+.ao-dot--paused {
+  background: var(--control);
+}
+.ao-over {
+  position: absolute;
+  left: 0;
+  top: -8cqw;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.ao-over--warn {
+  color: var(--point-icon);
+  font-size: 24px;
+}
+.ao-zzz {
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-caption-weight);
+}
+.ao-bubble {
+  position: absolute;
+  left: 0;
+  bottom: 7.2cqw;
+  transform: translateX(-50%);
+  max-width: 200px;
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-tab-size);
+  line-height: var(--text-tab-line);
+  text-align: left;
+  cursor: pointer;
+  z-index: 3;
+  width: max-content;
+}
+.ao-box-label {
+  position: absolute;
+  left: 50%;
+  top: 36%;
+  transform: translateX(-50%);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--badge-bg);
+  color: var(--ink);
+  font-size: var(--text-tab-size);
+  line-height: var(--text-tab-line);
+  font-weight: var(--text-caption-weight);
+  white-space: nowrap;
+}
+
+/* 12장: prefers-reduced-motion이면 반복 애니메이션을 끈다 */
+@media (prefers-reduced-motion: reduce) {
+  .ao-sprite,
+  .ao-blink {
+    animation: none !important;
+  }
+  .ao-meter__bar {
+    transition: none;
+  }
+}

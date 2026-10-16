@@ -5,6 +5,7 @@ import type { TestResult, TestRunner } from '../brains/brain.ts';
 import { tail } from '../brains/classify.ts';
 import { runProcess } from '../brains/process.ts';
 import { orders, tickets } from '../db/schema.ts';
+import { DS_LINT_CRITERION, formatProblems, lintDirectory } from '../design/ds-lint.ts';
 import { assertInside } from './paths.ts';
 import { getProject } from './projects.ts';
 
@@ -25,6 +26,11 @@ export class ProjectTestRunner implements TestRunner {
     if (r.aborted) throw new DOMException('정지됨', 'AbortError');
     const output = tail(`${r.stdout}\n${r.stderr}`.trim(), 4000);
     if (r.timedOut) return { passed: false, summary: `시간 초과(${this.c.config.tests.timeoutMin}분): ${project.testCommand}\n${output}` };
-    return { passed: r.code === 0, summary: `${project.testCommand} → 종료 코드 ${r.code}\n${output}` };
+    const tests = { passed: r.code === 0, summary: `${project.testCommand} → 종료 코드 ${r.code}\n${output}` };
+    // 디자인 조합이 붙은 UI 티켓: 디자인 시스템 lint도 오케스트레이터가 직접 돌린다 (17장)
+    if (!tk.acceptanceCriteria.includes(DS_LINT_CRITERION)) return tests;
+    const problems = lintDirectory(cwd);
+    const lint = problems.length ? `디자인 시스템 lint 실패 ${problems.length}건\n${formatProblems(problems)}` : '디자인 시스템 lint 통과';
+    return { passed: tests.passed && problems.length === 0, summary: `${tests.summary}\n\n${lint}` };
   }
 }

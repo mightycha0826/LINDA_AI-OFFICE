@@ -1,0 +1,213 @@
+/*
+ * point.extra.css — 임시 (17장 규칙)
+ * 포인트 디자인 시스템에 없는 것(PC 넓은 화면 패널, 패널 탭, 상세 시트, 사용량 막대, 카드 묶음)을
+ * 기존 토큰만 써서 만든 초안이다. 새 색과 새 글꼴은 없다.
+ * CEO가 스크린샷으로 결재하면 design-systems/candidates.md에 올린다.
+ */
+
+/* 임시: 패널 탭 (PC 오른쪽 패널의 [업무] [로그] [자원]). TabBar의 "지금 탭" 규칙을 따른다 */
+.ao-tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--row);
+  border-radius: var(--radius-full);
+}
+.ao-tab {
+  position: relative;
+  flex: 1;
+  min-height: var(--size-touch);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  font-weight: 400;
+  cursor: pointer;
+}
+.ao-tab[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--primary-text);
+  font-weight: var(--text-label-weight);
+  box-shadow: var(--shadow-card);
+}
+.ao-tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.ao-tab__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--primary-icon);
+  vertical-align: middle;
+}
+
+/* 임시: 카드 (사용량 요약, 자원 탭 묶음) */
+.ao-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: var(--row);
+  border-radius: var(--radius-lg);
+}
+.ao-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.ao-card__head h2 {
+  margin: 0;
+  font-size: var(--text-subtitle-size);
+  line-height: var(--text-subtitle-line);
+  font-weight: var(--text-subtitle-weight);
+}
+.ao-card__note {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: 400;
+}
+
+/* 임시: 사용량 막대. RefreshBar의 4px 진행 막대 규칙(primary 막대, track 바탕)을 8px로 키움 */
+.ao-meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ao-meter__head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.ao-meter__track {
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--track);
+  overflow: hidden;
+}
+.ao-meter__bar {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--primary-mark);
+  transition: width 0.4s ease;
+}
+/* 몫을 다 쓰면 point (README: 두 번째 색 = 마감 경고). 빨강은 오류에만 */
+.ao-meter__bar--full {
+  background: var(--point-mark);
+}
+
+/* 임시: 상세 시트. PC는 오른쪽에서, 폰은 아래에서 올라온다 */
+.ao-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: flex-end;
+  background: color-mix(in srgb, var(--ink) 24%, transparent);
+}
+.ao-sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 100%);
+  height: 100%;
+  background: var(--bg);
+  box-shadow: var(--shadow-toast);
+  outline: none;
+}
+.ao-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+}
+.ao-sheet__head h2 {
+  margin: 0;
+  font-size: var(--text-heading-size);
+  line-height: var(--text-heading-line);
+  font-weight: var(--text-heading-weight);
+}
+.ao-sheet__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+@media (max-width: 767px) {
+  .ao-sheet-backdrop {
+    align-items: flex-end;
+  }
+  .ao-sheet {
+    width: 100%;
+    height: auto;
+    max-height: 80vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+}
+
+/* 임시: 티켓 카드. TaskRow(56px 행, row 면, 18px 모서리)를 두세 줄로 늘린 것 */
+.ao-ticket {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--size-row);
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--row);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.ao-ticket:hover {
+  background: color-mix(in srgb, var(--row), var(--ink) 8%);
+}
+.ao-ticket:active {
+  transform: scale(0.96);
+}
+.ao-ticket:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.ao-ticket__line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.ao-ticket__id {
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: var(--text-caption-weight);
+}
+.ao-ticket__type {
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.ao-ticket__title {
+  font-size: var(--text-row-size);
+  line-height: var(--text-row-line);
+}
+.ao-ticket__meta {
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: 400;
+}
