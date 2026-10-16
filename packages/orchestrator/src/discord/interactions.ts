@@ -17,15 +17,23 @@ import type { Interaction, InteractionReply } from './types.ts';
 
 const TICKET_ID = /^T-\d+$/;
 
+/** Git 고양이 중 결재 봇이 쓰는 부분 (4단계) */
+export interface GitCatPort {
+  preparePush(ticketId: string, kind: 'push' | 'revert', origin: string): Promise<{ ok: boolean; message: string }>;
+  registerAndClone(p: { id: string; repoUrl: string; testCommand: string; defaultBranch?: string }): Promise<string>;
+}
+
 export class InteractionHandler {
   private readonly c: Ctx;
   private readonly engine: Engine;
   private readonly log: (s: string) => void;
+  private readonly gitcat: GitCatPort | null;
 
-  constructor(c: Ctx, engine: Engine, log: (s: string) => void = () => {}) {
+  constructor(c: Ctx, engine: Engine, log: (s: string) => void = () => {}, gitcat: GitCatPort | null = null) {
     this.c = c;
     this.engine = engine;
     this.log = log;
+    this.gitcat = gitcat;
   }
 
   async handle(i: Interaction): Promise<InteractionReply> {
@@ -147,6 +155,11 @@ export class InteractionHandler {
         const kind = name === 'push' ? 'push' : 'revert';
         const exists = pendingApprovals(c).find((a) => a.kind === kind && a.targetId === t.id);
         if (exists) return { kind: 'reply', content: '이미 결재함에 확인 버튼이 있어요', ephemeral: true };
+        if (this.gitcat) {
+          // 검사(테스트 재실행 등)는 오래 걸릴 수 있어 먼저 답하고 뒤에서 돌린다. 결과는 결재함이나 #막힘에 올라간다
+          void this.gitcat.preparePush(t.id, kind, `CEO /${name}`).catch((err: Error) => this.log(`푸시 준비 실패: ${err.message}`));
+          return { kind: 'reply', content: 'Git 고양이가 푸시 전 검사를 시작했어요. 끝나면 결재함에 확인 버튼을 올려요', ephemeral: true };
+        }
         requestApproval(c, {
           kind,
           targetId: t.id,
@@ -171,6 +184,15 @@ export class InteractionHandler {
         const ids = this.engine.resume(c.config.ceoDiscordId);
         return { kind: 'reply', content: `다시 시작해요. 이어간 티켓 ${ids.length}개. 한도 때문에 멈춘 티켓은 한도가 다시 차면 이어가요`, ephemeral: false };
       }
+      case '프로젝트': {
+        if (!this.gitcat) return { kind: 'reply', content: 'Git 고양이가 연결되지 않았어요', ephemeral: true };
+        const p = { id: String(o['아이디'] ?? ''), repoUrl: String(o['주소'] ?? ''), testCommand: String(o['테스트'] ?? ''), ...(o['브랜치'] ? { defaultBranch: String(o['브랜치']) } : {}) };
+        void this.gitcat
+          .registerAndClone(p)
+          .then((m) => this.log(m))
+          .catch((err: Error) => this.log(`프로젝트 등록 실패: ${err.message}`));
+        return { kind: 'reply', content: `${p.id} 저장소를 받아 등록하는 중이에요`, ephemeral: false };
+      }
       case '설정': {
         const key = String(o['항목'] ?? '');
         const value = o['값'];
@@ -190,6 +212,16 @@ export const SLASH_COMMANDS: { name: string; description: string; options: { nam
   { name: 'push', description: '푸시 확인 버튼을 결재함에 올려요', options: [{ name: '티켓', description: '예: T-12', required: true }] },
   { name: '되돌리기', description: 'revert 커밋 확인 버튼을 결재함에 올려요', options: [{ name: '티켓', description: '예: T-12', required: true }] },
   { name: '한도', description: 'Claude·GPT 몫별 사용량과 남은 양', options: [] },
+  {
+    name: '프로젝트',
+    description: '회사가 건드릴 저장소를 등록해요 (등록된 저장소만 건드려요)',
+    options: [
+      { name: '아이디', description: '영문 소문자 (예: todo-app)', required: true },
+      { name: '주소', description: 'https://github.com/주인/저장소', required: true },
+      { name: '테스트', description: '테스트 명령 (예: npm test)', required: true },
+      { name: '브랜치', description: '기본 브랜치 (비우면 main)', required: false },
+    ],
+  },
   { name: '정지', description: '모든 직원을 즉시 멈춰요', options: [] },
   { name: '재개', description: '정지를 풀어요', options: [] },
   {

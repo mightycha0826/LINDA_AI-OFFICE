@@ -120,6 +120,16 @@ export const ConfigSchema = z
     screenUrl: z.string(),
     /** 거울 채널 묶어 보내기 간격과 한 메시지 길이 상한 (9장 ⑦) */
     mirror: z.object({ flushSec: count, maxChars: count }),
+    /** Git 고양이 (11장) */
+    gitcat: z.object({
+      authorName: z.string().min(1),
+      authorEmail: z.string().min(3),
+      /** 이보다 큰 파일이 들어 있으면 푸시하지 않는다 */
+      maxFileMB: count,
+      gitleaksBin: z.string().min(1),
+      gitleaksArgs: z.array(z.string()),
+      timeoutMin: count,
+    }),
   })
   .superRefine((c, ctx) => {
     const { claude, gpt } = c.limits;
@@ -159,6 +169,7 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
   internalApi: { port: 8790 },
   screenUrl: '',
   mirror: { flushSec: 5, maxChars: 300 },
+  gitcat: { authorName: 'Git 고양이', authorEmail: 'git-cat@ai-office.local', maxFileMB: 50, gitleaksBin: 'gitleaks', gitleaksArgs: [], timeoutMin: 20 },
 };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };

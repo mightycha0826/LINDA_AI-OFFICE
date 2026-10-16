@@ -21,7 +21,7 @@ const ALLOWED_ENV = new Set(
 );
 
 /** 이름에 이런 말이 들어간 변수는 허용 목록에 있어도 넘기지 않는다. */
-export const SECRET_ENV_PATTERN = /TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|CREDENTIAL|PRIVATE|AUTH/i;
+export const SECRET_ENV_PATTERN = /TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|CREDENTIAL|PRIVATE|(^|_)AUTH($|_)/i;
 
 /** 자식 프로세스의 git이 저장된 자격 증명을 쓰지 못하게 한다. */
 const GIT_LOCKDOWN: Record<string, string> = {
@@ -58,6 +58,11 @@ export interface RunOptions {
   signal?: AbortSignal;
   /** 명령 문자열을 셸로 실행 (등록된 testCommand용) */
   shell?: boolean;
+  /**
+   * Git 고양이 푸시 전용. 허용 목록·비밀 검사를 거치지 않고 마지막에 덮는다(토큰 주입).
+   * AI 직원을 띄우는 코드에서는 절대 쓰지 않는다.
+   */
+  privilegedEnv?: Record<string, string>;
   maxOutputBytes?: number;
 }
 
@@ -94,8 +99,8 @@ export function runProcess(o: RunOptions): Promise<RunResult> {
       return;
     }
     const child = o.shell
-      ? nodeSpawn(o.bin, { cwd: o.cwd, env: safeEnv(o.extraEnv), shell: true, windowsHide: true })
-      : spawn(o.bin, [...o.args], { cwd: o.cwd, env: safeEnv(o.extraEnv), windowsHide: true });
+      ? nodeSpawn(o.bin, { cwd: o.cwd, env: { ...safeEnv(o.extraEnv), ...o.privilegedEnv }, shell: true, windowsHide: true })
+      : spawn(o.bin, [...o.args], { cwd: o.cwd, env: { ...safeEnv(o.extraEnv), ...o.privilegedEnv }, windowsHide: true });
     let stdout = '';
     let stderr = '';
     let timedOut = false;

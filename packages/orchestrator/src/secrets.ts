@@ -9,6 +9,8 @@ const SecretsSchema = z.object({
   discordToken: z.string().min(20).optional(),
   mirrorWebhookUrl: z.url().optional(),
   internalApiToken: z.string().min(32),
+  /** 등록 저장소에만 쓰기 권한이 있는 세분화된 토큰 (11장). Git 고양이가 푸시하는 순간에만 꺼낸다 */
+  githubToken: z.string().min(20).optional(),
 });
 export type Secrets = z.infer<typeof SecretsSchema>;
 

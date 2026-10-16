@@ -146,6 +146,17 @@ export class Notifier {
       await this.port.send({ channel: 'reports', content: '다시 일을 시작해요 (/재개)', silent: true });
       return 1;
     }
+    if (type === 'git.push') {
+      const t = String(p.ticketId ?? '');
+      if (p.ok) {
+        // 조용히 기록: 우체통 발송 완료 (11장 화면 연출과 같은 이벤트)
+        const extra = p.backup ? ` · 백업 ${String(p.backup)} · 합친 상태 테스트 통과` : p.revert ? ` · ${String(p.revert)} 되돌림` : '';
+        await this.port.send({ channel: 'reports', content: `Git 고양이 · ${t} → ${String(p.target)} 푸시 완료 (${String(p.sha)})${extra}`, silent: true });
+        return 1;
+      }
+      await this.sendImmediate('blocked', { content: `Git 고양이 · ${t} ${String(p.stage)} 실패\n${String(p.reason)}` }, { kind: 'blocked', text: `${t} 푸시 실패` });
+      return 1;
+    }
     if (type === 'usage.updated' && p.reason === 'provider-limit') {
       const name = { dev: 'Claude 개발 몫', research: 'Claude 리서치 몫', review: 'GPT 리뷰어 몫' }[String(p.budget)] ?? String(p.budget);
       await this.sendImmediate('reports', { content: `예산 · ${name}이 제공자 한도에 닿아 ${String(p.blockedUntil).slice(0, 16).replace('T', ' ')}까지 멈춰요` }, { kind: 'alert', text: `${name} 한도 도달` });

@@ -7,12 +7,16 @@ import { isInside } from './paths.ts';
 
 export type ProjectRow = typeof projects.$inferSelect;
 
-export function registerProject(c: Ctx, p: { id: string; repoUrl: string; localPath: string; defaultBranch?: string; testCommand: string }): ProjectRow {
-  if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(p.id)) throw new OfficeError('project', `프로젝트 ID는 영문 소문자·숫자·-만 써요: ${p.id}`);
-  if (!isInside(c.config.paths.repos, p.localPath)) {
-    throw new OfficeError('project', `저장소는 ${c.config.paths.repos} 아래에만 둬요: ${p.localPath}`);
-  }
-  if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+?(\.git)?$/.test(p.repoUrl)) throw new OfficeError('project', `GitHub 저장소 주소가 아니에요: ${p.repoUrl}`);
+export interface ProjectInput {
+  id: string;
+  repoUrl: string;
+  localPath: string;
+  defaultBranch?: string;
+  testCommand: string;
+}
+
+export function registerProject(c: Ctx, p: ProjectInput): ProjectRow {
+  validateProject(c, p);
   return inTx(c, (t) =>
     t.db
       .insert(projects)
@@ -20,6 +24,17 @@ export function registerProject(c: Ctx, p: { id: string; repoUrl: string; localP
       .returning()
       .get(),
   );
+}
+
+/** 등록 규칙 검사만 한다 (저장소를 받아 오기 전에 부른다) */
+export function validateProject(c: Ctx, p: ProjectInput): void {
+  if (c.db.select().from(projects).where(eq(projects.id, p.id)).get()) throw new OfficeError('project', `이미 등록된 프로젝트예요: ${p.id}`);
+  if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(p.id)) throw new OfficeError('project', `프로젝트 ID는 영문 소문자·숫자·-만 써요: ${p.id}`);
+  if (!isInside(c.config.paths.repos, p.localPath)) {
+    throw new OfficeError('project', `저장소는 ${c.config.paths.repos} 아래에만 둬요: ${p.localPath}`);
+  }
+  if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+?(\.git)?$/.test(p.repoUrl)) throw new OfficeError('project', `GitHub 저장소 주소가 아니에요: ${p.repoUrl}`);
+  if (!p.testCommand.trim()) throw new OfficeError('project', '테스트 명령이 비어 있어요');
 }
 
 export function getProject(c: Ctx, id: string): ProjectRow {

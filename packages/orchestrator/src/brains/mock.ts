@@ -73,6 +73,7 @@ export const DEFAULT_HANDLERS: Record<BrainTask, MockHandler> = {
   meeting: (): MeetingPosition => ({ claim: '완료 조건대로 고치면 된다', agree: true, nextActions: ['수정 후 다시 제출'] }),
   search: (req): SearchQueries => ({ queries: [(req.input as TicketInput).ticket.title] }),
   design: (): DesignComboOutput => ({ combo: 2, mode: 'light', reason: '관리 화면이라 오래 들여다봄' }),
+  commit: (req) => ({ type: 'feat', scope: 'app', subject: `${(req.input as TicketInput).ticket.title} 추가` }),
 };
 
 export class MockLlm implements Brain {

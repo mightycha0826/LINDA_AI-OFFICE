@@ -13,17 +13,20 @@ import type { Engine } from '../engine.ts';
 import { OfficeError } from '../errors.ts';
 import { approvalLink, buildReportData } from '../reports.ts';
 import type { ReportService } from './report-service.ts';
+import type { GitCatPort } from '../discord/interactions.ts';
 import { TOOL_DEFS, type ToolName } from './tool-defs.ts';
 
 export class ChiefTools {
   private readonly c: Ctx;
   private readonly engine: Engine;
   private readonly reports: ReportService | null;
+  private readonly gitcat: GitCatPort | null;
 
-  constructor(c: Ctx, engine: Engine, reports: ReportService | null) {
+  constructor(c: Ctx, engine: Engine, reports: ReportService | null, gitcat: GitCatPort | null = null) {
     this.c = c;
     this.engine = engine;
     this.reports = reports;
+    this.gitcat = gitcat;
   }
 
   async call(name: string, rawArgs: unknown): Promise<unknown> {
@@ -79,6 +82,11 @@ export class ChiefTools {
         const kind = args.kind === 'revert' ? 'revert' : 'push';
         const existing = c.db.select().from(approvals).where(and(eq(approvals.kind, kind), eq(approvals.targetId, t.id), eq(approvals.status, 'pending'))).get();
         if (existing) return { requested: true, note: '이미 결재함에 확인 버튼이 있어요' };
+        if (this.gitcat) {
+          // Git 고양이가 푸시 전 검사를 돌린 뒤 결재함에 버튼을 올린다 (4단계)
+          void this.gitcat.preparePush(t.id, kind, `비서실장 전달: ${args.reason ?? ''}`).catch(() => undefined);
+          return { requested: true, note: 'Git 고양이가 푸시 전 검사를 시작했어요. 끝나면 결재함에 확인 버튼이 올라가요. 버튼을 눌러야 실행돼요' };
+        }
         requestApproval(c, {
           kind,
           targetId: t.id,

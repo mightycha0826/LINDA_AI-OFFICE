@@ -30,6 +30,7 @@ import { checkPlanRules, createPlanVersion, GATE_REVIEWER_ID, latestPlan, record
 import { designComboTable } from './staff/design-combos.ts';
 import { dismissTemp, hireTemp, needsDesignCombo } from './staff/temp-staff.ts';
 import { claimLinks, createWeb, type Web } from './web/research.ts';
+import { CommitDraftSchema, type CommitDraft, type CommitTicketInfo } from './gitcat/commit-message.ts';
 import { resumeAll, stopAll } from './core/stop.ts';
 import { applyTicketEvent, getTicket, type TicketRow } from './core/tickets.ts';
 import type { TicketEvent } from './core/transitions.ts';
@@ -136,6 +137,20 @@ export class Engine {
       }
       if (err instanceof FormatError) return null;
       throw err;
+    }
+  }
+
+  /**
+   * Git 고양이의 커밋 메시지 초안 (11장: Qwen은 초안만, 형식은 코드). 실패하면 null(기본 형식을 쓴다).
+   * Git 고양이는 AI가 아니므로 이 호출만 로컬 Qwen으로 한다. Claude·GPT 한도를 쓰지 않는다.
+   */
+  async draftCommit(info: CommitTicketInfo, diffStat: string): Promise<CommitDraft | null> {
+    const cat = this.employee('git-cat');
+    const drafter: EmployeeRow = { ...cat, brain: { provider: 'ollama', model: 'qwen3:14b' } };
+    try {
+      return await this.callStructured(drafter, 'commit', CommitDraftSchema, { ticket: { id: info.id, title: info.title, type: 'coding', acceptanceCriteria: info.acceptanceCriteria }, diffStat }, {});
+    } catch {
+      return null;
     }
   }
 

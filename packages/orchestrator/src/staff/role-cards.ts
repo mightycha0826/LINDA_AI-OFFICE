@@ -71,7 +71,10 @@ const DUTIES: Record<EmployeeRole, Duties> = {
     does: ['초안을 완료 조건별로 판정한다', '근거 링크가 정말 그 주장을 뒷받침하는지 확인한다'],
     never: ['초안을 직접 고쳐 쓰지 않는다', '완료 조건에 없는 기준으로 반려하지 않는다'],
   },
-  'git-cat': { does: [], never: [] },
+  'git-cat': {
+    does: ['커밋 메시지 초안(종류·범위·요약)만 쓴다. 형식은 회사 코드가 맞춘다'],
+    never: ['git 명령을 실행하지 않는다', '요약에 티켓 번호나 줄바꿈을 넣지 않는다'],
+  },
   temp: {
     does: ['PM이 맡긴 티켓의 완료 조건을 채운다'],
     never: ['맡은 티켓 밖의 일을 하지 않는다', '파일 수정이나 명령 실행을 하지 않는다'],
@@ -108,6 +111,7 @@ const TASK_NAME: Record<BrainTask, string> = {
   meeting: '회의 발언',
   search: '검색어 정하기',
   design: '디자인 조합 고르기',
+  commit: '커밋 메시지 초안',
 };
 
 export function roleCard(c: Ctx, e: EmployeeRow, task: BrainTask, schema: z.ZodType, ticketType?: TicketType): string {

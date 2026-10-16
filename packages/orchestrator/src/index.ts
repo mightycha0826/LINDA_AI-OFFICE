@@ -55,3 +55,6 @@ export * from './mcp/server.ts';
 export * from './reports.ts';
 export * from './secrets.ts';
 export * from './settings.ts';
+export * from './gitcat/checks.ts';
+export * from './gitcat/commit-message.ts';
+export * from './gitcat/git-cat.ts';

@@ -89,6 +89,11 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
     parts.push(ticketSection(input));
     parts.push('이 티켓에 필요한 웹 검색어를 1~3개 정한다. 검색은 회사가 대신 하고, 결과를 다음 작업에 자료로 넘긴다.');
   }
+  if (task === 'commit') {
+    parts.push(ticketSection(input));
+    parts.push(`## 바뀐 파일 (자료)\n\n${dataBlock('git diff --stat', get(input, 'diffStat') ?? '')}`);
+    parts.push('커밋 종류(feat, fix, docs, refactor, test, chore), 범위(영문 소문자 짧게), 한 줄 요약(50자 이내, 한국어)을 정한다.');
+  }
   if (task === 'design') {
     parts.push(`## CEO 지시 원문\n\n${String((get(input, 'order') as { rawText?: string } | undefined)?.rawText ?? '')}`);
     parts.push(`## 계획서 (자료)\n\n${dataBlock('PM 계획서', get(input, 'plan'))}`);
