@@ -61,7 +61,7 @@
 (붙여 넣기)
 ```
 
-- 메모:
+- 메모: 2026-10-16 16:34 첫 시도는 로그인 확인에서 멈춤. `claude auth status`가 loggedIn: false, authMethod: none (ANTHROPIC_API_KEY 없음). CLI에서 `claude auth login` 후 다시.
 
 ## #5 Claude 사용량 읽기
 
@@ -78,11 +78,14 @@
 ## #6 Codex 자동 실행 (codex-readonly.ps1)
 
 ```
-(붙여 넣기)
+== 요약 == (2026-10-16 16:35 첫 시도, stage0\out\codex-*-20261016-163529.*)
+[실패] 자동 실행 또는 JSON 출력 실패 (종료 코드 1)
+[통과] 읽기 전용: target.txt 그대로, new.txt 없음
+[확인 필요] 이벤트에 토큰 사용량이 없음
 ```
 
-- `codex exec --help`에 웹 검색 옵션: 있음(이름: ___) / 없음
-- 메모:
+- `codex exec --help`에 웹 검색 옵션: 없음 (search/web이 들어간 줄 0개, codex-cli 0.163.0)
+- 메모: 실패 원인은 로그인. `codex login status`는 "Logged in using ChatGPT"였지만 저장된 토큰을 새로 고치지 못함("Please log out and sign in again"), 서버 401. 기본 모델 gpt-5.4의 메타데이터가 없다는 경고도 있음. `codex logout` → `codex login` 후 다시. 읽기 전용 차단은 이 실행에서도 지켜짐.
 
 ## #1 헤르메스 도구 호출 (mock-mcp.mjs --summary)
 
