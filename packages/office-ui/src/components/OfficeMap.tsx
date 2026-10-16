@@ -28,7 +28,7 @@ export function OfficeMap({ snapshot, director, night, onOpenTicket, onSelectEmp
   const working = new Set(chars.filter((c) => c.status === 'working' || c.status === 'reviewing').map((c) => c.id));
 
   return (
-    <div className="ao-map" role="img" aria-label={`사무실 지도. 결재 대기 ${pending}건, ${snapshot.system.ceoPresent ? 'CEO 접속 중' : 'CEO 부재'}`}>
+    <div className="ao-map" role="region" aria-label={`사무실 지도. 결재 대기 ${pending}건, ${snapshot.system.ceoPresent ? 'CEO 접속 중' : 'CEO 부재'}`}>
       <svg viewBox={`0 0 ${GRID.w * G} ${GRID.h * G}`} className="ao-map__floor" aria-hidden="true">
         <rect x="0" y="0" width={GRID.w * G} height={GRID.h * G} rx="16" style={{ fill: 'var(--track)' }} />
         {ROOMS.map((r) => (
