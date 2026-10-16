@@ -1,0 +1,17 @@
+# 0단계 #10: SearXNG 설정 (C:\ai-office\searxng\settings.yml로 복사해서 쓴다)
+# - 기본 설정을 그대로 쓰고, 회사가 쓰는 JSON 형식만 켠다.
+# - secret_key는 복사한 뒤 반드시 바꾼다. 이 파일(저장소)에는 진짜 값을 넣지 않는다.
+use_default_settings: true
+
+server:
+  secret_key: "CHANGE_ME_TO_A_RANDOM_STRING"
+  # 이 PC 안에서만 쓰므로 요청 제한기는 끈다. 대신 오케스트레이터가 분당 요청 수를 제한한다(15장).
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 1
+  default_lang: "ko-KR"
+  formats:
+    - html
+    - json

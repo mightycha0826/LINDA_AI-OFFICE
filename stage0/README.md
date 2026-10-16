@@ -12,6 +12,7 @@
 | `codex-readonly.ps1` | #6 | `codex exec` 읽기 전용 실행, 파일이 바뀌지 않았는지 확인 |
 | `mock-mcp.mjs` | #1 | 비서실장 MCP 도구 7개를 흉내 내는 가짜 서버, 호출 기록과 채점 |
 | `ram-watch.ps1` | #3 | 메모리·페이지 파일을 CSV로 기록 |
+| `searxng-check.mjs`, `searxng/settings.yml` | #10 | SearXNG JSON 검색과 127.0.0.1 한정 확인 (2.5단계에서 추가) |
 
 - 스크립트는 읽기와 측정만 한다. 시스템 설정을 바꾸지 않는다.
 - 테스트용 저장소는 `%TEMP%\ai-office-stage0\` 아래에 만든다.

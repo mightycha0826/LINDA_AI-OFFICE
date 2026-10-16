@@ -19,11 +19,14 @@ import {
   REVERSIBILITY,
   RULE_STATUSES,
   TICKET_STATUSES,
+  TEMP_KINDS,
   TICKET_TYPES,
   USAGE_BUDGETS,
   USAGE_PROVIDERS,
   USAGE_SOURCES,
   type Brain,
+  type DesignComboOutput,
+  type TempStaffRequest,
   type GateOutput,
   type PlannedTicket,
   type ReasonCategory,
@@ -46,6 +49,12 @@ export const employees = sqliteTable(
     status: text('status', { enum: EMPLOYEE_STATUSES }).notNull().default('idle'),
     canSearchWeb: integer('can_search_web', { mode: 'boolean' }).notNull().default(false),
     isTemporary: integer('is_temporary', { mode: 'boolean' }).notNull().default(false),
+    /** 임시 직원 종류 (상시 직원은 비어 있음) */
+    tempKind: text('temp_kind', { enum: TEMP_KINDS }),
+    /** 임시 직원을 부른 지시 */
+    orderId: text('order_id'),
+    /** 임시 직원이 일을 마치고 나간 시각 */
+    leftAt: text('left_at'),
   },
   (t) => [check('employees_role_check', inList(t.role, EMPLOYEE_ROLES)), check('employees_status_check', inList(t.status, EMPLOYEE_STATUSES))],
 );
@@ -94,7 +103,9 @@ export const plans = sqliteTable(
     goal: text('goal').notNull(),
     questions: text('questions', { mode: 'json' }).$type<string[]>().notNull(),
     tickets: text('tickets', { mode: 'json' }).$type<PlannedTicket[]>().notNull(),
-    tempStaff: text('temp_staff', { mode: 'json' }).$type<{ role: string; reason: string }[]>().notNull(),
+    tempStaff: text('temp_staff', { mode: 'json' }).$type<TempStaffRequest[]>().notNull(),
+    /** 디자인 시스템 담당이 고른 포인트 조합 (CEO가 계획서와 함께 승인) */
+    designCombo: text('design_combo', { mode: 'json' }).$type<DesignComboOutput>(),
     projectId: text('project_id').references(() => projects.id),
     estimate: text('estimate', { mode: 'json' }).$type<PlanEstimate>().notNull(),
     gateResult: text('gate_result', { mode: 'json' }).$type<GateOutput>(),

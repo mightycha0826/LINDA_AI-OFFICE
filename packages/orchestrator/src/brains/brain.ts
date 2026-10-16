@@ -4,7 +4,8 @@ import type { UsageSource } from '@ai-office/shared';
 import type { EmployeeRow } from '../core/budget.ts';
 import { OfficeError } from '../errors.ts';
 
-export type BrainTask = 'plan' | 'gate' | 'work' | 'review' | 'meeting';
+/** search: 로컬 직원의 검색어 정하기, design: 디자인 시스템 담당의 조합 고르기 */
+export type BrainTask = 'plan' | 'gate' | 'work' | 'review' | 'meeting' | 'search' | 'design';
 
 export interface BrainRequest {
   employee: EmployeeRow;

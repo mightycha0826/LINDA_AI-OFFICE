@@ -8,6 +8,7 @@ import type { EmployeeRow } from '../core/budget.ts';
 import { rules } from '../db/schema.ts';
 import { toJsonSchema } from '../brains/json-schema.ts';
 import type { BrainTask } from '../brains/brain.ts';
+import { TEMP_KIND_SPECS } from './temp-staff.ts';
 
 export const MAX_RULES_PER_CARD = 10;
 
@@ -105,16 +106,20 @@ const TASK_NAME: Record<BrainTask, string> = {
   work: '티켓 작업',
   review: '검토',
   meeting: '회의 발언',
+  search: '검색어 정하기',
+  design: '디자인 조합 고르기',
 };
 
 export function roleCard(c: Ctx, e: EmployeeRow, task: BrainTask, schema: z.ZodType, ticketType?: TicketType): string {
-  const d = DUTIES[e.role];
+  // 임시 직원은 종류별 할 일을 쓴다. 공통 금지 사항(파일 수정·명령 실행 없음)은 그대로 붙는다.
+  const kind = e.isTemporary && e.tempKind ? TEMP_KIND_SPECS[e.tempKind] : null;
+  const d = kind ? { does: [...kind.does, ...DUTIES.temp.does], never: [...kind.never, ...DUTIES.temp.never] } : DUTIES[e.role];
   const retro = activeRulesFor(c, e.role, ticketType);
   const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`).join('\n') : '- (없음)');
   return [
     '# 역할 카드',
     '## 1. 정체성',
-    `- 이름: ${e.displayName}\n- 역할: ${e.role}\n- 부서: ${e.department}\n- 지금 할 일: ${TASK_NAME[task]}`,
+    `- 이름: ${e.displayName}\n- 역할: ${kind ? `임시 직원(${kind.title}, 방문증)` : e.role}\n- 부서: ${e.department}\n- 지금 할 일: ${TASK_NAME[task]}`,
     '## 2. 하는 일',
     list(d.does),
     '## 2. 하면 안 되는 일',

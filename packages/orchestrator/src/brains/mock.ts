@@ -1,5 +1,5 @@
 // 가짜 AI (16장 1단계). API 비용 없이 전체 흐름을 돌린다. 작업별로 응답을 바꿔 끼워 시나리오를 만든다.
-import type { DevOutput, DocOutput, GateOutput, MeetingPosition, PmPlanOutput, ReasonCategory, ReviewOutput } from '@ai-office/shared';
+import type { DesignComboOutput, DevOutput, DocOutput, GateOutput, MeetingPosition, PmPlanOutput, ReasonCategory, ReviewOutput, SearchQueries } from '@ai-office/shared';
 import { budgetOf } from '../core/budget.ts';
 import type { Brain, BrainRequest, BrainResult, BrainTask } from './brain.ts';
 
@@ -71,6 +71,8 @@ export const DEFAULT_HANDLERS: Record<BrainTask, MockHandler> = {
   },
   review: (req) => passReview((req.input as TicketInput).ticket.acceptanceCriteria),
   meeting: (): MeetingPosition => ({ claim: '완료 조건대로 고치면 된다', agree: true, nextActions: ['수정 후 다시 제출'] }),
+  search: (req): SearchQueries => ({ queries: [(req.input as TicketInput).ticket.title] }),
+  design: (): DesignComboOutput => ({ combo: 2, mode: 'light', reason: '관리 화면이라 오래 들여다봄' }),
 };
 
 export class MockLlm implements Brain {

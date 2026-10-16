@@ -99,6 +99,15 @@
 - Discord에서 MCP 도구 호출: 됨 / 안 됨
 - 메모:
 
+## #10 SearXNG (searxng-check.mjs)
+
+```
+(붙여 넣기)
+```
+
+- Docker Desktop 버전:
+- 메모:
+
 ## #3 RAM 64GB · 저장공간 (ram-watch.ps1, env.ps1)
 
 ```

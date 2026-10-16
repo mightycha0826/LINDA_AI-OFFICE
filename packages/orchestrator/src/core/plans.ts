@@ -3,13 +3,14 @@
 // - 최신 버전만 awaiting-ceo가 될 수 있다 (DB 부분 유일 인덱스로도 강제).
 // - GPT 관문 반려는 최대 2회. 그다음에도 반려면 반대 의견을 붙여 CEO에게 올린다.
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { brainModel, type PmPlanOutput } from '@ai-office/shared';
+import { brainModel, type DesignComboOutput, type PmPlanOutput } from '@ai-office/shared';
 import { emit, inTx, nextSeqId, nowIso, type Ctx } from '../context.ts';
 import { employees, orders, plans, projects, tickets } from '../db/schema.ts';
 import { NotFoundError, OfficeError, PlanRuleError } from '../errors.ts';
 import { expirePendingApprovals, requestApproval, type ApprovalDecision } from './approvals.ts';
 import { saveMinutes } from './meeting.ts';
 import { applyTicketEvent } from './tickets.ts';
+import { checkTempRules, dismissAllTemps, hireTemp, isTempRef, tempRef } from '../staff/temp-staff.ts';
 import type { Actor } from './transitions.ts';
 
 export type PlanRow = typeof plans.$inferSelect;
@@ -39,13 +40,34 @@ export function isLatestPlanVersion(c: Ctx, plan: PlanRow): boolean {
  */
 export function checkPlanRules(c: Ctx, out: PmPlanOutput): string[] {
   const problems: string[] = [];
-  const staff = new Map(c.db.select().from(employees).all().map((e) => [e.id, e]));
+  // 다른 지시의 임시 직원은 배정할 수 없다. 임시 직원은 tempStaff와 "temp:<key>"로만 부른다.
+  const staff = new Map(
+    c.db
+      .select()
+      .from(employees)
+      .all()
+      .filter((e) => !e.isTemporary)
+      .map((e) => [e.id, e]),
+  );
   if (out.tickets.some((t) => t.type === 'coding')) {
     if (!out.projectId) problems.push('코딩 티켓이 있으면 projectId(등록된 프로젝트)가 필요함');
     else if (!c.db.select().from(projects).where(eq(projects.id, out.projectId)).get()) problems.push(`등록되지 않은 프로젝트: ${out.projectId}`);
   }
+  problems.push(
+    ...checkTempRules(out.tempStaff, out.tickets, (id) => {
+      const r = staff.get(id);
+      return r ? brainModel(r.brain) : null;
+    }),
+  );
   out.tickets.forEach((tk, i) => {
     const label = `티켓 ${i + 1}(${tk.title})`;
+    if (isTempRef(tk.assignee)) {
+      // 임시 직원 담당 티켓은 checkTempRules가 본다. 검토자만 확인한다.
+      const r = staff.get(tk.reviewer);
+      if (!r) problems.push(`${label}: 검토자 ${tk.reviewer}이(가) 없음`);
+      else if (r.brain.provider === 'none') problems.push(`${label}: ${r.id}은(는) AI 직원이 아니라 검토자가 될 수 없음`);
+      return;
+    }
     const a = staff.get(tk.assignee);
     const r = staff.get(tk.reviewer);
     if (!a) problems.push(`${label}: 담당자 ${tk.assignee}이(가) 없음`);
@@ -104,6 +126,16 @@ export function createPlanVersion(c: Ctx, orderId: string, out: PmPlanOutput, op
   });
 }
 
+/** 디자인 시스템 담당이 고른 조합을 초안에 붙인다 (CEO가 계획서와 함께 승인한다). */
+export function setDesignCombo(c: Ctx, planId: string, combo: DesignComboOutput): void {
+  inTx(c, (t) => {
+    const plan = getPlan(t, planId);
+    if (plan.status !== 'draft') throw new OfficeError('plan-state', `디자인 조합은 초안에만 붙여요(${plan.status})`);
+    t.db.update(plans).set({ designCombo: combo }).where(eq(plans.id, planId)).run();
+    emit(t, 'plan.status', { planId, orderId: plan.orderId, version: plan.version, status: plan.status, designCombo: combo });
+  });
+}
+
 export function startGateReview(c: Ctx, planId: string): PlanRow {
   return inTx(c, (t) => {
     const plan = getPlan(t, planId);
@@ -148,7 +180,7 @@ export function recordGateResult(c: Ctx, planId: string, gate: { passed: boolean
         targetId: planId,
         targetVersion: plan.version,
         reversible: 'reversible',
-        summary: `계획서 #${plan.id} · v${plan.version} — ${plan.goal}`,
+        summary: `계획서 #${plan.id} · v${plan.version} — ${plan.goal}${plan.designCombo ? ` · 디자인 조합 ${plan.designCombo.combo}(${plan.designCombo.mode})` : ''}`,
       });
       if (plan.gateAttempts > 0 || !gate.passed) saveGateMinutes(t, getPlan(t, planId));
     }
@@ -205,6 +237,7 @@ export function applyCeoPlanDecision(c: Ctx, planId: string, decision: ApprovalD
     c.db.update(plans).set({ status: 'rejected', ceoNote: note }).where(eq(plans.id, planId)).run();
     c.db.update(orders).set({ status: 'rejected' }).where(eq(orders.id, plan.orderId)).run();
     emit(c, 'plan.status', { planId, orderId: plan.orderId, version: plan.version, status: 'rejected' });
+    dismissAllTemps(c, plan.orderId);
     return;
   }
 
@@ -212,8 +245,18 @@ export function applyCeoPlanDecision(c: Ctx, planId: string, decision: ApprovalD
   c.db.update(orders).set({ status: 'in-progress', projectId: plan.projectId }).where(eq(orders.id, plan.orderId)).run();
   emit(c, 'plan.status', { planId, orderId: plan.orderId, version: plan.version, status: 'approved' });
 
+  // 임시 직원을 들인다 (디자인 시스템 담당은 계획 단계에서 이미 다녀갔다)
+  const hired = new Map<string, string>();
+  for (const req of plan.tempStaff) {
+    if (req.kind === 'design-system') continue;
+    hired.set(tempRef(req.key), hireTemp(c, plan.orderId, req).id);
+  }
+  const resolve = (id: string) => (isTempRef(id) ? hired.get(id) : id);
+
   const caps = c.config.ticketCaps;
   for (const tk of plan.tickets) {
+    const assigneeId = resolve(tk.assignee);
+    if (!assigneeId) throw new OfficeError('plan-rule', `고용되지 않은 임시 직원: ${tk.assignee}`);
     const id = nextSeqId(c, 'tickets', 'T');
     c.db
       .insert(tickets)
@@ -223,7 +266,7 @@ export function applyCeoPlanDecision(c: Ctx, planId: string, decision: ApprovalD
         planId,
         title: tk.title,
         type: tk.type,
-        assigneeId: tk.assignee,
+        assigneeId,
         reviewerId: tk.reviewer,
         acceptanceCriteria: tk.acceptanceCriteria,
         needsCeoApproval: tk.needsCeoApproval,

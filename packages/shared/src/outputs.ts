@@ -1,6 +1,6 @@
 // 직원별 AI 출력 JSON 형식 (DESIGN.md 6장). 오케스트레이터는 이 스키마를 통과한 출력만 다음 단계로 넘긴다.
 import { z } from 'zod';
-import { REASON_CATEGORIES, TICKET_TYPES } from './domain.ts';
+import { REASON_CATEGORIES, TEMP_BRAINS, TEMP_KINDS, TICKET_TYPES } from './domain.ts';
 
 const text = z.string().trim().min(1);
 
@@ -15,12 +15,25 @@ export const PlannedTicketSchema = z.object({
 });
 export type PlannedTicket = z.infer<typeof PlannedTicketSchema>;
 
+/**
+ * PM이 요청하는 임시 직원 (2장). 티켓 담당자에 "temp:<key>"로 적는다.
+ * brain을 비우면 로컬 Qwen. Claude는 이유(reason)와 함께 요청하고 CEO가 계획서에서 승인해야 쓴다.
+ */
+export const TempStaffRequestSchema = z.object({
+  key: z.string().regex(/^[a-z][a-z0-9-]{0,20}$/, '영문 소문자로 시작하는 짧은 이름 (예: writer-1)'),
+  kind: z.enum(TEMP_KINDS),
+  reason: text,
+  brain: z.enum(TEMP_BRAINS).optional(),
+});
+export type TempStaffRequest = z.infer<typeof TempStaffRequestSchema>;
+
 /** PM 계획서. 티켓은 최대 6개 (6장). */
 export const PmPlanOutputSchema = z.object({
   goal: text,
   questions: z.array(text),
   tickets: z.array(PlannedTicketSchema).min(1).max(6),
-  tempStaff: z.array(z.object({ role: text, reason: text })),
+  /** 임시 직원은 계획서당 최대 3명 (2.5단계 결정 E) */
+  tempStaff: z.array(TempStaffRequestSchema).max(3),
   /** 코딩 티켓이 있으면 등록된 프로젝트 ID가 필요하다 (11장: 등록된 저장소만 건드린다) */
   projectId: z.string().optional(),
   estimate: z.object({
@@ -91,6 +104,12 @@ export const MeetingPositionSchema = z.object({
   nextActions: z.array(text),
 });
 export type MeetingPosition = z.infer<typeof MeetingPositionSchema>;
+
+/** 로컬 직원의 검색 1단계: 검색어 (15장, 2.5단계 결정 C). 오케스트레이터가 SearXNG로 검색한다. */
+export const SearchQueriesSchema = z.object({
+  queries: z.array(text).min(1).max(3),
+});
+export type SearchQueries = z.infer<typeof SearchQueriesSchema>;
 
 /** 디자인 시스템 담당: 포인트 조합 선택 (6장, 17장). */
 export const DesignComboOutputSchema = z.object({

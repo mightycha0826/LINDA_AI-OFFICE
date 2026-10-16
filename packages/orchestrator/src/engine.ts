@@ -10,6 +10,8 @@ import {
   MeetingPositionSchema,
   PmPlanOutputSchema,
   ReviewOutputSchema,
+  DesignComboOutputSchema,
+  SearchQueriesSchema,
   type DevOutput,
   type DocOutput,
   type TicketType,
@@ -24,7 +26,10 @@ import { blockBudget, budgetOf, enforceBudgets, isExhausted, recordUsage, type E
 import { isOverCap, recordMessage, recordTurn } from './core/guards.ts';
 import { agendaFromLastReview, concludeMeeting, saveMinutes, type RoundPositions } from './core/meeting.ts';
 import { registerOrder } from './core/orders.ts';
-import { checkPlanRules, createPlanVersion, GATE_REVIEWER_ID, latestPlan, recordGateResult, startGateReview } from './core/plans.ts';
+import { checkPlanRules, createPlanVersion, GATE_REVIEWER_ID, latestPlan, recordGateResult, setDesignCombo, startGateReview, type PlanRow } from './core/plans.ts';
+import { designComboTable } from './staff/design-combos.ts';
+import { dismissTemp, hireTemp, needsDesignCombo } from './staff/temp-staff.ts';
+import { claimLinks, createWeb, type Web } from './web/research.ts';
 import { resumeAll, stopAll } from './core/stop.ts';
 import { applyTicketEvent, getTicket, type TicketRow } from './core/tickets.ts';
 import type { TicketEvent } from './core/transitions.ts';
@@ -43,6 +48,8 @@ export interface EngineDeps {
   tests: TestRunner;
   workspace: Workspace;
   connectivity?: Connectivity;
+  /** 웹 검색·근거 링크 읽기 (15장). 기본은 설정의 SearXNG와 fetchPage */
+  web?: Web;
   log?: (line: string) => void;
 }
 
@@ -63,6 +70,7 @@ export class Engine {
   private readonly tests: TestRunner;
   private readonly workspace: Workspace;
   readonly connectivity: Connectivity;
+  private readonly web: Web;
   readonly lanes = new Lanes();
   private readonly log: (line: string) => void;
   private readonly inFlight = new Set<string>();
@@ -74,6 +82,7 @@ export class Engine {
     this.tests = deps.tests;
     this.workspace = deps.workspace;
     this.connectivity = deps.connectivity ?? new Connectivity(deps.ctx);
+    this.web = deps.web ?? createWeb(deps.ctx.config);
     this.log = deps.log ?? (() => {});
   }
 
@@ -178,11 +187,13 @@ export class Engine {
     const c = this.c;
     if (getState<string | null>(c, planBlockedKey(orderId), null)) return false; // 형식 오류로 멈춤. CEO가 다시 시도해야 한다
     const plan = latestPlan(c, orderId);
-    if (plan?.status === 'draft') {
-      startGateReview(c, plan.id);
-      return true;
-    }
     try {
+      if (plan?.status === 'draft') {
+        // 디자인 시스템 담당이 필요하면 관문 전에 조합부터 고른다 (6장)
+        if (needsDesignCombo(plan.tempStaff) && !plan.designCombo) await this.chooseDesignCombo(plan);
+        else startGateReview(c, plan.id);
+        return true;
+      }
       if (plan?.status === 'gate-review') {
         const gate = this.employee(GATE_REVIEWER_ID);
         if (this.spendMode(gate) !== 'ok') return false; // GPT 소진이나 인터넷 끊김: 관문 검사는 기다린다
@@ -208,7 +219,7 @@ export class Engine {
       };
       const out = await this.callStructured(pm, 'plan', PmPlanOutputSchema, input, { orderId }, { check: (o: z.infer<typeof PmPlanOutputSchema>) => checkPlanRules(c, o) });
       const created = createPlanVersion(c, orderId, out, { afterGateRejection });
-      startGateReview(c, created.id);
+      if (!needsDesignCombo(created.tempStaff)) startGateReview(c, created.id);
       this.log(`${created.id} v${created.version} 작성`);
       return true;
     } catch (err) {
@@ -226,6 +237,26 @@ export class Engine {
         return true;
       }
       throw err;
+    }
+  }
+
+  /** 디자인 시스템 담당을 불러 조합을 고르고 바로 내보낸다 (6장, 2.5단계 결정 D). */
+  private async chooseDesignCombo(plan: PlanRow): Promise<void> {
+    const c = this.c;
+    const req = plan.tempStaff.find((r) => r.kind === 'design-system')!;
+    const ds = inTx(c, (t) => hireTemp(t, plan.orderId, req));
+    const order = c.db.select().from(orders).where(eq(orders.id, plan.orderId)).get()!;
+    try {
+      const out = await this.callStructured(
+        ds,
+        'design',
+        DesignComboOutputSchema,
+        { order: { rawText: order.rawText }, plan: { goal: plan.goal, tickets: plan.tickets }, combos: designComboTable() },
+        { orderId: plan.orderId },
+      );
+      setDesignCombo(c, plan.id, out);
+    } finally {
+      dismissTemp(c, ds.id);
     }
   }
 
@@ -290,8 +321,15 @@ export class Engine {
       }
     }
 
+    let searchResults: unknown[] | undefined;
+    if (assignee.canSearchWeb && (assignee.brain.provider === 'ollama' || lowPrecision)) {
+      const found = await this.localSearch(tk, assignee, lowPrecision);
+      if (!found || getTicket(c, tk.id).status !== 'in_progress') return true;
+      searchResults = found;
+    }
+
     const schema = tk.type === 'coding' ? DevOutputSchema : DocOutputSchema;
-    const input = { ticket: this.ticketInput(tk), feedback: this.feedbackFor(tk), ...(worktree ? { worktree } : {}) };
+    const input = { ticket: this.ticketInput(tk), feedback: this.feedbackFor(tk), ...(worktree ? { worktree } : {}), ...(searchResults ? { searchResults } : {}) };
     const out = await this.ticketCall(tk, assignee, 'work', schema, input, { lowPrecision, ...this.dir(this.workdirFor(tk, assignee, lowPrecision)) });
     if (!out || getTicket(c, tk.id).status !== 'in_progress') return true; // 그사이 멈췄으면 결과는 버린다
     const note = lowPrecision ? '저정밀 모드로 작성됨\n' : '';
@@ -321,12 +359,15 @@ export class Engine {
       .limit(1)
       .get();
     const criteria = new Set(tk.acceptanceCriteria);
+    const submission = submissionForReview(handoff?.content ?? '');
+    // 문서 검토: 근거 링크 본문을 오케스트레이터가 직접 가져와 넘긴다 (15장 근거 규칙)
+    const sources = coding ? [] : await this.readSources(submission);
     const out = await this.ticketCall(
       tk,
       reviewer,
       'review',
       ReviewOutputSchema,
-      { ticket: this.ticketInput(tk), submission: submissionForReview(handoff?.content ?? ''), tests, ...(diff ? { diff } : {}) },
+      { ticket: this.ticketInput(tk), submission, tests, ...(diff ? { diff } : {}), ...(sources.length ? { sources } : {}) },
       {
         lowPrecision,
         ...this.dir(this.workdirFor(tk, reviewer, lowPrecision)),
@@ -418,6 +459,39 @@ export class Engine {
     if (getTicket(c, tk.id).status !== 'meeting') return true;
     applyTicketEvent(c, tk.id, { type: result.outcome === 'agreed' ? 'meeting.agreed' : 'meeting.failed' }, orchestrator);
     return true;
+  }
+
+  /**
+   * 로컬 직원의 검색 (15장, 2.5단계 결정 C). 로컬 모델에게 도구 호출을 맡기지 않는다.
+   * 1) 직원이 검색어를 정하고 2) 오케스트레이터가 SearXNG로 검색하고 3) 결과를 자료로 본 작업에 넘긴다.
+   */
+  private async localSearch(tk: TicketRow, e: EmployeeRow, lowPrecision: boolean): Promise<unknown[] | null> {
+    const q = await this.ticketCall(tk, e, 'search', SearchQueriesSchema, { ticket: this.ticketInput(tk) }, { lowPrecision });
+    if (!q) return null;
+    const results: unknown[] = [];
+    let count = 0;
+    for (const query of q.queries) {
+      try {
+        const found = await this.web.search.search(query, this.controller.signal);
+        count += found.length;
+        results.push({ query, results: found });
+      } catch (err) {
+        if (!(err instanceof OfficeError)) throw err;
+        results.push({ query, error: err.message });
+      }
+    }
+    recordMessage(this.c, { ticketId: tk.id, orderId: tk.orderId, fromId: 'orchestrator', toId: e.id, kind: 'system', content: `검색 ${q.queries.join(' / ')} → ${count}건`, countsForPingpong: false });
+    return results;
+  }
+
+  /** 제출물의 근거 링크를 가져온다. http(s)만, 내부 주소는 가지 않는다. 티켓당 최대 maxLinksPerTicket개. */
+  private async readSources(submission: unknown): Promise<unknown[]> {
+    const pages: unknown[] = [];
+    for (const url of claimLinks(submission, this.c.config.web.maxLinksPerTicket)) {
+      const p = await this.web.fetchPage(url, this.controller.signal);
+      pages.push(p.ok ? { url, title: p.title, text: p.text, truncated: p.truncated ?? false } : { url, error: p.error ?? '가져오지 못함' });
+    }
+    return pages;
   }
 
   // --- 공통 -------------------------------------------------------------------

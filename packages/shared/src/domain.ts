@@ -49,6 +49,14 @@ export const EMPLOYEE_ROLES = [
 ] as const;
 export type EmployeeRole = (typeof EMPLOYEE_ROLES)[number];
 
+/** 임시 직원 종류 (2장, 6장). 출력 형식은 가장 가까운 상시 직원을 따른다. */
+export const TEMP_KINDS = ['writer', 'designer', 'researcher', 'design-system'] as const;
+export type TempKind = (typeof TEMP_KINDS)[number];
+
+/** 임시 직원이 쓸 수 있는 두뇌. Claude는 개발자 몫에서 깎인다 (8장). */
+export const TEMP_BRAINS = ['qwen3:14b', 'gemma4:12b', 'claude'] as const;
+export type TempBrain = (typeof TEMP_BRAINS)[number];
+
 export const EMPLOYEE_STATUSES = ['idle', 'working', 'meeting', 'blocked', 'paused'] as const;
 export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
 

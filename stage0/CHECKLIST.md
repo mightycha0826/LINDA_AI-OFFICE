@@ -33,6 +33,7 @@
 | 6 | #6 Codex 자동 실행 | |
 | 7 | #1 헤르메스 도구 호출, #7 헤르메스 Discord | 헤르메스 설치가 가장 손이 많이 감 |
 | 8 | #3 RAM 64GB · 저장공간 | 위 프로그램과 모델을 모두 설치한 뒤에 확인 |
+| 9 | #10 SearXNG | Docker Desktop 설치가 필요함 (2.5단계에서 추가) |
 
 ---
 
@@ -259,6 +260,41 @@ powershell -NoProfile -ExecutionPolicy Bypass -File stage0\network.ps1
 | Claude 구독 로그인을 제3자 도구에서 쓰면 안 된다는 점(헤르메스에 Claude를 붙이지 않는 이유) | Anthropic 소비자 약관, 사용 정책 |
 | Codex CLI를 ChatGPT Plus 로그인으로 자동 실행(`codex exec`)해도 되는지, 한도 | OpenAI 이용 약관, Codex 도움말 |
 | 한 사람이 자기 PC에서 자기 구독으로 돌리는 구성이 "계정 공유"에 해당하지 않는지 | 위 약관들 |
+
+---
+
+## #10 SearXNG (2.5단계에서 추가)
+
+- **통과 기준:** 이 PC에서 JSON 검색 결과가 오고, 다른 기기(학교 네트워크 쪽 주소)에서는 열리지 않는다.
+- **실패하면:** WSL2에 직접 설치하거나, 유료 검색 API로 바꾼다(18장).
+
+1. Docker Desktop을 설치한다(WSL2 기반). 설치 뒤 한 번 재부팅이 필요할 수 있다.
+2. 설정 폴더를 만들고 설정 파일을 복사한다.
+
+   ```powershell
+   New-Item -ItemType Directory -Force C:\ai-office\searxng
+   Copy-Item stage0\searxng\settings.yml C:\ai-office\searxng\settings.yml
+   ```
+
+3. `C:\ai-office\searxng\settings.yml`의 `secret_key`를 임의의 긴 문자열로 바꾼다. 아래 명령이 만들어 준 값을 붙여 넣는다. 이 값은 저장소에 올리지 않는다.
+
+   ```powershell
+   -join ((48..57) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
+   ```
+
+4. 컨테이너를 띄운다. **`127.0.0.1:`을 꼭 붙인다.** 빼면 학교 네트워크의 다른 사람도 이 검색 서버를 쓸 수 있다.
+
+   ```powershell
+   docker run -d --name searxng --restart unless-stopped -p 127.0.0.1:8888:8080 -v C:\ai-office\searxng:/etc/searxng searxng/searxng
+   ```
+
+5. 확인한다.
+
+   ```powershell
+   node stage0\searxng-check.mjs
+   ```
+
+   한국어·영어 검색어로 결과가 오는지, 응답 없는 엔진이 있는지, 학교 네트워크 쪽 주소로는 안 열리는지 출력한다.
 
 ---
 

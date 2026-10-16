@@ -3,6 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Connectivity } from '../src/connectivity.ts';
+import { MockWeb } from '../src/web/mock-web.ts';
 import { registerProject } from '../src/workspace/projects.ts';
 import { MockWorkspace } from '../src/workspace/mock-workspace.ts';
 import type { OfficeEventType } from '@ai-office/shared';
@@ -30,7 +31,7 @@ export function tempRoot(): string {
 }
 
 export function setup(
-  opts: { handlers?: Partial<Record<BrainTask, MockHandler>>; mock?: MockOptions; config?: ConfigOver; tests?: TestRunner; probe?: () => Promise<boolean> } = {},
+  opts: { handlers?: Partial<Record<BrainTask, MockHandler>>; mock?: MockOptions; config?: ConfigOver; tests?: TestRunner; probe?: () => Promise<boolean>; web?: MockWeb } = {},
 ) {
   const db = openDb(':memory:');
   const clock = new FakeClock();
@@ -47,8 +48,9 @@ export function setup(
   const tests: TestRunner = opts.tests ?? { run: async () => ({ passed: true, summary: 'mock: 12 passed' }) };
   const workspace = new MockWorkspace(root);
   const connectivity = new Connectivity(ctx, opts.probe ?? (async () => true));
-  const engine = new Engine({ ctx, brainFor: () => mock, tests, workspace, connectivity });
-  return { db, clock, config, ctx, mock, engine, workspace, root };
+  const web = opts.web ?? new MockWeb();
+  const engine = new Engine({ ctx, brainFor: () => mock, tests, workspace, connectivity, web });
+  return { db, clock, config, ctx, mock, engine, workspace, root, web };
 }
 export type Setup = ReturnType<typeof setup>;
 

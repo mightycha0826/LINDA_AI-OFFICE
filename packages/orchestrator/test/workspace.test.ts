@@ -87,7 +87,7 @@ describe('티켓 worktree', () => {
     const s = setup();
     initRepo(s, { 'deploy.pem': 'key' });
     const { Engine } = await import('../src/engine.ts');
-    const engine = new Engine({ ctx: s.ctx, brainFor: () => s.mock, tests: { run: async () => ({ passed: true, summary: '' }) }, workspace: new GitWorkspace(s.ctx), connectivity: s.engine.connectivity });
+    const engine = new Engine({ ctx: s.ctx, brainFor: () => s.mock, tests: { run: async () => ({ passed: true, summary: '' }) }, workspace: new GitWorkspace(s.ctx), connectivity: s.engine.connectivity, web: s.web });
     const { tickets: [tk] } = await approvedTickets(s);
     await engine.runUntilIdle();
     expect(ticket(s, tk!.id)).toMatchObject({ status: 'paused', pauseReason: 'system-error' });

@@ -48,6 +48,8 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       parts.push(ticketSection(input));
       const feedback = get(input, 'feedback');
       if (Array.isArray(feedback) && feedback.length) parts.push(`## 앞선 검토·회의·지시 (자료)\n\n${dataBlock('티켓 기록', feedback)}`);
+      const search = get(input, 'searchResults');
+      if (Array.isArray(search)) parts.push(`## 검색 결과 (자료)\n\n${dataBlock('SearXNG 검색 결과', search)}`);
       const wt = get(input, 'worktree');
       if (typeof wt === 'string') parts.push(`## 작업 폴더\n\n${wt} (이 안에서만 일한다. 중간중간 \`wip:\` 커밋)`);
       parts.push('완료 조건을 채우고 결과를 출력 형식으로 보고한다.');
@@ -60,6 +62,11 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       const diff = get(input, 'diff');
       if (typeof diff === 'string' && diff) parts.push(`## 변경 내용 (자료)\n\n${dataBlock('git diff', diff)}`);
       parts.push(`## 담당자가 낸 결과 (자료)\n\n${dataBlock('담당자 제출물', get(input, 'submission'))}`);
+      const sources = get(input, 'sources');
+      if (Array.isArray(sources) && sources.length) {
+        parts.push(`## 근거 링크 본문 (자료, 오케스트레이터가 가져옴)\n\n${dataBlock('근거 링크 본문', sources)}`);
+        parts.push('주장마다 링크 본문이 그 주장을 정말 뒷받침하는지 확인한다. 가져오지 못한 링크는 근거로 보지 않는다. 근거 없는 주장을 감췄으면 no-evidence로 반려한다.');
+      }
       parts.push('완료 조건마다 통과·실패를 판정한다. 완료 조건에 없는 기준은 쓰지 않는다.');
       break;
     }
@@ -69,6 +76,16 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       parts.push(`## 앞 라운드 발언 (자료)\n\n${dataBlock('회의 기록', get(input, 'previousRounds') ?? [])}`);
       parts.push('완료 조건을 기준으로 입장과 다음 할 일을 말한다. 상대 주장에 동의하면 agree: true.');
       break;
+  }
+  if (task === 'search') {
+    parts.push(ticketSection(input));
+    parts.push('이 티켓에 필요한 웹 검색어를 1~3개 정한다. 검색은 회사가 대신 하고, 결과를 다음 작업에 자료로 넘긴다.');
+  }
+  if (task === 'design') {
+    parts.push(`## CEO 지시 원문\n\n${String((get(input, 'order') as { rawText?: string } | undefined)?.rawText ?? '')}`);
+    parts.push(`## 계획서 (자료)\n\n${dataBlock('PM 계획서', get(input, 'plan'))}`);
+    parts.push(`## 포인트 디자인 시스템 조합 표\n\n${String(get(input, 'combos') ?? '')}`);
+    parts.push('프로젝트 성격에 맞는 조합(1~10) 하나와 모드(light/dark)를 이유와 함께 고른다. 이유에는 조합의 이름과 어울리는 상황을 든다.');
   }
   if (previousError) parts.push(`## 앞선 출력의 형식 오류 (고쳐서 다시 낸다)\n\n${previousError}`);
   return parts.filter(Boolean).join('\n\n');

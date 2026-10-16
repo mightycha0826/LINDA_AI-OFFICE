@@ -15,6 +15,7 @@ import { Engine } from '../engine.ts';
 import { seedStaff } from '../seed.ts';
 import { Connectivity } from '../connectivity.ts';
 import { MockWorkspace } from '../workspace/mock-workspace.ts';
+import { MockWeb } from '../web/mock-web.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -64,6 +65,7 @@ const engine = new Engine({
   tests: { run: async () => ({ passed: true, summary: 'mock: 12 passed' }) },
   workspace: new MockWorkspace(root),
   connectivity: new Connectivity(ctx, async () => true),
+  web: new MockWeb(),
 });
 
 const say = (s: string) => console.log(s);

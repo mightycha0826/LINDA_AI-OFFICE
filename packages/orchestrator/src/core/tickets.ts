@@ -4,6 +4,7 @@ import { emit, inTx, isStopped, newId, nowIso, type Ctx } from '../context.ts';
 import { messages, orders, tickets } from '../db/schema.ts';
 import { ConcurrentUpdateError, NotFoundError } from '../errors.ts';
 import { decide, type Actor, type Decision, type TicketEvent } from './transitions.ts';
+import { dismissFinishedTemps } from '../staff/temp-staff.ts';
 
 export type TicketRow = typeof tickets.$inferSelect;
 
@@ -54,7 +55,10 @@ export function applyTicketEvent(c: Ctx, ticketId: string, ev: TicketEvent, acto
         .values({ id: newId(), ticketId, orderId: row.orderId, fromId: 'ceo', toId: row.assigneeId, kind: 'system', content: `CEO 방향 지시: ${ev.note}`, createdAt: now })
         .run();
     }
-    if (decision.to === 'done' || decision.to === 'cancelled') closeOrderIfFinished(t, row.orderId);
+    if (decision.to === 'done' || decision.to === 'cancelled') {
+      closeOrderIfFinished(t, row.orderId);
+      dismissFinishedTemps(t, row.orderId);
+    }
     return decision;
   });
 }

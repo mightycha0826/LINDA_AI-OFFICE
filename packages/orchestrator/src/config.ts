@@ -72,6 +72,20 @@ export const ConfigSchema = z
       claude: z.object({ tokensPerFiveHourPct: count, tokensPerWeeklyPct: count }),
       gpt: z.object({ tokensPerFiveHourPct: count, tokensPerWeeklyPct: count }),
     }),
+    /** 로컬 메타검색 (15장). 127.0.0.1에서만 띄운다 */
+    searxng: z.object({
+      host: z.url(),
+      maxPerMinute: count,
+      timeoutSec: count,
+      resultsPerQuery: count,
+    }),
+    /** 근거 링크 가져오기 상한 (2.5단계 결정 F) */
+    web: z.object({
+      maxBytes: count,
+      timeoutSec: count,
+      maxCharsPerPage: count,
+      maxLinksPerTicket: count,
+    }),
     connectivity: z.object({
       /** 클라우드 두뇌가 닿는지 확인할 주소 */
       probeUrls: z.array(z.url()).min(1),
@@ -108,6 +122,8 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
     claude: { tokensPerFiveHourPct: 20_000, tokensPerWeeklyPct: 100_000 },
     gpt: { tokensPerFiveHourPct: 20_000, tokensPerWeeklyPct: 100_000 },
   },
+  searxng: { host: 'http://127.0.0.1:8888', maxPerMinute: 10, timeoutSec: 15, resultsPerQuery: 6 },
+  web: { maxBytes: 2 * 1024 * 1024, timeoutSec: 10, maxCharsPerPage: 8000, maxLinksPerTicket: 15 },
   connectivity: { probeUrls: ['https://api.anthropic.com', 'https://api.openai.com'], probeTimeoutSec: 5 },
 };
 
