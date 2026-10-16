@@ -164,7 +164,8 @@ describe('푸시 (작업 브랜치)', () => {
 describe('푸시 전 검사: 차단', () => {
   it('비밀 정보가 있으면 버튼을 올리지 않고(버튼으로도 못 넘어감) #막힘에 알린다', async () => {
     const r = await rig();
-    writeFileSync(join(r.wt, 'config.txt'), 'aws=AKIAABCDEFGHIJKLMNOP\n');
+    // 가짜 AWS 키 모양(실제 키 아님). 저장소 스캐너에 걸리지 않게 실행 중에 이어 붙인다
+    writeFileSync(join(r.wt, 'config.txt'), `aws=${'AKIA'}${'ABCDEFGHIJKLMNOP'}\n`);
     git(r.wt, 'add', 'config.txt');
     git(r.wt, 'commit', '-q', '-m', 'wip: 설정');
     expect(await r.cat.preparePush('T-1', 'push', 'test')).toMatchObject({ ok: false, message: expect.stringContaining('비밀 정보') });

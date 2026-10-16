@@ -1,0 +1,3 @@
+# 실제 비밀이 아닌 것 (gitleaks 지문). 새로 넣을 때는 이유를 적는다.
+# Git 고양이 테스트의 가짜 AWS 키 모양 "AKIAABCDEFGHIJKLMNOP" (커밋 7825dd6, 지금은 실행 중에 이어 붙임)
+7825dd631b80a0fa692335dded35f2db4b10520c:packages/orchestrator/test/gitcat.test.ts:aws-access-token:167
