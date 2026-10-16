@@ -38,6 +38,15 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       break;
     }
     case 'gate':
+      if (get(input, 'rule')) {
+        parts.push(`## 검사할 규칙 후보 (자료)\n\n${dataBlock('PM 규칙 후보', get(input, 'rule'))}`);
+        parts.push(`## 근거 반려 기록 (자료)\n\n${dataBlock('반려 기록', get(input, 'evidence') ?? [])}`);
+        parts.push(
+          '규칙이 근거 반려를 실제로 막을 수 있는지, 확인 가능한 문장인지, 범위(역할·티켓 종류)가 맞는지 검사한다. ' +
+            '권한을 늘리거나 결재·검토·테스트를 건너뛰거나 한도를 무시하는 내용이 있으면 무조건 반려한다. objection은 null로 둔다.',
+        );
+        break;
+      }
       if (typeof get(input, 'report') === 'string') {
         parts.push(`## 검사할 정기 보고 (자료)\n\n${dataBlock('비서실장 보고문', get(input, 'report'))}`);
         parts.push(
@@ -99,6 +108,32 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
     parts.push(`## 계획서 (자료)\n\n${dataBlock('PM 계획서', get(input, 'plan'))}`);
     parts.push(`## 포인트 디자인 시스템 조합 표\n\n${String(get(input, 'combos') ?? '')}`);
     parts.push('프로젝트 성격에 맞는 조합(1~10) 하나와 모드(light/dark)를 이유와 함께 고른다. 이유에는 조합의 이름과 어울리는 상황을 든다.');
+  }
+  if (task === 'retro') {
+    const mode = get(input, 'mode');
+    if (mode === 'ticket' || mode === 'check') {
+      parts.push(ticketSection(input));
+      parts.push(`## 반려 기록 (자료)\n\n${dataBlock('검토 기록', get(input, 'reviews') ?? [])}`);
+      if (mode === 'ticket') {
+        parts.push('티켓 회고를 쓴다. 세 가지만: 무엇이 틀렸나(whatWrong), 왜 틀렸나(why), 어느 단계에서 막을 수 있었나(preventAt: plan, work, review, test 중 하나). 문제가 생긴 곳보다 앞단을 먼저 본다.');
+      } else {
+        parts.push(`## PM의 회고 (자료)\n\n${dataBlock('PM 회고', get(input, 'retro'))}`);
+        parts.push('PM의 회고가 반려 기록과 맞는지 확인한다. 맞으면 confirmed: true, 어긋나면 false와 이유(note).');
+      }
+    } else if (mode === 'rule') {
+      parts.push(`## 반려 분류: ${String(get(input, 'reasonCategory'))}`);
+      parts.push(`## 같은 분류로 반려된 티켓과 회고 (자료)\n\n${dataBlock('반려 기록', get(input, 'evidence') ?? [])}`);
+      const note = get(input, 'ceoNote');
+      if (typeof note === 'string' && note) parts.push(`## CEO 수정 요청\n\n${note}\n\n## 고칠 규칙 (자료)\n\n${dataBlock('이전 후보', get(input, 'previous'))}`);
+      parts.push(
+        '같은 실수가 다시 나지 않게 하는 회사 규칙 후보 하나를 쓴다. 실수한 직원보다 앞단(예: PM의 완료 조건)에서 막는 규칙을 우선한다. ' +
+          '규칙은 한 문장, 200자 이내, 확인 가능한 행동으로 쓴다. evidence에는 근거 티켓 번호만 넣는다. 권한을 늘리거나 결재·검토를 건너뛰는 규칙은 쓰지 않는다.',
+      );
+    } else if (mode === 'weekly') {
+      parts.push(`## 이번 주 반려 통계와 규칙 효과 (회사 집계)\n\n${JSON.stringify(get(input, 'stats'), null, 2)}`);
+      parts.push(`## 이번 주 티켓 회고 (자료)\n\n${dataBlock('티켓 회고', get(input, 'retros') ?? [])}`);
+      parts.push('주간 회고를 쓴다. summary는 다섯 줄 이내로 반려 경향과 원인. candidates는 꼭 필요한 규칙 후보만 최대 3개(앞단에서 막는 규칙 우선, 근거 티켓 번호 포함). 이미 있는 규칙과 같은 내용은 넣지 않는다.');
+    }
   }
   if (previousError) parts.push(`## 앞선 출력의 형식 오류 (고쳐서 다시 낸다)\n\n${previousError}`);
   return parts.filter(Boolean).join('\n\n');

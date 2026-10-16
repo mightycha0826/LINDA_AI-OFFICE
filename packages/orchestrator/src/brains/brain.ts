@@ -5,7 +5,7 @@ import type { EmployeeRow } from '../core/budget.ts';
 import { OfficeError } from '../errors.ts';
 
 /** search: 로컬 직원의 검색어 정하기, design: 디자인 시스템 담당의 조합 고르기, commit: Git 고양이 커밋 메시지 초안 */
-export type BrainTask = 'plan' | 'gate' | 'work' | 'review' | 'meeting' | 'search' | 'design' | 'commit';
+export type BrainTask = 'plan' | 'gate' | 'work' | 'review' | 'meeting' | 'search' | 'design' | 'commit' | 'retro';
 
 export interface BrainRequest {
   employee: EmployeeRow;

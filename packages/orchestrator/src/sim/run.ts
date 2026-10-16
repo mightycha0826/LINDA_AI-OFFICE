@@ -10,13 +10,14 @@ import type { Ctx } from '../context.ts';
 import { pendingApprovals } from '../core/approvals.ts';
 import { budgetStatus } from '../core/budget.ts';
 import { openDb } from '../db/client.ts';
-import { events, meetingMinutes, orders, tickets } from '../db/schema.ts';
+import { events, meetingMinutes, orders, retros, rules, tickets } from '../db/schema.ts';
 import { Engine } from '../engine.ts';
 import { seedStaff } from '../seed.ts';
 import { Connectivity } from '../connectivity.ts';
 import { MockWorkspace } from '../workspace/mock-workspace.ts';
 import { MockWeb } from '../web/mock-web.ts';
 import { registerProject } from '../workspace/projects.ts';
+import { RetroService } from '../retro/service.ts';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -121,6 +122,11 @@ async function main(): Promise<void> {
   await approveAllPending();
   await engine.runUntilIdle();
   flushEvents();
+
+  say('\n== 회고 (6단계) ==');
+  await new RetroService(ctx, engine).tick();
+  for (const r of db.select().from(retros).all()) say(`  티켓 회고 ${r.ticketId}: ${r.whatWrong} → 막을 단계 ${r.preventAt}${r.confirmed ? ' (검토 담당 확인)' : ''}`);
+  say(`  규칙 후보 ${db.select().from(rules).all().length}건 (같은 분류 반려가 3번 쌓이면 만든다)`);
 
   say('\n== 결과 ==');
   for (const t of db.select().from(tickets).all()) {

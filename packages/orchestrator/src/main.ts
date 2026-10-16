@@ -18,6 +18,8 @@ import { Engine } from './engine.ts';
 import { startInternalApi } from './http/internal-api.ts';
 import { defaultScreenDirs, startScreenServer } from './http/screen-server.ts';
 import { gpuReader } from './screen/gpu.ts';
+import { backupHermes } from './retro/hermes-backup.ts';
+import { RetroService } from './retro/service.ts';
 import { loadSecrets } from './secrets.ts';
 import { seedStaff } from './seed.ts';
 import { loadSettingOverrides } from './settings.ts';
@@ -87,11 +89,20 @@ function every(ms: number, name: string, fn: () => Promise<unknown>): NodeJS.Tim
   }, ms);
 }
 
+const retro = new RetroService(ctx, engine, log);
+
 const timers = [
   every(10_000, '엔진', () => engine.step()),
   every(5_000, '알림', async () => notifier?.tick()),
   every(5_000, 'Git 고양이', () => gitcat.tick()),
   every(config.mirror.flushSec * 1000, '거울', async () => mirror?.flush()),
+  // 회고와 학습 (14장): 티켓 회고, 같은 분류 3회 자동 트리거, 일요일 주간 회고, 규칙 후보 관문·결재
+  every(60_000, '회고', () => retro.tick()),
+  // 헤르메스 기억·스킬 매일 백업 (그날 이미 했으면 건너뜀)
+  every(3_600_000, '헤르메스 백업', async () => {
+    const r = backupHermes(config, new Date());
+    if (r.copied.length) log(`헤르메스 백업 ${r.date}: ${r.copied.join(', ')}`);
+  }),
   every(60_000, '접속 상태·보고', async () => {
     refreshPresence(ctx);
     await reports?.fallbackIfMissing();

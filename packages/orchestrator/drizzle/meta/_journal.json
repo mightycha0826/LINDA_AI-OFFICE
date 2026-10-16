@@ -29,6 +29,20 @@
       "when": 1792055657967,
       "tag": "0003_temp_staff_design",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792122594061,
+      "tag": "0004_retro",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792122606077,
+      "tag": "0005_rule_triggers",
+      "breakpoints": true
     }
   ]
 }

@@ -74,6 +74,20 @@ export const DEFAULT_HANDLERS: Record<BrainTask, MockHandler> = {
   search: (req): SearchQueries => ({ queries: [(req.input as TicketInput).ticket.title] }),
   design: (): DesignComboOutput => ({ combo: 2, mode: 'light', reason: '관리 화면이라 오래 들여다봄' }),
   commit: (req) => ({ type: 'feat', scope: 'app', subject: `${(req.input as TicketInput).ticket.title} 추가` }),
+  retro: (req) => {
+    const input = req.input as { mode: string; reasonCategory?: ReasonCategory; evidence?: { ticketId: string }[]; ticket?: { id: string } };
+    if (input.mode === 'ticket') return { whatWrong: '완료 조건의 오류 문구를 빠뜨림', why: '완료 조건에 실패 메시지가 없었음', preventAt: 'plan' };
+    if (input.mode === 'check') return { confirmed: true, note: '' };
+    if (input.mode === 'rule') {
+      return {
+        scope: { role: 'pm', ticketType: 'coding' },
+        rule: '폼·로그인 관련 티켓의 완료 조건에는 실패 시 표시할 메시지를 포함한다',
+        evidence: (input.evidence ?? []).map((e) => e.ticketId).slice(0, 5),
+        reasonCategory: input.reasonCategory ?? 'criteria-unmet',
+      };
+    }
+    return { summary: '이번 주는 완료 조건 미충족 반려가 많았어요', candidates: [] };
+  },
 };
 
 export class MockLlm implements Brain {

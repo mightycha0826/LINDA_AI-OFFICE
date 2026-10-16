@@ -1,15 +1,15 @@
 // 역할 카드 (DESIGN.md 2장, 6장 공통 입력). 다섯 부분으로 만든다.
 // 1. 정체성 2. 하는 일과 하면 안 되는 일 3. 출력 JSON 형식 4. 회사 공통 규칙 5. 회고 규칙(범위가 맞는 승인된 것만, 최대 10개)
-import { and, desc, eq } from 'drizzle-orm';
 import type { z } from 'zod';
 import type { EmployeeRole, TicketType } from '@ai-office/shared';
 import type { Ctx } from '../context.ts';
 import type { EmployeeRow } from '../core/budget.ts';
-import { rules } from '../db/schema.ts';
+import { activeRuleRows } from '../retro/rules.ts';
 import { toJsonSchema } from '../brains/json-schema.ts';
 import type { BrainTask } from '../brains/brain.ts';
 import { TEMP_KIND_SPECS } from './temp-staff.ts';
 
+// retro/rules.ts의 MAX_RULES_PER_ROLE과 같은 값 (모듈 순환 때문에 숫자로 둔다)
 export const MAX_RULES_PER_CARD = 10;
 
 interface Duties {
@@ -92,15 +92,7 @@ const COMPANY_RULES = [
 
 /** 범위(역할, 티켓 종류)가 맞는 승인된 회고 규칙. 최신 것부터 최대 10개 (14장 5). */
 export function activeRulesFor(c: Ctx, role: EmployeeRole, ticketType?: TicketType): string[] {
-  return c.db
-    .select()
-    .from(rules)
-    .where(and(eq(rules.status, 'active')))
-    .orderBy(desc(rules.createdAt))
-    .all()
-    .filter((r) => (!r.scope.role || r.scope.role === role) && (!r.scope.ticketType || r.scope.ticketType === ticketType))
-    .slice(0, MAX_RULES_PER_CARD)
-    .map((r) => r.text);
+  return activeRuleRows(c, role, ticketType).map((r) => r.text);
 }
 
 const TASK_NAME: Record<BrainTask, string> = {
@@ -112,6 +104,7 @@ const TASK_NAME: Record<BrainTask, string> = {
   search: '검색어 정하기',
   design: '디자인 조합 고르기',
   commit: '커밋 메시지 초안',
+  retro: '회고',
 };
 
 export function roleCard(c: Ctx, e: EmployeeRow, task: BrainTask, schema: z.ZodType, ticketType?: TicketType): string {

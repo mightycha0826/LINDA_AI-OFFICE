@@ -1,6 +1,6 @@
 // 직원별 AI 출력 JSON 형식 (DESIGN.md 6장). 오케스트레이터는 이 스키마를 통과한 출력만 다음 단계로 넘긴다.
 import { z } from 'zod';
-import { REASON_CATEGORIES, TEMP_BRAINS, TEMP_KINDS, TICKET_TYPES } from './domain.ts';
+import { EMPLOYEE_ROLES, PREVENT_STAGES, REASON_CATEGORIES, TEMP_BRAINS, TEMP_KINDS, TICKET_TYPES } from './domain.ts';
 
 const text = z.string().trim().min(1);
 
@@ -118,3 +118,36 @@ export const DesignComboOutputSchema = z.object({
   reason: text,
 });
 export type DesignComboOutput = z.infer<typeof DesignComboOutputSchema>;
+
+// --- 회고와 학습 (14장) -------------------------------------------------------
+
+/** 티켓 회고: 세 가지만 쓴다. 무엇이 틀렸나, 왜 틀렸나, 어느 단계에서 막을 수 있었나 */
+export const TicketRetroSchema = z.object({
+  whatWrong: text,
+  why: text,
+  preventAt: z.enum(PREVENT_STAGES),
+});
+export type TicketRetro = z.infer<typeof TicketRetroSchema>;
+
+/** 검토 담당의 회고 확인 */
+export const RetroCheckSchema = z.object({
+  confirmed: z.boolean(),
+  note: z.string(),
+});
+export type RetroCheck = z.infer<typeof RetroCheckSchema>;
+
+/** 규칙 후보 (14장 3). 문제가 생긴 곳보다 앞단에서 막는 규칙을 우선한다 */
+export const RuleCandidateSchema = z.object({
+  scope: z.object({ role: z.enum(EMPLOYEE_ROLES).optional(), ticketType: z.enum(TICKET_TYPES).optional() }),
+  rule: text.max(200),
+  evidence: z.array(z.string().regex(/^T-\d+$/)).min(1).max(10),
+  reasonCategory: z.enum(REASON_CATEGORIES),
+});
+export type RuleCandidate = z.infer<typeof RuleCandidateSchema>;
+
+/** 주간 회고: 요약과 규칙 후보(최대 3개) */
+export const WeeklyRetroSchema = z.object({
+  summary: text,
+  candidates: z.array(RuleCandidateSchema).max(3),
+});
+export type WeeklyRetro = z.infer<typeof WeeklyRetroSchema>;

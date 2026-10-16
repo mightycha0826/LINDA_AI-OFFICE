@@ -10,6 +10,7 @@ import { approvals } from '../db/schema.ts';
 import { AlreadyDecidedError, NotCeoError, NotFoundError, OfficeError, StaleApprovalError } from '../errors.ts';
 import { applyCeoPlanDecision, getPlan, isLatestPlanVersion } from './plans.ts';
 import { applyTicketEvent } from './tickets.ts';
+import { applyRuleDecision } from '../retro/rules.ts';
 
 export type ApprovalRow = typeof approvals.$inferSelect;
 export type ApprovalDecision = 'approved' | 'rejected' | 'revision';
@@ -89,8 +90,10 @@ export function decideApproval(c: Ctx, input: DecideInput): ApprovalRow {
       applyCeoPlanDecision(t, a.targetId, input.decision, input.note ?? null, ceo);
     } else if (TICKET_APPROVAL_KINDS.includes(a.kind)) {
       applyTicketEvent(t, a.targetId, { type: input.decision === 'approved' ? 'approval.approved' : 'approval.rejected' }, ceo);
+    } else if (a.kind === 'rule') {
+      applyRuleDecision(t, a.targetId, input.decision, input.note ?? null);
     }
-    // push, main-merge, revert는 Git 고양이(4단계), budget·rule은 3·6단계에서 결정 결과를 실행한다.
+    // push, main-merge, revert는 Git 고양이(4단계)가 결정 결과를 실행한다.
     return t.db.select().from(approvals).where(eq(approvals.id, a.id)).get()!;
   });
 }

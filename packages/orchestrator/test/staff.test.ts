@@ -1,20 +1,23 @@
 // 역할 카드와 프롬프트 (2장, 6장, 7장 외부 입력은 데이터로만, 14장 회고 규칙 최대 10개).
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { DevOutputSchema } from '@ai-office/shared';
-import { employees, rules } from '../src/db/schema.ts';
+import { approvals, employees } from '../src/db/schema.ts';
+import { proposeRule } from '../src/retro/rules.ts';
 import { dataBlock, renderTask } from '../src/staff/prompts.ts';
 import { activeRulesFor, MAX_RULES_PER_CARD, roleCard } from '../src/staff/role-cards.ts';
 import { submissionForReview } from '../src/engine.ts';
-import { approvedTickets, setup } from './helpers.ts';
+import { approvedTickets, CEO, setup } from './helpers.ts';
 
 const emp = (s: ReturnType<typeof setup>, id: string) => s.db.select().from(employees).where(eq(employees.id, id)).get()!;
 
+/** 규칙은 제안 → CEO 결재로만 생긴다 (DB 트리거가 직접 넣기를 막는다) */
 function addRule(s: ReturnType<typeof setup>, n: number, scope: { role?: string; ticketType?: string }, status: 'active' | 'proposed' | 'retired' = 'active') {
-  s.db
-    .insert(rules)
-    .values({ id: `R-${n}-${Math.random()}`, scope, text: `규칙 ${n}`, evidence: ['T-1'], reasonCategory: 'criteria-unmet', status, createdAt: new Date(Date.UTC(2026, 0, n)).toISOString() })
-    .run();
+  s.clock.advance(60_000);
+  const r = proposeRule(s.ctx, { scope: scope as never, rule: `규칙 ${n}`, evidence: ['T-1'], reasonCategory: 'criteria-unmet' }, 'weekly');
+  if (status === 'proposed') return;
+  const a = s.db.select().from(approvals).where(and(eq(approvals.kind, 'rule'), eq(approvals.targetId, r.id), eq(approvals.status, 'pending'))).get()!;
+  s.engine.decide({ approvalId: a.id, discordUserId: CEO, decision: status === 'active' ? 'approved' : 'rejected' });
 }
 
 describe('역할 카드', () => {

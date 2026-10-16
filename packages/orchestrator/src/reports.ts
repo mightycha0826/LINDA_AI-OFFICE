@@ -1,10 +1,10 @@
 // 보고 데이터 (10장 보고 형식). 순서는 항상 같다: 1 완료 2 결재 대기 3 막힌 것 4 사용량 5 시스템 상태(이상이 있을 때만).
 // 비서실장이 요약을 쓰고, 이 데이터는 /보고와 비서실장이 없을 때의 대체 보고에 그대로 쓴다.
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import type { Ctx } from './context.ts';
 import { isStopped } from './context.ts';
 import { budgetStatus } from './core/budget.ts';
-import { approvals, tickets, usage } from './db/schema.ts';
+import { approvals, retros, tickets, usage } from './db/schema.ts';
 
 export interface ReportData {
   since: string;
@@ -15,6 +15,8 @@ export interface ReportData {
   usage: { budget: string; fiveHour: number; fiveHourLimit: number | null; weekly: number; weeklyLimit: number | null; blockedUntil: string | null }[];
   estimated: boolean;
   stopped: boolean;
+  /** 하루 안에 쓴 주간 회고 (일요일 22:00 보고에 들어간다, 14장) */
+  weeklyRetro: { week: string; summary: string; rejections: number; byCategory: Record<string, number>; ineffectiveRules: string[] } | null;
 }
 
 export function approvalLink(c: Ctx, discordMessageId: string | null): string | null {
@@ -43,7 +45,16 @@ export function buildReportData(c: Ctx, since: string): ReportData {
     }),
     estimated: recentUsage.some((u) => u.source === 'estimated'),
     stopped: isStopped(c),
+    weeklyRetro: latestWeeklyRetro(c),
   };
+}
+
+function latestWeeklyRetro(c: Ctx): ReportData['weeklyRetro'] {
+  const since = new Date(c.clock.now().getTime() - 24 * 3_600_000).toISOString();
+  const r = c.db.select().from(retros).where(and(eq(retros.kind, 'weekly'), gte(retros.createdAt, since))).orderBy(desc(retros.createdAt)).get();
+  if (!r) return null;
+  const st = (r.stats ?? {}) as { rejections?: number; byCategory?: Record<string, number>; rules?: { text: string; ineffective: boolean }[] };
+  return { week: r.week ?? '', summary: r.summary ?? '', rejections: st.rejections ?? 0, byCategory: st.byCategory ?? {}, ineffectiveRules: (st.rules ?? []).filter((x) => x.ineffective).map((x) => x.text) };
 }
 
 const BUDGET_NAME: Record<string, string> = { dev: 'Claude 개발', research: 'Claude 리서치', review: 'GPT 리뷰' };
@@ -65,6 +76,15 @@ export function formatReportData(d: ReportData): string {
   ];
   if (anomalies.length || d.stopped) {
     lines.push('**5. 시스템 상태**', list([...(d.stopped ? ['/정지 중이에요'] : []), ...anomalies.map((p) => `${p.id} ${p.title}: ${PAUSE_NAME[p.reason] ?? p.reason}`)], (x) => x));
+  }
+  if (d.weeklyRetro) {
+    const w = d.weeklyRetro;
+    const cats = Object.entries(w.byCategory)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k} ${v}`)
+      .join(', ');
+    lines.push(`**주간 회고 (${w.week})**`, w.summary, `- 반려 ${w.rejections}건${cats ? ` (${cats})` : ''}`);
+    if (w.ineffectiveRules.length) lines.push(list(w.ineffectiveRules, (x) => `효과 없음: ${x} → #결재함에 삭제 제안`));
   }
   return lines.join('\n');
 }

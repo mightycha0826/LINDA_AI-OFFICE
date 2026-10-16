@@ -58,6 +58,31 @@
 3. 폰에서 보려면 Tailscale 주소(예: 100.x.y.z)와 MagicDNS 이름을 `config.screen.hosts`·`allowedHostnames`에 넣는다.
 4. 캐릭터 그림은 13장 규격으로 Claude Design에 맡기고 `assets/characters/<세트>/`만 바꾼다. 지금은 단색 임시 그림이다.
 
+## 6단계: 회고와 학습
+
+| # | 결정 | 이유 | 바꾸려면 |
+| --- | --- | --- | --- |
+| AD | 규칙을 **DB 트리거로도** 막음: proposed로만 들어옴, active는 CEO 승인 결재가 있어야, 쓰던 규칙 삭제는 두 번째 승인이 있어야, 문장 수정·삭제·되살리기 금지 | 14장 "AI가 스스로 회사 규칙을 바꾸지 못한다"를 코드가 틀려도 지키게 | `drizzle/0005_rule_triggers.sql` |
+| AE | 규칙 문장은 GPT 관문 전에 **코드가 먼저** 거름(권한 확대, 결재·검토 건너뛰기, 강제 푸시, 비밀 정보, 한도 무시) | 14장 4 "무조건 반려"를 AI 판단에만 맡기지 않음 | `retro/rules.ts`의 `ruleViolations` |
+| AF | 적용 횟수 = 규칙이 붙은 채 일한 티켓(계획이면 지시)마다 1회. 재발 = 적용된 대상에서 활성화 뒤 같은 분류 반려 | 14장 6에 세는 방법이 없었음. 호출마다 세면 재작업이 많을수록 부풀려짐 | `recordRuleApplications`, `countRecurrences` |
+| AG | 효과 없음 = 10번 적용 뒤 재발 비율 ≥ 승인 전 30일 같은 분류 반려 비율 | "재발이 줄지 않으면"의 기준이 필요 | `isIneffective` |
+| AH | 자동 트리거는 같은 분류 반려 **3번(반려 기록 기준)**, 마지막 트리거 이후. 근거는 최근 티켓 5개 | 14장 2 | `config.retro.autoTriggerCount` |
+| AI | 주간 회고: 일요일 22:00(설정), 24시간 넘게 지난 주는 안 채움, PM을 2시간 못 부르면 통계만, 하루 안의 주간 회고는 정기 보고에 붙음 | 처음 켰을 때 빈 회고가 올라가지 않게 | `config.retro`, `retro/service.ts` |
+| AJ | CEO `[수정]` = 후보를 내리고 메모를 반영한 새 후보를 PM이 써서 관문·결재 다시. 삭제 제안에는 `[수정]` 없음 | 규칙 문장은 바꾸지 못하게(AD) 했으므로 | — |
+| AK | 티켓 회고 확인은 `qa-local`(Gemma) 고정 | 14장 표 "검토 담당(Gemma)이 확인" | — |
+| AL | 회고·후보 작성이 실패해도 티켓에 영향 없음, 다음 바퀴에 다시 | 회고는 부가 작업 | `engine.callAs` |
+| AM | 헤르메스 백업은 `config.hermes.homeDir`가 비어 있으면 안 함. `memories`, `skills`만, 30일 보관, 되돌리기는 주인이 `npm run hermes:restore -- <날짜>` | 헤르메스 데이터 폴더 위치를 아직 모름(설치 방식에 따라 다름) | `config.hermes` |
+| AN | 새 이벤트 종류(`rule.status` 등)를 만들지 않음. 규칙 결정은 `approval.decided`로 충분 | `events.type` CHECK를 바꾸려면 표를 다시 만들어야 하고 append-only 트리거가 지워질 위험 | — |
+
+### 6단계 확인한 것
+
+- 테스트 383개 통과(회고 20개 추가, 기존 역할 카드 테스트는 규칙을 직접 넣던 것을 제안·결재로 바꿈 — 트리거가 직접 넣기를 막아서). `npm run sim`에 회고 결과가 나온다.
+
+### 6단계 주인이 할 일
+
+1. 헤르메스 데이터 폴더를 `C:\ai-office\data\config.json`의 `hermes.homeDir`에 적는다(WSL에 설치했다면 `\\wsl$\<배포판>\home\<사용자>\.hermes` 같은 경로). 폴더 이름이 `memories`, `skills`가 아니면 `hermes.folders`도 고친다.
+2. 테스트용 Discord 서버에서 "규칙 추가 제안" 결재의 [승인] [수정] [반려]를 한 번 눌러 본다.
+
 ### 4단계 실제 연결 전에 주인이 할 일
 
 1. gitleaks 8.19 이상을 설치한다(`winget install gitleaks` 등). 없으면 고양이는 푸시하지 않는다.

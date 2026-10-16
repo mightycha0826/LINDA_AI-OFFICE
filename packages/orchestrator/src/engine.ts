@@ -39,6 +39,7 @@ import { employees, messages, orders, tickets } from './db/schema.ts';
 import { FormatError, NotCeoError, NotFoundError, OfficeError } from './errors.ts';
 import { renderTask } from './staff/prompts.ts';
 import { roleCard } from './staff/role-cards.ts';
+import { activeRuleRows, recordRuleApplications } from './retro/rules.ts';
 import { listProjects } from './workspace/projects.ts';
 import type { Workspace } from './workspace/worktrees.ts';
 
@@ -151,6 +152,29 @@ export class Engine {
       return await this.callStructured(drafter, 'commit', CommitDraftSchema, { ticket: { id: info.id, title: info.title, type: 'coding', acceptanceCriteria: info.acceptanceCriteria }, diffStat }, {});
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * 회고(6단계)처럼 티켓 밖에서 직원을 부른다. 한도가 없거나 끊겼거나 형식 오류·호출 실패면 null.
+   * 실패해도 티켓을 멈추지 않는다. 다음 바퀴에 다시 시도한다.
+   */
+  async callAs<S extends z.ZodType>(employeeId: string, task: BrainTask, schema: S, input: unknown, opts: { workdir?: string; check?: (o: z.infer<S>) => string[] } = {}): Promise<z.infer<S> | null> {
+    const e = this.employee(employeeId);
+    if (this.spendMode(e) !== 'ok') return null;
+    try {
+      return await this.callStructured(e, task, schema, input, {}, { workdir: this.workspace.sandbox(opts.workdir ?? `${task}-${employeeId}`), ...(opts.check ? { check: opts.check as (out: never) => string[] } : {}) });
+    } catch (err) {
+      if (err instanceof BrainError) {
+        if (err.failure === 'offline' || err.failure === 'limit') this.handleQuietFailure(err, e);
+        else this.log(`${employeeId} ${task} 실패: ${err.message}`);
+        return null;
+      }
+      if (err instanceof FormatError) {
+        this.log(`${employeeId} ${task} 형식 오류 2회: ${err.issues}`);
+        return null;
+      }
+      throw err;
     }
   }
 
@@ -631,6 +655,11 @@ export class Engine {
     const budget = lowPrecision ? 'local' : (budgetOf(e) ?? 'local');
     const lane = lowPrecision ? null : e.brain.provider === 'claude-code' ? 'claude' : e.brain.provider === 'codex' ? 'codex' : null;
     const system = roleCard(this.c, e, task, schema, opts.ticketType);
+    // 회고 규칙 효과 측정(14장 6): 규칙이 붙은 채로 일한 대상(티켓, 계획이면 지시)을 센다
+    const target = refs.ticketId ?? refs.orderId;
+    if (target && (task === 'work' || task === 'plan' || task === 'review')) {
+      recordRuleApplications(this.c, activeRuleRows(this.c, e.role, opts.ticketType).map((r) => r.id), target);
+    }
     let previousError: string | undefined;
     for (let attempt = 1; attempt <= 2; attempt++) {
       let res;

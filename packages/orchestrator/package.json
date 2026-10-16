@@ -9,7 +9,8 @@
     "smoke": "node src/sim/smoke.ts",
     "start": "node src/main.ts",
     "mcp": "node src/mcp/main.ts",
-    "demo:screen": "node src/sim/screen-demo.ts"
+    "demo:screen": "node src/sim/screen-demo.ts",
+    "hermes:restore": "node src/retro/hermes-restore-cli.ts"
   },
   "dependencies": {
     "@ai-office/shared": "*",

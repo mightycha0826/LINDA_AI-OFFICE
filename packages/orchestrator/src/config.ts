@@ -141,6 +141,22 @@ export const ConfigSchema = z
       combo: z.number().int().min(1).max(10),
       companyName: z.string().min(1),
     }),
+    /** 회고와 학습 (14장) */
+    retro: z.object({
+      /** 주간 회고 요일(0=일요일)과 시각. 그 시각 정기 보고에 들어간다 */
+      weeklyDay: z.number().int().min(0).max(6),
+      weeklyTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+      /** 같은 분류 반려가 이만큼 쌓이면 주간 회고를 기다리지 않고 규칙 후보를 만든다 */
+      autoTriggerCount: z.number().int().min(2).max(20),
+    }),
+    /** 비서실장(헤르메스) 기억·스킬 폴더 매일 백업 (14장 7) */
+    hermes: z.object({
+      /** 헤르메스 데이터 폴더. 비우면 백업하지 않는다 */
+      homeDir: z.string(),
+      folders: z.array(z.string().min(1)).min(1),
+      backupDir: z.string().min(1),
+      keepDays: z.number().int().min(1).max(365),
+    }),
   })
   .superRefine((c, ctx) => {
     const { claude, gpt } = c.limits;
@@ -182,6 +198,8 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
   mirror: { flushSec: 5, maxChars: 300 },
   gitcat: { authorName: 'Git 고양이', authorEmail: 'git-cat@ai-office.local', maxFileMB: 50, gitleaksBin: 'gitleaks', gitleaksArgs: [], timeoutMin: 20 },
   screen: { port: 8780, hosts: ['127.0.0.1'], allowedHostnames: ['localhost', '127.0.0.1'], combo: 1, companyName: 'AI 사무실' },
+  retro: { weeklyDay: 0, weeklyTime: '22:00', autoTriggerCount: 3 },
+  hermes: { homeDir: '', folders: ['memories', 'skills'], backupDir: 'C:\\ai-office\\backups\\hermes', keepDays: 30 },
 };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };

@@ -149,3 +149,11 @@ export type MeetingKind = (typeof MEETING_KINDS)[number];
 
 export const MEETING_OUTCOMES = ['agreed', 'disagreed'] as const;
 export type MeetingOutcome = (typeof MEETING_OUTCOMES)[number];
+
+// 회고 (14장)
+export const RETRO_KINDS = ['ticket', 'weekly'] as const;
+export type RetroKind = (typeof RETRO_KINDS)[number];
+
+/** 티켓 회고 "어느 단계에서 막을 수 있었나" */
+export const PREVENT_STAGES = ['plan', 'work', 'review', 'test'] as const;
+export type PreventStage = (typeof PREVENT_STAGES)[number];

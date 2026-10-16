@@ -16,6 +16,8 @@ import {
   PAUSE_REASONS,
   PLAN_STATUSES,
   REASON_CATEGORIES,
+  PREVENT_STAGES,
+  RETRO_KINDS,
   REVERSIBILITY,
   RULE_STATUSES,
   TICKET_STATUSES,
@@ -274,10 +276,60 @@ export const rules = sqliteTable(
     appliedCount: integer('applied_count').notNull().default(0),
     recurrenceCount: integer('recurrence_count').notNull().default(0),
     createdAt: text('created_at').notNull(),
+    /** 승인되어 active가 된 시각 (6단계) */
+    activatedAt: text('activated_at'),
+    /** 승인 전 30일 동안 같은 분류 반려 비율. 효과 측정의 기준 (14장 6) */
+    baselineRate: real('baseline_rate'),
+    /** 반려·수정 요청·삭제된 이유 */
+    retiredReason: text('retired_reason'),
+    /** 어디서 나온 후보인가: auto(같은 분류 3회), weekly, revision */
+    source: text('source'),
   },
   (t) => [
     check('rules_status_check', inList(t.status, RULE_STATUSES)),
     check('rules_reason_check', inList(t.reasonCategory, REASON_CATEGORIES)),
+  ],
+);
+
+/** 규칙이 어느 티켓(또는 계획 단계의 지시)에 적용됐나. 같은 대상은 한 번만 센다 (14장 6 appliedCount) */
+export const ruleApplications = sqliteTable(
+  'rule_applications',
+  {
+    ruleId: text('rule_id')
+      .notNull()
+      .references(() => rules.id),
+    targetId: text('target_id').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [uniqueIndex('rule_applications_unique').on(t.ruleId, t.targetId)],
+);
+
+/** 회고 (14장 2). 티켓 회고는 티켓당 하나, 주간 회고는 주당 하나 */
+export const retros = sqliteTable(
+  'retros',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind', { enum: RETRO_KINDS }).notNull(),
+    ticketId: text('ticket_id').references(() => tickets.id),
+    /** 주간 회고의 주 (그 주 일요일 날짜 YYYY-MM-DD) */
+    week: text('week'),
+    whatWrong: text('what_wrong'),
+    why: text('why'),
+    preventAt: text('prevent_at', { enum: PREVENT_STAGES }),
+    /** 검토 담당이 확인했나 (티켓 회고) */
+    confirmed: integer('confirmed', { mode: 'boolean' }),
+    checkNote: text('check_note'),
+    /** 주간 회고 요약과 통계 */
+    summary: text('summary'),
+    stats: text('stats', { mode: 'json' }).$type<Record<string, unknown>>(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    check('retros_kind_check', inList(t.kind, RETRO_KINDS)),
+    check('retros_prevent_check', sql`${t.preventAt} IS NULL OR ${t.preventAt} IN ('plan', 'work', 'review', 'test')`),
+    check('retros_shape_check', sql`(${t.kind} = 'ticket' AND ${t.ticketId} IS NOT NULL) OR (${t.kind} = 'weekly' AND ${t.week} IS NOT NULL)`),
+    uniqueIndex('retros_ticket_unique').on(t.ticketId).where(sql`${t.kind} = 'ticket'`),
+    uniqueIndex('retros_week_unique').on(t.week).where(sql`${t.kind} = 'weekly'`),
   ],
 );
 

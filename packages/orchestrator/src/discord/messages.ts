@@ -41,14 +41,16 @@ export function planApprovalMessage(plan: PlanRow, a: ApprovalRow): { content: s
 /** ② CEO 결재 (배포·삭제·외부 전송·예산), ⑤ 규칙 추가 제안 */
 export function ceoApprovalMessage(a: ApprovalRow, ticket: TicketRow | null): { content: string; buttons: Button[][] } {
   const isRule = a.kind === 'rule';
+  // 규칙 삭제 제안(효과 없음, 10개 초과)은 승인·반려만. 수정은 새 후보로 올린다
+  const isRetire = isRule && a.summary.startsWith('규칙 삭제 제안');
   const lines = [
-    `**${isRule ? '규칙 추가 제안' : 'CEO 결재'} · ${a.kind}**`,
+    `**${isRetire ? '규칙 삭제 제안' : isRule ? '규칙 추가 제안' : 'CEO 결재'} · ${a.kind}**`,
     a.summary,
     ...(ticket ? [`티켓: ${ticket.id} ${ticket.title} · 완료 조건 ${ticket.acceptanceCriteria.join(' / ')}`] : []),
     `되돌리기: ${REVERSIBLE[a.reversible]}`,
   ];
   const row: Button[] = [{ id: approvalButtonId(a.id, 'approved'), label: '승인', style: 'success' }];
-  if (isRule) row.push({ id: approvalButtonId(a.id, 'revision'), label: '수정', style: 'primary' });
+  if (isRule && !isRetire) row.push({ id: approvalButtonId(a.id, 'revision'), label: '수정', style: 'primary' });
   row.push({ id: approvalButtonId(a.id, 'rejected'), label: '반려', style: 'danger' });
   return { content: lines.join('\n'), buttons: [row] };
 }
