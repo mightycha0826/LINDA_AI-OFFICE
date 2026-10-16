@@ -1,5 +1,5 @@
 {
-  "ceoDiscordId": "여기에 주인 Discord 사용자 ID(숫자)",
+  "ceoDiscordId": "000000000000000000",
   "paths": {
     "wt": "C:\\ai-office\\wt",
     "data": "C:\\ai-office\\data",
@@ -7,5 +7,33 @@
   },
   "ollama": { "host": "http://127.0.0.1:11434" },
   "claude": { "bin": "claude" },
-  "codex": { "bin": "codex", "promptVia": "stdin" }
+  "codex": { "bin": "codex", "promptVia": "stdin" },
+  "searxng": { "host": "http://127.0.0.1:8888" },
+  "discord": {
+    "guildId": "000000000000000000",
+    "channels": {
+      "secretary": "000000000000000000",
+      "approvals": "000000000000000000",
+      "reports": "000000000000000000",
+      "blocked": "000000000000000000",
+      "mirror": "000000000000000000"
+    }
+  },
+  "schedule": { "timezone": "Asia/Seoul", "checkTimes": ["08:00", "18:00", "22:00"] },
+  "screenUrl": "http://127.0.0.1:8780",
+  "screen": {
+    "port": 8780,
+    "hosts": ["127.0.0.1"],
+    "allowedHostnames": ["localhost", "127.0.0.1"],
+    "combo": 1,
+    "companyName": "AI 사무실"
+  },
+  "gitcat": { "gitleaksBin": "gitleaks" },
+  "retro": { "weeklyDay": 0, "weeklyTime": "22:00", "autoTriggerCount": 3 },
+  "hermes": {
+    "homeDir": "",
+    "folders": ["memories", "skills"],
+    "backupDir": "C:\\ai-office\\backups\\hermes",
+    "keepDays": 30
+  }
 }
