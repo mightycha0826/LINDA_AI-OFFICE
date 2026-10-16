@@ -58,22 +58,40 @@
 ## #4 Claude Code 자동 실행 (claude-headless.ps1)
 
 ```
-(붙여 넣기)
+== 2026-10-16 18:09 (stage0\out\claude-headless-20261016-180917.json) · Claude Code 2.1.301, claude.ai Pro 로그인 ==
+종료 코드 0, 12초
+[통과] 사람 개입 없이 끝남 (턴 5, subtype success)
+[통과] 출력 JSON 형식 맞음
+[통과] worktree 안에서 파일 작성과 wip 커밋 (wip: stage0 checkpoint)
+[통과] git push 차단: 원격 저장소에 아무것도 올라가지 않음
+permission_denials 1건: Bash "git push origin HEAD"
 ```
 
-- 메모: 2026-10-16 16:34 첫 시도는 로그인 확인에서 멈춤. `claude auth status`가 loggedIn: false, authMethod: none (ANTHROPIC_API_KEY 없음). CLI에서 `claude auth login` 후 다시.
+- 판정: **#4 통과**
+- 메모:
+  - 처음 두 번은 실패. ① 이 PC의 CLI가 로그인돼 있지 않았음 → 주인이 `claude auth login`. ② 스크립트 버그: 도우미 함수 이름이 `Git`이라 `& git`이 함수 자신을 불러 테스트 저장소가 안 만들어졌음 → `git.exe`로 고침.
+  - Claude Code 앱 안에서 돌리면 앱의 세션 변수(`CLAUDE_*`, `ANTHROPIC_BASE_URL`)가 넘어가 로그인이 안 된 것처럼 보인다. 오케스트레이터는 환경 변수 허용 목록으로 이 변수들을 넘기지 않는다(테스트 추가).
 
 ## #5 Claude 사용량 읽기
 
 - claude-headless.ps1의 사용량 부분:
 
 ```
-(붙여 넣기)
+usage: 입력 8, 출력 676, 캐시 생성 7438, 캐시 읽기 21135
+total_cost_usd: 0.077283 (구독이라 실제 청구가 아님, API 단가로 계산한 참고값)
+modelUsage: claude-opus-5-5
+[통과] 토큰 수를 JSON에서 얻음
+[통과] stream-json에 rate_limit 정보가 있음 (stage0\out\claude-stream-20261016-180917.jsonl)
+  rate_limit_event: five_hour utilization 0.76, seven_day utilization 0.57, status allowed, resetsAt(epoch)
 ```
 
-- 상태줄에 5h·7d %가 떴는가: 예 / 아니오
-- 상태줄 값과 claude.ai 사용량 화면 값: 상태줄 5h ___% / 화면 ___%, 상태줄 7d ___% / 화면 ___%
+- 상태줄에 5h·7d %가 떴는가: 아직 (대화형 확인은 주인이 직접. 하지만 stream-json에서 이미 % 를 얻었다)
+- 상태줄 값과 claude.ai 사용량 화면 값: 상태줄 5h ___% / 화면 ___%, 상태줄 7d ___% / 화면 ___% (claude.ai 화면과 76%/57% 비교 필요)
+- 판정: **#5 통과**. `source: reported`로 쓸 길이 있다(stream-json의 `rate_limit_event.unifiedWindows`). 사용량 기록에 반영하는 건 따로 작업.
 - 메모:
+  - **개인 설정 분리가 중요**: 분리 전(첫 실행)에는 주인의 플러그인·스킬·MCP 서버까지 불러와 아주 작은 일에 캐시 생성 185,004토큰(참고 단가 $1.54). `--setting-sources project,local --strict-mcp-config --disable-slash-commands`로 분리하니 7,438토큰($0.08), 약 25배 차이. 어댑터에 같은 옵션을 넣었다.
+  - 기본 모델이 Opus라 Pro 한도를 빨리 쓴다. `config.claude.model`(예: `sonnet`)로 바꿀 수 있게 했다. 무엇을 쓸지는 주인이 정한다.
+  - 측정할 때 5시간 사용량이 이미 76%였다(주인 개인 사용 포함).
 
 ## #6 Codex 자동 실행 (codex-readonly.ps1)
 

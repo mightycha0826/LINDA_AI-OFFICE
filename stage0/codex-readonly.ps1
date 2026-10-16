@@ -20,6 +20,13 @@ if (-not (Get-Command codex -ErrorAction SilentlyContinue)) { Stop-With 'codex�
 if ($env:OPENAI_API_KEY -and -not $Force) {
   Stop-With 'OPENAI_API_KEY 환경 변수가 있어요. Plus 구독이 아니라 API 요금으로 나갈 수 있어요. 이 창에서 $env:OPENAI_API_KEY = $null 후 다시 실행하거나, 그대로 돌리려면 -Force'
 }
+if (-not $env:CODEX_HOME) { $env:CODEX_HOME = 'C:\ai-office\data\codex-home' }
+New-Item -ItemType Directory -Force -Path $env:CODEX_HOME | Out-Null
+$codexCfg = Join-Path $env:CODEX_HOME 'config.toml'
+if (-not (Test-Path $codexCfg)) {
+  Set-Content -Path $codexCfg -Encoding UTF8 -Value @('# AI 사무실 전용 Codex 설정 (플러그인·MCP 서버·모델 지정 없음)', '[windows]', 'sandbox = "elevated"')
+}
+Write-Host "CODEX_HOME: $env:CODEX_HOME (주인의 ~/.codex 설정과 분리)"
 Write-Host "Codex: $("$(& codex --version 2>&1 | Select-Object -First 1)".Trim())"
 $login = "$(& codex login status 2>&1 | Out-String)".Trim()
 Write-Host "로그인 상태: $login"

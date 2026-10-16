@@ -36,6 +36,7 @@ export function createBrainRegistry(config: Config, opts: RegistryOptions = {}):
     maxTurns: config.claude.maxTurns,
     wtRoot: config.paths.wt,
     dataDir: config.paths.data,
+    ...(config.claude.model ? { model: config.claude.model } : {}),
     ...env,
   });
   const codex = new CodexBrain({
@@ -45,6 +46,8 @@ export function createBrainRegistry(config: Config, opts: RegistryOptions = {}):
     promptVia: config.codex.promptVia,
     wtRoot: config.paths.wt,
     dataDir: config.paths.data,
+    home: config.codex.home,
+    ...(config.codex.model ? { model: config.codex.model } : {}),
     ...env,
   });
 

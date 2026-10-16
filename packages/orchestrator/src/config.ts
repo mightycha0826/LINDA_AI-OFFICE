@@ -55,6 +55,8 @@ export const ConfigSchema = z
       binArgs: z.array(z.string()),
       timeoutMin: count,
       maxTurns: count,
+      /** 비우면 계정 기본 모델. 예: 'sonnet' (0단계 #5: 기본이 Opus라 한도를 빨리 씀) */
+      model: z.string(),
     }),
     codex: z.object({
       bin: z.string().min(1),
@@ -62,6 +64,13 @@ export const ConfigSchema = z
       timeoutMin: count,
       /** 0단계 #6에서 확인: 프롬프트를 stdin으로 넘길지 인자로 넘길지 */
       promptVia: z.enum(['stdin', 'arg']),
+      /**
+       * 회사 전용 CODEX_HOME. 주인의 Codex 앱 설정(모델, 플러그인, 컴퓨터 사용·브라우저 MCP)을 물려받지 않게 따로 둔다.
+       * 로그인도 여기에 따로 한다: CODEX_HOME을 이 폴더로 두고 codex login (0단계 #6에서 확인)
+       */
+      home: z.string().min(1),
+      /** 비우면 계정 기본 모델 */
+      model: z.string(),
     }),
     tests: z.object({ timeoutMin: count }),
     /**
@@ -180,8 +189,8 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
   absenceMinutes: 20,
   paths: { wt: 'C:\\ai-office\\wt', data: 'C:\\ai-office\\data', repos: 'C:\\ai-office\\repos' },
   ollama: { host: 'http://127.0.0.1:11434', numCtx: 16_384, timeoutSec: 600, keepAlive: '30m', maxWaitSec: 120 },
-  claude: { bin: 'claude', binArgs: [], timeoutMin: 30, maxTurns: 40 },
-  codex: { bin: 'codex', binArgs: [], timeoutMin: 15, promptVia: 'stdin' },
+  claude: { bin: 'claude', binArgs: [], timeoutMin: 30, maxTurns: 40, model: '' },
+  codex: { bin: 'codex', binArgs: [], timeoutMin: 15, promptVia: 'stdin', home: 'C:\\ai-office\\data\\codex-home', model: '' },
   tests: { timeoutMin: 15 },
   // 임시값. 0단계 #5와 첫 1~2주 운영으로 보정한다.
   calibration: {

@@ -56,8 +56,9 @@ $Repo = Join-Path $Base 'repo'
 $Wt = Join-Path $Base 'wt-T0'
 New-Item -ItemType Directory -Force -Path $Base | Out-Null
 
+# 함수 이름이 Git이라 '& git'은 이 함수 자신을 부른다(PowerShell은 대소문자를 구분하지 않음). git.exe를 직접 부른다.
 function Git {
-  $out = & git @args 2>&1
+  $out = & git.exe @args 2>&1
   if ($LASTEXITCODE -ne 0) { Stop-With "git $($args -join ' ') 실패: $out" }
   return $out
 }
@@ -116,6 +117,7 @@ Push-Location $Wt
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $raw = & claude -p $Prompt --output-format json --json-schema $SchemaArg --tools 'Bash,Read,Edit,Write' `
   --permission-mode acceptEdits --permission-prompts none --max-turns $MaxTurns --no-session-persistence `
+  --setting-sources 'project,local' --strict-mcp-config --disable-slash-commands `
   --settings $SettingsPath 2> $ErrFile
 $exit = $LASTEXITCODE
 $sw.Stop()
@@ -192,7 +194,7 @@ if (-not $SkipStreamProbe) {
   $StreamFile = Join-Path $OutDir "claude-stream-$Stamp.jsonl"
   Write-Host 'stream-json으로 짧은 호출 한 번 더 (rate_limit 이벤트 찾기)…'
   Push-Location $Wt
-  $stream = & claude -p 'Reply with the single word OK.' --output-format stream-json --verbose --max-turns 1 --no-session-persistence 2>> $ErrFile
+  $stream = & claude -p 'Reply with the single word OK.' --output-format stream-json --verbose --max-turns 1 --no-session-persistence --setting-sources 'project,local' --strict-mcp-config --disable-slash-commands 2>> $ErrFile
   Pop-Location
   ($stream -join "`n") | Out-File -FilePath $StreamFile -Encoding utf8
   $rlLines = @($stream | Where-Object { $_ -match 'rate_limit' })

@@ -21,6 +21,8 @@ export interface ClaudeCodeOptions {
   maxTurns: number;
   wtRoot: string;
   dataDir: string;
+  /** 비우면 계정 기본 모델 */
+  model?: string;
   /** 테스트용 가짜 CLI 설정 등. 비밀로 보이는 이름은 거부된다 */
   extraEnv?: Record<string, string>;
 }
@@ -71,6 +73,11 @@ export class ClaudeCodeBrain implements Brain {
       '--permission-prompts', 'none',
       '--max-turns', String(this.o.maxTurns),
       '--no-session-persistence',
+      // 주인 개인 설정(플러그인, 스킬, MCP 서버, 훅)을 물려받지 않는다. 권한은 아래 --settings와 worktree의 프로젝트 설정만 (0단계 #5)
+      '--setting-sources', 'project,local',
+      '--strict-mcp-config',
+      '--disable-slash-commands',
+      ...(this.o.model ? ['--model', this.o.model] : []),
       '--settings', files.settings,
       '--append-system-prompt-file', files.systemPrompt,
     ];

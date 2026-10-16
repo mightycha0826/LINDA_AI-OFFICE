@@ -18,7 +18,25 @@ export interface CodexOptions {
   promptVia: 'stdin' | 'arg';
   wtRoot: string;
   dataDir: string;
+  /** 회사 전용 CODEX_HOME (주인의 Codex 앱 설정과 분리) */
+  home?: string;
+  /** 비우면 계정 기본 모델 */
+  model?: string;
   extraEnv?: Record<string, string>;
+}
+
+/** 회사 전용 Codex 설정. 플러그인·MCP 서버·모델 지정 없이 시작한다. 이미 있으면 건드리지 않는다 */
+export const CODEX_HOME_CONFIG = `# AI 사무실 전용 Codex 설정 (오케스트레이터가 만듦).
+# 주인의 Codex 앱 설정(~/.codex)과 섞이지 않게 따로 둔다. 플러그인과 MCP 서버를 넣지 않는다.
+# 로그인: PowerShell에서 \$env:CODEX_HOME = '<이 폴더>'; codex login
+[windows]
+sandbox = "elevated"
+`;
+
+export function ensureCodexHome(home: string): void {
+  mkdirSync(home, { recursive: true });
+  const cfg = join(home, 'config.toml');
+  if (!existsSync(cfg)) writeFileSync(cfg, CODEX_HOME_CONFIG, 'utf8');
 }
 
 /** --json 이벤트 줄에서 토큰 사용량을 찾는다. 형식이 문서에 없어 알려진 자리를 넓게 본다. */
@@ -63,6 +81,7 @@ export class CodexBrain implements Brain {
       '--json',
       '--ephemeral',
       '--skip-git-repo-check',
+      ...(this.o.model ? ['-m', this.o.model] : []),
       '-C', workdir,
       '--output-schema', files.schema,
       '-o', files.lastMessage,
@@ -82,6 +101,8 @@ export class CodexBrain implements Brain {
     // Codex에는 시스템 프롬프트 옵션이 없어 역할 카드를 앞에 붙인다
     const prompt = `${req.prompt.system}\n\n---\n\n${req.prompt.user}`;
 
+    if (this.o.home) ensureCodexHome(this.o.home);
+    const env = { ...(this.o.home ? { CODEX_HOME: this.o.home } : {}), ...this.o.extraEnv };
     try {
       const r = await runProcess({
         bin: this.o.bin,
@@ -90,7 +111,7 @@ export class CodexBrain implements Brain {
         ...(this.o.promptVia === 'stdin' ? { stdin: prompt } : {}),
         timeoutMs: this.o.timeoutMs,
         signal: req.signal,
-        ...(this.o.extraEnv ? { extraEnv: this.o.extraEnv } : {}),
+        ...(Object.keys(env).length ? { extraEnv: env } : {}),
       });
       if (r.aborted) throw new DOMException('정지됨', 'AbortError');
       if (r.timedOut) throw new BrainError('timeout', `Codex가 ${Math.round(this.o.timeoutMs / 60000)}분 안에 끝나지 않았어요`);
