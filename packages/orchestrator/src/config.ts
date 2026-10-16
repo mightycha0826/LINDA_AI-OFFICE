@@ -91,6 +91,35 @@ export const ConfigSchema = z
       probeUrls: z.array(z.url()).min(1),
       probeTimeoutSec: count,
     }),
+    /** Discord (9장). 채널은 ID로 적는다. 봇 토큰과 웹훅 주소는 secrets.json에 둔다 */
+    discord: z.object({
+      guildId: z.string(),
+      channels: z.object({
+        secretary: z.string(),
+        approvals: z.string(),
+        reports: z.string(),
+        blocked: z.string(),
+        mirror: z.string(),
+      }),
+    }),
+    /** 정기 점검과 알림 (10장) */
+    schedule: z.object({
+      timezone: z.string(),
+      /** 정기 점검(보고) 시각 HH:MM */
+      checkTimes: z.array(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)).min(1),
+      /** 점검 시각부터 이 시간 동안은 즉시 알림을 보낸다 */
+      checkWindowMin: count,
+      /** 비서실장 보고를 기다리는 시간. 넘으면 시스템 봇이 데이터만으로 보고한다 */
+      reportGraceMin: count,
+      /** 한 시간에 보내는 즉시 알림(멘션) 상한 */
+      maxImmediatePerHour: count,
+    }),
+    /** 비서실장 MCP 서버가 쓰는 내부 API. 127.0.0.1에서만 연다 */
+    internalApi: z.object({ port: z.number().int().min(1024).max(65535) }),
+    /** 사무실 화면 주소 (Discord 메시지의 "화면에서 보기" 링크). 5단계 전에는 비워 둔다 */
+    screenUrl: z.string(),
+    /** 거울 채널 묶어 보내기 간격과 한 메시지 길이 상한 (9장 ⑦) */
+    mirror: z.object({ flushSec: count, maxChars: count }),
   })
   .superRefine((c, ctx) => {
     const { claude, gpt } = c.limits;
@@ -125,6 +154,11 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
   searxng: { host: 'http://127.0.0.1:8888', maxPerMinute: 10, timeoutSec: 15, resultsPerQuery: 6 },
   web: { maxBytes: 2 * 1024 * 1024, timeoutSec: 10, maxCharsPerPage: 8000, maxLinksPerTicket: 15 },
   connectivity: { probeUrls: ['https://api.anthropic.com', 'https://api.openai.com'], probeTimeoutSec: 5 },
+  discord: { guildId: '', channels: { secretary: '', approvals: '', reports: '', blocked: '', mirror: '' } },
+  schedule: { timezone: 'Asia/Seoul', checkTimes: ['08:00', '18:00', '22:00'], checkWindowMin: 30, reportGraceMin: 10, maxImmediatePerHour: 6 },
+  internalApi: { port: 8790 },
+  screenUrl: '',
+  mirror: { flushSec: 5, maxChars: 300 },
 };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };

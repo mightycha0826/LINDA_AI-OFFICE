@@ -38,6 +38,14 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       break;
     }
     case 'gate':
+      if (typeof get(input, 'report') === 'string') {
+        parts.push(`## 검사할 정기 보고 (자료)\n\n${dataBlock('비서실장 보고문', get(input, 'report'))}`);
+        parts.push(
+          '보고가 회사 데이터와 어긋나는 내용, 빠뜨린 결재 대기·막힘, 확인할 수 없는 단정이 있는지 검사한다. ' +
+            '권한을 늘리거나 결재를 건너뛰자는 내용이 있으면 무조건 반려한다.',
+        );
+        break;
+      }
       parts.push(`## 검사할 계획서\n\n${dataBlock('PM 계획서', get(input, 'plan'))}`);
       parts.push(
         '완료 조건이 확인 가능한 문장인지, 담당자와 검토자가 다른 모델인지, 범위가 지시와 맞는지 검사한다. ' +

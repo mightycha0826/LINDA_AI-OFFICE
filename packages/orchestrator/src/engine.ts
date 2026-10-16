@@ -120,6 +120,25 @@ export class Engine {
     return resumeAll(this.c, discordUserId);
   }
 
+  /**
+   * 정기 보고문 관문 검사 (10장: 보고는 CEO에게 가기 전에 GPT 관문을 거친다).
+   * GPT 한도가 없거나 연결이 끊겨 검사할 수 없으면 null ("관문 미통과"로 올린다).
+   */
+  async gateReport(report: string): Promise<z.infer<typeof GateOutputSchema> | null> {
+    const gate = this.employee(GATE_REVIEWER_ID);
+    if (this.spendMode(gate) !== 'ok') return null;
+    try {
+      return await this.callStructured(gate, 'gate', GateOutputSchema, { report }, {}, { workdir: this.workspace.sandbox('gate-report') });
+    } catch (err) {
+      if (err instanceof BrainError) {
+        if (err.failure === 'offline' || err.failure === 'limit') this.handleQuietFailure(err, gate);
+        return null;
+      }
+      if (err instanceof FormatError) return null;
+      throw err;
+    }
+  }
+
   // --- 한 바퀴 ----------------------------------------------------------------
 
   /** 할 수 있는 일을 한 바퀴 돈다. 실제로 한 일의 수를 돌려준다. */

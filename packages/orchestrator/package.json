@@ -6,12 +6,16 @@
   "scripts": {
     "db:generate": "drizzle-kit generate",
     "sim": "node src/sim/run.ts",
-    "smoke": "node src/sim/smoke.ts"
+    "smoke": "node src/sim/smoke.ts",
+    "start": "node src/main.ts",
+    "mcp": "node src/mcp/main.ts"
   },
   "dependencies": {
     "@ai-office/shared": "*",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "better-sqlite3": "^13.0.3",
     "cross-spawn": "^7.0.6",
+    "discord.js": "^14.27.0",
     "drizzle-orm": "^0.45.4",
     "zod": "^4.6.7"
   },
