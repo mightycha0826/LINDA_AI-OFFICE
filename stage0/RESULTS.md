@@ -96,14 +96,21 @@ modelUsage: claude-opus-5-5
 ## #6 Codex 자동 실행 (codex-readonly.ps1)
 
 ```
-== 요약 == (2026-10-16 16:35 첫 시도, stage0\out\codex-*-20261016-163529.*)
-[실패] 자동 실행 또는 JSON 출력 실패 (종료 코드 1)
-[통과] 읽기 전용: target.txt 그대로, new.txt 없음
-[확인 필요] 이벤트에 토큰 사용량이 없음
+== 2026-10-16 23:07 (stage0\out\codex-events-20261016-230716.jsonl) · codex-cli 0.163.0, 모델 gpt-6-luna, 주인 로그인(~/.codex) ==
+종료 코드 0
+[통과] 사람 개입 없이 끝나고 마지막 메시지가 JSON
+  {"fileContent":"original\n","modifyAttempted":true,"modifySucceeded":false,"createAttempted":true,"createSucceeded":false}
+[통과] 읽기 전용: target.txt 그대로("original"), new.txt 없음 — 절대 경로로 시켜도 쓰기 거부
+[통과] 이벤트에서 토큰 사용량을 얻음 (turn.completed.usage: input 31652, output 792, reasoning 445)
 ```
 
-- `codex exec --help`에 웹 검색 옵션: 없음 (search/web이 들어간 줄 0개, codex-cli 0.163.0)
-- 메모: 실패 원인은 로그인. `codex login status`는 "Logged in using ChatGPT"였지만 저장된 토큰을 새로 고치지 못함("Please log out and sign in again"), 서버 401. 기본 모델 gpt-5.4의 메타데이터가 없다는 경고도 있음. `codex logout` → `codex login` 후 다시. 읽기 전용 차단은 이 실행에서도 지켜짐.
+- 판정: **#6 통과** (Windows에서 그대로, WSL2 필요 없음)
+- `codex exec --help`에 웹 검색 옵션: 없음 (search/web이 들어간 줄 0개). 다만 모델 정보에 `supports_search_tool: true`가 있어 설정으로 켤 수는 있다. 회사 전용 CODEX_HOME 설정에는 넣지 않았다.
+- 메모 (실패와 고친 것 순서대로):
+  1. 16:35 저장된 로그인 토큰을 새로 고치지 못함(401) → 주인이 다시 로그인.
+  2. 18:03 주인의 Codex 앱 설정(`~/.codex/config.toml`)의 `model = "gpt-5.4"`를 CLI도 읽는데, ChatGPT 계정에서는 "지원하지 않는 모델"(400). 이 계정 목록(`models_cache.json`): gpt-6-luna, gpt-5.6-terra, gpt-5.6-luna(+숨김 gpt-reserve, codex-auto-review).
+  3. 같은 설정에 컴퓨터 사용·브라우저·Chrome 플러그인과 MCP 서버가 켜져 있다. 리뷰어가 이것을 물려받지 않게 오케스트레이터는 **회사 전용 CODEX_HOME**(`C:\ai-office\data\codex-home`, 플러그인·MCP·모델 지정 없음)을 쓴다. **여기에 따로 로그인이 필요하다(주인 할 일)**. 이번 #6은 그 전이라 주인 로그인 + `-Model gpt-6-luna`로 확인했다.
+  4. 22:58 Windows 샌드박스(elevated)에서 명령이 `-C` 폴더가 아니라 `C:\`에서 돌았다. 상대 경로면 "C:\ 쓰기 거부"와 "샌드박스 차단"을 구분할 수 없어 시험 문구를 절대 경로로 바꿔 다시 돌렸다(23:07, 위 결과). 어댑터도 작업 폴더를 절대 경로로 알려 주게 고쳤다.
 
 ## #1 헤르메스 도구 호출 (mock-mcp.mjs --summary)
 

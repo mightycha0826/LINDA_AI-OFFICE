@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ClaudeCodeBrain } from '../src/brains/claude-code.ts';
-import { CodexBrain, ensureCodexHome } from '../src/brains/codex.ts';
+import { CodexBrain, codexWorkdirNote, ensureCodexHome } from '../src/brains/codex.ts';
 import { safeEnv } from '../src/brains/process.ts';
 import { makeConfig } from '../src/config.ts';
 import { CEO, tempRoot } from './helpers.ts';
@@ -58,5 +58,13 @@ describe('Codex: 회사 전용 CODEX_HOME', () => {
     expect(args[args.indexOf('--sandbox') + 1]).toBe('read-only');
     const plain = new CodexBrain({ bin: 'codex', binArgs: [], timeoutMs: 1000, promptVia: 'stdin', wtRoot: 'C:/wt', dataDir: 'C:/data' });
     expect(plain.buildArgs('C:/wt/T-1', { schema: 's', lastMessage: 'l' }, 'p')).not.toContain('-m');
+  });
+});
+
+describe('Codex: 작업 폴더를 절대 경로로 알려 준다 (0단계 #6)', () => {
+  it('Windows 샌드박스에서 -C가 무시돼도 리뷰어가 worktree 파일을 읽을 수 있게', () => {
+    const note = codexWorkdirNote('C:\\ai-office\\wt\\T-1');
+    expect(note).toContain('C:\\ai-office\\wt\\T-1');
+    expect(note).toContain('절대 경로');
   });
 });

@@ -33,6 +33,11 @@ export const CODEX_HOME_CONFIG = `# AI 사무실 전용 Codex 설정 (오케스�
 sandbox = "elevated"
 `;
 
+/** 작업 폴더 안내. 명령의 현재 폴더를 믿지 말고 이 절대 경로로 파일을 읽게 한다 */
+export function codexWorkdirNote(cwd: string): string {
+  return `## 작업 폴더\n\n${cwd}\n\n파일은 반드시 이 절대 경로를 붙여서 읽는다(예: ${cwd}\\src\\app.ts). 명령이 도는 현재 폴더는 이 폴더가 아닐 수 있다.`;
+}
+
 export function ensureCodexHome(home: string): void {
   mkdirSync(home, { recursive: true });
   const cfg = join(home, 'config.toml');
@@ -98,8 +103,9 @@ export class CodexBrain implements Brain {
     mkdirSync(runDir, { recursive: true });
     const files = { schema: join(runDir, 'schema.json'), lastMessage: join(runDir, 'last.json') };
     writeFileSync(files.schema, JSON.stringify(toStrictJsonSchema(schema)), 'utf8');
-    // Codex에는 시스템 프롬프트 옵션이 없어 역할 카드를 앞에 붙인다
-    const prompt = `${req.prompt.system}\n\n---\n\n${req.prompt.user}`;
+    // Codex에는 시스템 프롬프트 옵션이 없어 역할 카드를 앞에 붙인다.
+    // Windows 샌드박스에서는 -C 폴더가 아니라 C:\에서 명령이 돈다(0단계 #6). 작업 폴더를 절대 경로로 알려 준다.
+    const prompt = `${req.prompt.system}\n\n---\n\n${codexWorkdirNote(cwd)}\n\n${req.prompt.user}`;
 
     if (this.o.home) ensureCodexHome(this.o.home);
     const env = { ...(this.o.home ? { CODEX_HOME: this.o.home } : {}), ...this.o.extraEnv };
