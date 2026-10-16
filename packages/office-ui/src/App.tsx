@@ -59,6 +59,12 @@ export function App() {
   const [ticket, setTicket] = useState<string | null>(null);
   const [employee, setEmployee] = useState<string | null>(null);
   const [logFocus, setLogFocus] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(readPanelOpen);
+  const togglePanel = () =>
+    setPanelOpen((open) => {
+      writePanelOpen(!open);
+      return !open;
+    });
 
   useEffect(() => {
     if (snapshot) director.sync(snapshot);
@@ -193,9 +199,26 @@ export function App() {
           </div>
         </main>
       ) : (
-        <main className="ao-main">
+        <main className={`ao-main${panelOpen ? '' : ' ao-main--collapsed'}`}>
           <div className="ao-map-wrap">{map}</div>
-          <aside className="ao-panel">
+          {/* 오른쪽 패널 숨기기·열기. 숨기면 지도가 넓어진다. 고른 상태는 이 브라우저에만 남는다 */}
+          <div className="ao-panel-rail">
+            <button
+              type="button"
+              className="pt-icon-btn ao-panel-toggle"
+              aria-controls="ao-side"
+              aria-expanded={panelOpen}
+              aria-label={panelOpen ? '오른쪽 패널 숨기기' : `오른쪽 패널 열기${snapshot.approvals.length ? `, 결재 대기 ${snapshot.approvals.length}건` : ''}`}
+              title={panelOpen ? '패널 숨기기' : '패널 열기'}
+              onClick={togglePanel}
+            >
+              <span className="material-symbols-rounded" aria-hidden="true">
+                {panelOpen ? 'chevron_right' : 'chevron_left'}
+              </span>
+              {!panelOpen && snapshot.approvals.length > 0 && <span className="ao-panel-toggle__dot" aria-hidden="true" />}
+            </button>
+          </div>
+          <aside id="ao-side" className="ao-panel ao-side" inert={!panelOpen} aria-hidden={!panelOpen}>
             <UsageCard snapshot={snapshot} />
             {tabs}
             {panelBody}
@@ -237,6 +260,24 @@ export function App() {
       )}
     </div>
   );
+}
+
+const PANEL_KEY = 'ao-panel-open';
+
+function readPanelOpen(): boolean {
+  try {
+    return localStorage.getItem(PANEL_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function writePanelOpen(open: boolean) {
+  try {
+    localStorage.setItem(PANEL_KEY, open ? '1' : '0');
+  } catch {
+    /* 저장할 수 없는 브라우저면 이번 화면에서만 */
+  }
 }
 
 function nameMap(s: Snapshot) {
