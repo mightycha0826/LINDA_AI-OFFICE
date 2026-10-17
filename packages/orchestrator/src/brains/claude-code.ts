@@ -9,7 +9,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { devSettings, readonlySettings } from '../workspace/claude-settings.ts';
 import { assertInside } from '../workspace/paths.ts';
-import { BrainError, type Brain, type BrainRequest, type BrainResult } from './brain.ts';
+import { BrainError, type AccountUsage, type Brain, type BrainRequest, type BrainResult } from './brain.ts';
 import { classifyFailure, findResetTime, tail } from './classify.ts';
 import { extractJson, toJsonSchema } from './json-schema.ts';
 import { runProcess } from './process.ts';
@@ -45,6 +45,42 @@ export function claudeProfileFor(req: BrainRequest): ClaudeProfile {
   return b.budget === 'research' ? 'research' : 'dev-work';
 }
 
+/**
+ * stream-json 출력에서 최종 결과와 계정 사용률(rate_limit_event)을 꺼낸다.
+ * 줄 단위 JSON이 아니면(예전 json 출력) 통째로 결과로 본다.
+ */
+export function parseClaudeStream(stdout: string): { result: ClaudeJson | null; account: AccountUsage | null } {
+  let result: ClaudeJson | null = null;
+  let account: AccountUsage | null = null;
+  let sawLine = false;
+  for (const line of stdout.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t.startsWith('{')) continue;
+    let ev: Record<string, unknown>;
+    try {
+      ev = JSON.parse(t) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    sawLine = true;
+    if (ev.type === 'result') result = ev as ClaudeJson;
+    if (ev.type === 'rate_limit_event') {
+      const info = (ev.rate_limit_info ?? {}) as { status?: string; unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number }> };
+      const w = info.unifiedWindows ?? {};
+      const pct = (x?: { utilization?: number }) => (typeof x?.utilization === 'number' ? Math.round(x.utilization * 1000) / 10 : null);
+      const at = (x?: { resetsAt?: number }) => (typeof x?.resetsAt === 'number' ? new Date(x.resetsAt * 1000).toISOString() : null);
+      account = { provider: 'claude', fiveHourPct: pct(w.five_hour), weeklyPct: pct(w.seven_day), fiveHourResetsAt: at(w.five_hour), weeklyResetsAt: at(w.seven_day), status: info.status ?? null };
+    }
+  }
+  // 줄 단위 JSON이 하나도 없을 때만(여러 줄로 펼친 JSON 등) 통째로 읽는다.
+  // 줄은 있는데 result가 없으면 실패다. 다른 이벤트(system 등)를 결과로 착각하지 않는다.
+  if (!sawLine) {
+    const parsed = extractJson(stdout);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) result = parsed as ClaudeJson;
+  }
+  return { result, account };
+}
+
 interface ClaudeJson {
   is_error?: boolean;
   subtype?: string;
@@ -66,7 +102,9 @@ export class ClaudeCodeBrain implements Brain {
     return [
       ...this.o.binArgs,
       '-p',
-      '--output-format', 'json',
+      // stream-json이어야 계정 사용률(rate_limit_event)이 함께 온다 (0단계 #5)
+      '--output-format', 'stream-json',
+      '--verbose',
       '--json-schema', JSON.stringify(schema),
       '--tools', p.tools,
       '--permission-mode', p.permissionMode,
@@ -107,8 +145,7 @@ export class ClaudeCodeBrain implements Brain {
       if (r.timedOut) throw new BrainError('timeout', `Claude Code가 ${Math.round(this.o.timeoutMs / 60000)}분 안에 끝나지 않았어요`);
       if (r.spawnError) throw new BrainError('crash', `Claude Code를 실행하지 못했어요: ${r.spawnError}`);
 
-      const parsed = extractJson(r.stdout);
-      const json = parsed && typeof parsed === 'object' ? (parsed as ClaudeJson) : null;
+      const { result: json, account } = parseClaudeStream(r.stdout);
       if (!json || json.is_error || r.code !== 0) {
         const text = `${json?.result ?? ''}\n${json?.subtype ?? ''}\n${r.stderr}\n${json ? '' : r.stdout}`;
         const failure = classifyFailure(text);
@@ -120,8 +157,9 @@ export class ClaudeCodeBrain implements Brain {
         usage: {
           inputTokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0),
           outputTokens: u.output_tokens ?? 0,
-          // 토큰 수는 CLI가 알려준 값이지만 한도 %는 추정이다
+          // 토큰 수는 CLI가 알려준 값이지만 회사 몫 %는 추정이다. 계정 전체 %는 따로 실측으로 붙인다
           source: 'estimated',
+          ...(account ? { account } : {}),
         },
       };
     } finally {

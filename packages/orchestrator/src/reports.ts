@@ -2,7 +2,7 @@
 // 비서실장이 요약을 쓰고, 이 데이터는 /보고와 비서실장이 없을 때의 대체 보고에 그대로 쓴다.
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import type { Ctx } from './context.ts';
-import { isStopped } from './context.ts';
+import { getState, isStopped } from './context.ts';
 import { budgetStatus } from './core/budget.ts';
 import { approvals, retros, tickets, usage } from './db/schema.ts';
 
@@ -15,6 +15,8 @@ export interface ReportData {
   usage: { budget: string; fiveHour: number; fiveHourLimit: number | null; weekly: number; weeklyLimit: number | null; blockedUntil: string | null }[];
   estimated: boolean;
   stopped: boolean;
+  /** Claude 계정 전체 사용률(실측, 주인 개인 사용 포함) */
+  claudeAccount: { fiveHourPct: number | null; weeklyPct: number | null; at: string } | null;
   /** 하루 안에 쓴 주간 회고 (일요일 22:00 보고에 들어간다, 14장) */
   weeklyRetro: { week: string; summary: string; rejections: number; byCategory: Record<string, number>; ineffectiveRules: string[] } | null;
 }
@@ -45,6 +47,7 @@ export function buildReportData(c: Ctx, since: string): ReportData {
     }),
     estimated: recentUsage.some((u) => u.source === 'estimated'),
     stopped: isStopped(c),
+    claudeAccount: getState<{ fiveHourPct: number | null; weeklyPct: number | null; at: string } | null>(c, 'account.claude', null),
     weeklyRetro: latestWeeklyRetro(c),
   };
 }
@@ -74,6 +77,11 @@ export function formatReportData(d: ReportData): string {
     `**4. 사용량** ${d.estimated ? '(추정치)' : ''}`,
     list(d.usage, (u) => `${BUDGET_NAME[u.budget]}: 5시간 ${pct(u.fiveHour)}/${u.fiveHourLimit}% · 주간 ${pct(u.weekly)}/${u.weeklyLimit}%${u.blockedUntil ? ` · 제공자 한도 도달, ${u.blockedUntil}까지 막음` : ''}`),
   ];
+  if (d.claudeAccount) {
+    const a = d.claudeAccount;
+    const p = (n: number | null) => (n === null ? '?' : `${n}%`);
+    lines.push(`- Claude 계정 전체(개인 사용 포함, 실측): 5시간 ${p(a.fiveHourPct)} · 주간 ${p(a.weeklyPct)}`);
+  }
   if (anomalies.length || d.stopped) {
     lines.push('**5. 시스템 상태**', list([...(d.stopped ? ['/정지 중이에요'] : []), ...anomalies.map((p) => `${p.id} ${p.title}: ${PAUSE_NAME[p.reason] ?? p.reason}`)], (x) => x));
   }

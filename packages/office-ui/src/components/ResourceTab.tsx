@@ -21,6 +21,17 @@ export function ResourceTab({ snapshot, nowMs }: { snapshot: Snapshot; nowMs: nu
         <p className="ao-card__note">
           개인용 여유: 5시간 {pct(s.personalReserve.claudeFiveHour)}, 주간 {pct(s.personalReserve.claudeWeekly)}
         </p>
+        {s.account.claude && (
+          <>
+            <div className="ao-card__head">
+              <h3 className="ao-group__title">계정 전체 (개인 사용 포함)</h3>
+              <span className="pt-badge">실측</span>
+            </div>
+            {s.account.claude.fiveHourPct !== null && <Meter label="5시간" used={s.account.claude.fiveHourPct} limit={100} />}
+            {s.account.claude.weeklyPct !== null && <Meter label="주간" used={s.account.claude.weeklyPct} limit={100} />}
+            <p className="ao-card__note">{elapsed(s.account.claude.at, nowMs)} 전 Claude 호출 때 받은 값이에요</p>
+          </>
+        )}
       </section>
 
       <section className="ao-card">

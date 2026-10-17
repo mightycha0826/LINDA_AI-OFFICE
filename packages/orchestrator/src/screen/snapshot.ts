@@ -1,6 +1,6 @@
 // 사무실 화면 스냅샷 (12장 데이터 흐름 1). 화면을 열면 이것으로 현재 전체 상태를 받고, 그다음 SSE로 바뀐 것만 받는다.
 import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
-import type { Brain, ScreenEmployee, ScreenLogEntry, ScreenTicket, Snapshot } from '@ai-office/shared';
+import type { Brain, ScreenAccountUsage, ScreenEmployee, ScreenLogEntry, ScreenTicket, Snapshot } from '@ai-office/shared';
 import { getState, isStopped, type Ctx } from '../context.ts';
 import { budgetStatus } from '../core/budget.ts';
 import { approvals, employees, events, meetingMinutes, messages, tickets, usage } from '../db/schema.ts';
@@ -157,6 +157,7 @@ export function buildSnapshot(c: Ctx, extras: SnapshotExtras): Snapshot {
       lastModelSwitchAt: lastModel?.createdAt ?? null,
       gpu: extras.gpu,
       lastError: lastError ? `${lastError.createdAt.slice(11, 16)} ${lastError.content.slice(0, 120)}` : null,
+      account: { claude: getState<ScreenAccountUsage | null>(c, 'account.claude', null) },
       personalReserve: {
         claudeFiveHour: 100 - lim.claude.fiveHour.dev - lim.claude.fiveHour.research,
         claudeWeekly: 100 - lim.claude.weekly.dev - lim.claude.weekly.research,

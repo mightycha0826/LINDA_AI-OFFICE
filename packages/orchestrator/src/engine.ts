@@ -698,6 +698,7 @@ export class Engine {
         ...(refs.ticketId ? { ticketId: refs.ticketId } : {}),
       });
       if (refs.ticketId) recordTurn(this.c, refs.ticketId, tokens);
+      if (res.usage.account) setState(this.c, `account.${res.usage.account.provider}`, { ...res.usage.account, at: this.c.clock.now().toISOString() });
 
       const parsed = schema.safeParse(res.output);
       const problems = parsed.success ? ((opts.check as ((o: z.infer<S>) => string[]) | undefined)?.(parsed.data as z.infer<S>) ?? []) : [z.prettifyError(parsed.error)];

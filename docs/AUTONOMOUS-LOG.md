@@ -96,6 +96,28 @@
 1. 헤르메스 데이터 폴더를 `C:\ai-office\data\config.json`의 `hermes.homeDir`에 적는다(WSL에 설치했다면 `\\wsl$\<배포판>\home\<사용자>\.hermes` 같은 경로). 폴더 이름이 `memories`, `skills`가 아니면 `hermes.folders`도 고친다.
 2. 테스트용 Discord 서버에서 "규칙 추가 제안" 결재의 [승인] [수정] [반려]를 한 번 눌러 본다.
 
+## 0단계 실제 연결 (2026-10-16~17, 주인 주말 부재 중 일부 진행)
+
+| # | 결정 | 이유 | 바꾸려면 |
+| --- | --- | --- | --- |
+| AO | Claude 어댑터에 `--setting-sources project,local --strict-mcp-config --disable-slash-commands` | 주인의 플러그인·스킬·MCP가 딸려 와 작은 일에 캐시 185k토큰(분리 뒤 7k). 회사 AI가 주인 도구를 쓰지 않게 하는 보안 이유도 있음 | `brains/claude-code.ts` |
+| AP | Codex는 **회사 전용 CODEX_HOME**(`C:\ai-office\data\codex-home`, 플러그인·MCP·모델 지정 없음) | 주인 Codex 앱 설정이 `gpt-5.4`(ChatGPT 계정에서 거부)와 컴퓨터 사용·브라우저 플러그인을 켜 둠. 리뷰어가 물려받으면 안 됨 | `config.codex.home` |
+| AQ | `config.claude.model`, `config.codex.model` 추가, 기본은 비움(계정 기본) | Claude 기본이 Opus라 Pro 한도를 빨리 씀. 어느 모델을 쓸지는 주인이 정할 일 | `config.json` |
+| AR | Claude 출력을 `stream-json`으로 받아 `rate_limit_event`의 계정 5시간·주간 %를 저장, 자원 탭과 정기 보고에 "계정 전체(개인 사용 포함), 실측"으로 표시. 회사 몫 차단은 그대로 추정치로 | 계정 %에는 주인 개인 사용이 섞여 있어 회사 몫 계산에 바로 쓰면 회사 일이 너무 일찍 멈춤 | `brains/claude-code.ts`, `reports.ts` |
+| AS | Codex 프롬프트에 작업 폴더 절대 경로를 넣음 | Windows 샌드박스가 `-C`를 무시하고 `C:\`에서 명령을 돌림(#6에서 확인) | `brains/codex.ts` |
+
+- 0단계 결과: **#4·#5·#6·#8 통과**. #2·#3(모델·RAM)과 #10(SearXNG)은 디스크 부족으로 보류, #1·#7(헤르메스)·#9(약관)는 주인 확인.
+- 설치: Ollama, gitleaks(winget), pm2·Claude Code·Codex(npm). 처음 npm 설치는 Claude Code 앱의 샌드박스 안에만 들어가 주인 셸에서 안 보였다. 주인 셸(터미널 패널)에서 다시 설치했다.
+- 테스트 396개.
+
+### 0단계 주인이 할 일 (돌아와서)
+
+1. **C: 디스크를 60GB 이상 비우기** (지금 약 14GB). 그 뒤 모델 받기(`ollama pull qwen3:14b`, `ollama pull gemma4:12b`), Docker Desktop(SearXNG)은 그다음.
+2. **회사 전용 Codex 로그인**: PowerShell에서 `$env:CODEX_HOME = 'C:\ai-office\data\codex-home'` 다음 `codex login`. 그다음 #6을 회사 폴더로 한 번 더(`stage0\codex-readonly.ps1`, 모델 인자 없이).
+3. 어느 모델을 쓸지 정하기: Claude(`config.claude.model`, 비우면 Opus), Codex(`config.codex.model`, 비우면 계정 기본).
+4. #5 상태줄 확인(`claude --settings stage0\statusline-settings.json`)과 claude.ai 사용량 화면 % 비교.
+5. 헤르메스 설치와 #1·#7, #9 약관 확인. Tailscale 설치.
+
 ### 4단계 실제 연결 전에 주인이 할 일
 
 1. gitleaks 8.19 이상을 설치한다(`winget install gitleaks` 등). 없으면 고양이는 푸시하지 않는다.

@@ -78,7 +78,7 @@ describe('Claude Code 어댑터', () => {
 
     const [run] = readLog(logFile) as { argv: string[]; cwd: string; envKeys: string[]; stdin: string; settings: { permissions: { deny: string[] } }; systemPrompt: string; gitHelper: string[] }[];
     expect(run!.cwd.toLowerCase()).toBe(wt.toLowerCase());
-    expect(run!.argv).toEqual(expect.arrayContaining(['-p', '--output-format', 'json', '--permission-prompts', 'none', '--no-session-persistence']));
+    expect(run!.argv).toEqual(expect.arrayContaining(['-p', '--output-format', 'stream-json', '--verbose', '--permission-prompts', 'none', '--no-session-persistence']));
     expect(run!.argv[run!.argv.indexOf('--tools') + 1]).toBe('Bash,Read,Edit,Write,Glob,Grep');
     expect(run!.settings.permissions.deny).toEqual(expect.arrayContaining(['Bash(git push)', 'Bash(git push *)', 'Bash(gh *)', 'Edit(.claude/**)']));
     expect(run!.settings.permissions.deny).toEqual([...CLAUDE_DENY]);

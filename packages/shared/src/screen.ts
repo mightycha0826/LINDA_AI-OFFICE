@@ -64,6 +64,16 @@ export interface ScreenLogEntry {
   minutes: boolean;
 }
 
+/** 제공자가 알려 준 계정 전체 사용률(주인 개인 사용 포함, 실측). 마지막 호출 때 값 */
+export interface ScreenAccountUsage {
+  fiveHourPct: number | null;
+  weeklyPct: number | null;
+  fiveHourResetsAt: string | null;
+  weeklyResetsAt: string | null;
+  status: string | null;
+  at: string;
+}
+
 export interface ScreenSystem {
   startedAt: string;
   stopped: boolean;
@@ -73,6 +83,8 @@ export interface ScreenSystem {
   lastModelSwitchAt: string | null;
   gpu: { usedMB: number; totalMB: number } | null;
   lastError: string | null;
+  /** 계정 전체 사용률(실측). Claude는 stream-json의 rate_limit_event (0단계 #5) */
+  account: { claude: ScreenAccountUsage | null };
   /** 개인용 여유 = 100 - 회사 몫 (8장) */
   personalReserve: { claudeFiveHour: number; claudeWeekly: number; gptFiveHour: number; gptWeekly: number };
 }

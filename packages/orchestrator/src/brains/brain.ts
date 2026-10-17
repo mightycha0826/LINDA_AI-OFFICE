@@ -40,6 +40,22 @@ export interface BrainUsage {
   /** 한도 대비 %. 어댑터가 모르면 비워 두고 오케스트레이터가 토큰으로 추정한다 */
   estimatedPct?: number;
   estimatedWeeklyPct?: number;
+  /**
+   * 제공자가 알려 준 계정 전체 사용률(주인 개인 사용 포함). Claude stream-json의 rate_limit_event (0단계 #5).
+   * 회사 몫 계산에는 쓰지 않고, 화면과 보고에 "실측"으로 보여준다.
+   */
+  account?: AccountUsage;
+}
+
+export interface AccountUsage {
+  provider: 'claude' | 'gpt';
+  /** 0~100 */
+  fiveHourPct: number | null;
+  weeklyPct: number | null;
+  fiveHourResetsAt: string | null;
+  weeklyResetsAt: string | null;
+  /** allowed, allowed_warning, rejected … */
+  status: string | null;
 }
 
 export interface BrainResult {
