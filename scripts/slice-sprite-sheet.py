@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # 이미지 생성 AI가 만든 스프라이트 시트를 13장 규격 PNG로 자른다.
-#   python scripts/slice-sprite-sheet.py <시트 이미지> <캐릭터 ID>
+#   python scripts/slice-sprite-sheet.py <시트 이미지> <캐릭터 ID>            옆모습(오른쪽) 시트
+#   python scripts/slice-sprite-sheet.py <시트 이미지> <캐릭터 ID> --front    정면 시트 → <동작>-front.png
+# 정면 시트는 줄 순서가 같고, walking·carrying은 화면 쪽(아래)으로 걸어오는 모습. 기존 manifest에 합친다.
 # 시트: 흰 배경, 위에서부터 idle 2, typing 2, walking 6, carrying 6, meeting 2, blocked 2, paused 1 (줄마다 왼쪽부터).
 # 칸 크기가 정확하지 않아도 된다: 그림 덩어리를 찾아 자르고, 흰 배경을 지우고,
 # 모든 프레임을 같은 배율로 줄여 발(가장 아래 픽셀)을 y 120, 머리 중심을 동작마다 같은 x에 맞춘다.
@@ -80,6 +82,7 @@ def cut_background(rgba):
 
 def main():
     src, char_id = Path(sys.argv[1]), sys.argv[2]
+    suffix = '-front' if '--front' in sys.argv[3:] else ''
     sheet = np.array(Image.open(src).convert('RGBA'))
     rgb = sheet[..., :3].astype(np.int16)
     ink = (rgb.min(axis=2) < WHITE - 6) & (sheet[..., 3] > 16)
@@ -113,7 +116,10 @@ def main():
     scale = MAX_H / max(f.shape[0] for fs in frames.values() for f in fs)
     out_dir = Path(__file__).resolve().parent.parent / 'assets' / 'characters' / char_id
     out_dir.mkdir(parents=True, exist_ok=True)
+    mpath = out_dir / 'manifest.json'
     manifest = {'id': char_id, 'frame': {'width': F, 'height': F}, 'anchor': {'x': ANCHOR_X, 'y': ANCHOR_Y}, 'poses': {}}
+    if mpath.exists():
+        manifest['poses'] = json.loads(mpath.read_text(encoding='utf-8')).get('poses', {})
 
     for name, count, fps, loop in POSES:
         small = []
@@ -134,10 +140,11 @@ def main():
             y = ANCHOR_Y - im.height
             x = min(max(x, i * F), i * F + F - im.width)  # 칸 밖으로 나가지 않게
             strip.alpha_composite(im, (x, max(y, 0)))
-        strip.save(out_dir / f'{name}.png')
-        manifest['poses'][name] = {'file': f'{name}.png', 'frames': count, 'fps': fps, 'loop': loop}
+        key = name + suffix
+        strip.save(out_dir / f'{key}.png')
+        manifest['poses'][key] = {'file': f'{key}.png', 'frames': count, 'fps': fps, 'loop': loop}
 
-    (out_dir / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+    mpath.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     print(f'배율 {scale:.3f}, {out_dir}')
 
 

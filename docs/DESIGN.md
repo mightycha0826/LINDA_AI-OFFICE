@@ -1161,6 +1161,7 @@ assets/characters/
 - 불러올 때 Zod로 manifest를 검사한다. 빠진 동작이 있으면 `idle`로 대신 재생해서, 그림이 덜 준비돼도 화면이 깨지지 않게 한다.
 - 재생: CSS 배경 이미지를 `steps()`로 프레임 단위로 넘긴다. 직원이 10명 안팎이라 충분히 가볍다.
 - 왼쪽을 볼 때는 `scaleX(-1)`.
+- (2026-10-18 추가, CEO 요청) 정면 그림은 선택이다. `<동작>-front.png`(manifest 키 `<동작>-front`)가 있으면 멈춰 있을 때와 아래로 걸을 때 정면을 쓰고, 없으면 오른쪽 그림으로 대신한다. 정면 `walking-front`·`carrying-front`는 화면 쪽으로 걸어오는 모습. 그림 요청 프롬프트는 `docs/CHARACTER-PROMPTS.md`.
 - 캐릭터 컴포넌트 입력:
 
 ```ts

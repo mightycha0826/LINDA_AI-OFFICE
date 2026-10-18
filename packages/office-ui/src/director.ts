@@ -8,6 +8,8 @@ import type { LiveEvent } from './data.ts';
 import { CEO_DESK, ENTRANCE, MAILBOX, MEETING_CHAIRS, deskOf, distance, pathBetween, type Point } from './map.ts';
 
 export type Pose = 'idle' | 'typing' | 'walking' | 'carrying' | 'meeting' | 'blocked' | 'paused';
+/** front: 정면(멈춰 있을 때, 아래로 걸을 때). 정면 그림이 없는 세트는 오른쪽 그림으로 대신한다 */
+export type Facing = 'left' | 'right' | 'front';
 
 export interface CharacterState {
   id: string;
@@ -15,7 +17,7 @@ export interface CharacterState {
   /** 이번 걸음에 걸리는 시간 (초). 0이면 바로 */
   moveSec: number;
   pose: Pose;
-  facing: 'left' | 'right';
+  facing: Facing;
   visible: boolean;
   carrying: string | null;
   bubble: { text: string; ticketId: string | null; until: number } | null;
@@ -34,6 +36,15 @@ const SPEED = 3.2; // 칸/초
 const STALE_MS = 30_000;
 const BUBBLE_MS = 4_000;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** 걷는 방향: 옆으로 가면 왼쪽/오른쪽, 아래로(화면 쪽으로) 가면 정면, 위로 가면 하던 옆 방향 */
+export function walkFacing(from: Point, to: Point, prev: Facing): Facing {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) >= Math.abs(dy) && Math.abs(dx) > 0.01) return dx < 0 ? 'left' : 'right';
+  if (dy > 0.01) return 'front';
+  return prev === 'front' ? 'right' : prev;
+}
 
 export function poseFor(status: DerivedStatus): Pose {
   switch (status) {
@@ -111,7 +122,7 @@ export class Director {
           pos: e.leftAt ? ENTRANCE : this.home(e.id),
           moveSec: 0,
           pose: poseFor(status),
-          facing: 'right',
+          facing: 'front',
           visible: !e.leftAt,
           carrying: null,
           bubble: null,
@@ -160,17 +171,17 @@ export class Director {
         const c = this.chars.get(id);
         if (!c) return;
         if (this.reducedMotion) {
-          this.patch(id, { pos: to, moveSec: 0, carrying, ...(endPose ? { pose: endPose } : {}) });
+          this.patch(id, { pos: to, moveSec: 0, carrying, facing: 'front', ...(endPose ? { pose: endPose } : {}) });
           return;
         }
         for (const pt of pathBetween(c.pos, to)) {
           const cur = this.chars.get(id)!;
           const sec = distance(cur.pos, pt) / SPEED;
           if (sec < 0.01) continue;
-          this.patch(id, { pos: pt, moveSec: sec, pose: carrying ? 'carrying' : 'walking', carrying, facing: pt.x < cur.pos.x ? 'left' : pt.x > cur.pos.x ? 'right' : cur.facing });
+          this.patch(id, { pos: pt, moveSec: sec, pose: carrying ? 'carrying' : 'walking', carrying, facing: walkFacing(cur.pos, pt, cur.facing) });
           await sleep(sec * 1000);
         }
-        this.patch(id, { moveSec: 0, carrying, ...(endPose ? { pose: endPose } : {}) });
+        this.patch(id, { moveSec: 0, carrying, facing: 'front', ...(endPose ? { pose: endPose } : {}) });
       },
     ];
   }
