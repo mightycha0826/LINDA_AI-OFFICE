@@ -22,9 +22,8 @@ const POSES = {
 };
 
 // 세트마다 한 가지 색 (단색 임시 그림). 사람은 둥근 몸, 고양이는 고양이 모양.
-// 진짜 그림이 들어온 세트는 여기서 뺀다(덮어쓰지 않게). chief-of-staff: scripts/slice-sprite-sheet.py
+// 진짜 그림이 들어온 세트는 여기서 뺀다(덮어쓰지 않게). chief-of-staff, pm: scripts/slice-sprite-sheet.py
 const SETS = {
-  pm: [86, 120, 170],
   developer: [60, 90, 200],
   reviewer: [120, 84, 60],
   marketing: [214, 120, 40],
