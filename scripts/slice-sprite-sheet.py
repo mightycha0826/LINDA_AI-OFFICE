@@ -115,6 +115,12 @@ def main():
 
     scale = MAX_H / max(f.shape[0] for fs in frames.values() for f in fs)
     out_dir = Path(__file__).resolve().parent.parent / 'assets' / 'characters' / char_id
+    side_idle = out_dir / 'idle.png'
+    if suffix and side_idle.exists():
+        # 정면은 옆모습 idle과 키가 같게 (시트마다 그린 크기가 달라도 화면에서 같은 사람으로 보이게)
+        a = np.array(Image.open(side_idle))[:, :F, 3] > 24
+        ys = np.nonzero(a)[0]
+        scale = min((ys.max() - ys.min() + 1) / frames['idle'][0].shape[0], scale * (ANCHOR_Y - 2) / MAX_H)
     out_dir.mkdir(parents=True, exist_ok=True)
     mpath = out_dir / 'manifest.json'
     manifest = {'id': char_id, 'frame': {'width': F, 'height': F}, 'anchor': {'x': ANCHOR_X, 'y': ANCHOR_Y}, 'poses': {}}
