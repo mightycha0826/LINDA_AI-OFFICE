@@ -421,6 +421,13 @@ body {
   filter: grayscale(1);
   opacity: 0.6;
 }
+/* 어두운 화면에서 검은 머리·옷 캐릭터가 묻히지 않게 얇은 밝은 테두리 */
+[data-theme='dark'] .ao-sprite {
+  filter: drop-shadow(0 0 1px var(--ink-muted));
+}
+[data-theme='dark'] .ao-sprite--paused {
+  filter: grayscale(1) drop-shadow(0 0 1px var(--ink-muted));
+}
 @keyframes ao-sprite {
   from {
     background-position-x: 0%;
