@@ -4,7 +4,7 @@
 #   python scripts/slice-sprite-sheet.py <시트> <캐릭터 ID>            옆모습(오른쪽)만 있는 시트
 #   python scripts/slice-sprite-sheet.py <시트> <캐릭터 ID> --front    정면만 있는 시트 → <동작>-front.png (옆모습 idle 키에 맞춤)
 # 시트 줄 순서: idle 2, typing 2, walking 6, carrying 6, meeting 2, blocked 2, paused 1 (줄마다 왼쪽부터).
-# --both 는 한 줄에 옆모습 프레임들 다음에 정면 프레임들이 이어진다 (정면 walking·carrying은 화면 쪽으로 걸어옴).
+# --both 는 시트 왼쪽 절반이 옆모습, 오른쪽 절반이 정면 (정면 walking·carrying은 화면 쪽으로 걸어옴).
 # 칸 크기가 정확하지 않아도 된다: 그림 덩어리를 찾아 자르고, 배경(투명, 흰색, 가짜 투명 체크무늬)을 지우고,
 # 모든 프레임을 같은 배율로 줄여 발(가장 아래 픽셀)을 y 120, 머리 중심을 동작마다 같은 x에 맞춘다. 기존 manifest에 합친다.
 # 필요한 것: Pillow, numpy, scipy.
@@ -109,32 +109,42 @@ def cut_background(rgba, pal):
     return out
 
 
-def find_frames(sheet, per_row):
-    """줄마다 per_row[i]개의 그림 덩어리를 잘라 배경을 지운 RGBA 목록으로."""
+def find_frames(sheet, per_row, halves=False):
+    """줄마다 그림 덩어리를 잘라 배경을 지운 RGBA 목록으로. halves면 줄마다 [왼쪽 절반, 오른쪽 절반] 두 묶음.
+    덩어리가 기대보다 적으면 붙은 곳을 나누고, 많으면 찾은 대로 쓴다 (걷기 7프레임 같은 경우. manifest 프레임 수도 따라감)."""
     pal = bg_palette(sheet)
     ink = ndimage.binary_opening(~bg_like(sheet, pal), iterations=1)  # 점 같은 잡티 제거
     rp = ink.sum(axis=1)
     rows = split_to(rp, [r for r in gaps(rp, 1) if r[1] - r[0] > 40], len(per_row), 80)
     if len(rows) != len(per_row):
         sys.exit(f'줄을 {len(rows)}개 찾았어요. {len(per_row)}개여야 해요: {rows}')
+    mid = sheet.shape[1] // 2
     out = []
     for (name, _, _, _), want, (y0, y1) in zip(POSES, per_row, rows):
         cp = ink[y0:y1].sum(axis=0)
-        cols = split_to(cp, [c for c in gaps(cp, 4) if c[1] - c[0] > 30], want, 40)
-        if len(cols) != want:
-            sys.exit(f'{name}: 프레임 {len(cols)}개를 찾았어요. {want}개여야 해요: {cols}')
+        spans = [c for c in gaps(cp, 4) if c[1] - c[0] > 30]
+        groups = [[c for c in spans if (c[0] + c[1]) / 2 < mid], [c for c in spans if (c[0] + c[1]) / 2 >= mid]] if halves else [spans]
         row = []
-        for x0, x1 in cols:
-            pad = 6
-            cut = cut_background(sheet[y0:y1, max(x0 - pad, 0):x1 + pad], pal)
-            # 옆 줄 머리카락 끝 같은 작은 조각은 버린다
-            labels, n = ndimage.label(ndimage.binary_dilation(cut[..., 3] > 24, iterations=2))
-            if n > 1:
-                sizes = ndimage.sum(np.ones_like(labels), labels, range(1, n + 1))
-                keep = np.isin(labels, 1 + np.nonzero(sizes >= sizes.max() * 0.03)[0])
-                cut[..., 3] = np.where(keep, cut[..., 3], 0)
-            ys, xs = np.nonzero(cut[..., 3] > 24)
-            row.append(cut[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+        for gi, cols in enumerate(groups):
+            label = name + ('-front' if gi == 1 else '')
+            cols = split_to(cp, cols, want, 40)
+            if not cols:
+                sys.exit(f'{label}: 그림을 못 찾았어요')
+            if len(cols) != want:
+                print(f'  알림: {label} 프레임 {len(cols)}개 (규격 {want}개). 찾은 대로 써요')
+            frames = []
+            for x0, x1 in cols:
+                pad = 6
+                cut = cut_background(sheet[y0:y1, max(x0 - pad, 0):x1 + pad], pal)
+                # 옆 줄 머리카락 끝 같은 작은 조각은 버린다
+                labels, n = ndimage.label(ndimage.binary_dilation(cut[..., 3] > 24, iterations=2))
+                if n > 1:
+                    sizes = ndimage.sum(np.ones_like(labels), labels, range(1, n + 1))
+                    keep = np.isin(labels, 1 + np.nonzero(sizes >= sizes.max() * 0.03)[0])
+                    cut[..., 3] = np.where(keep, cut[..., 3], 0)
+                ys, xs = np.nonzero(cut[..., 3] > 24)
+                frames.append(cut[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+            row.append(frames)
         out.append(row)
     return out
 
@@ -162,16 +172,15 @@ def main():
     src, char_id = Path(sys.argv[1]), sys.argv[2]
     mode = 'both' if '--both' in sys.argv[3:] else 'front' if '--front' in sys.argv[3:] else 'side'
     sheet = np.array(Image.open(src).convert('RGBA'))
-    k = 2 if mode == 'both' else 1
-    rows = find_frames(sheet, [count * k for _, count, _, _ in POSES])
+    rows = find_frames(sheet, [count for _, count, _, _ in POSES], halves=mode == 'both')
 
-    # 출력할 동작: (manifest 키, 프레임들, 동작 정보)
+    # 출력할 동작: (manifest 키, 프레임들, 동작 정보). --both 는 왼쪽 절반이 옆모습, 오른쪽 절반이 정면
     outs = []
-    for (name, count, fps, loop), row in zip(POSES, rows):
+    for (name, _, fps, loop), row in zip(POSES, rows):
         if mode == 'both':
-            outs += [(name, row[:count], fps, loop), (f'{name}-front', row[count:], fps, loop)]
+            outs += [(name, row[0], fps, loop), (f'{name}-front', row[1], fps, loop)]
         else:
-            outs.append((name + ('-front' if mode == 'front' else ''), row, fps, loop))
+            outs.append((name + ('-front' if mode == 'front' else ''), row[0], fps, loop))
 
     scale = MAX_H / max(f.shape[0] for _, fs, _, _ in outs for f in fs)
     out_dir = Path(__file__).resolve().parent.parent / 'assets' / 'characters' / char_id
@@ -179,7 +188,7 @@ def main():
     if mode == 'front' and side_idle.exists():
         # 정면은 옆모습 idle과 키가 같게 (시트마다 그린 크기가 달라도 화면에서 같은 사람으로 보이게)
         ys = np.nonzero(np.array(Image.open(side_idle))[:, :F, 3] > 24)[0]
-        scale = min((ys.max() - ys.min() + 1) / rows[0][0].shape[0], scale * (ANCHOR_Y - 2) / MAX_H)
+        scale = min((ys.max() - ys.min() + 1) / rows[0][0][0].shape[0], scale * (ANCHOR_Y - 2) / MAX_H)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     mpath = out_dir / 'manifest.json'
