@@ -3,12 +3,12 @@
 //   휴대폰 알림 없이(@silent) 올리고, 다음 점검 시각에 멘션 한 번으로 묶어 알린다 (3단계 결정 B).
 // - 완료는 조용히 기록(멘션 없음). 예산 상한 근접·초과, 시스템 이상은 즉시 알림 대상.
 // - 시간당 즉시 알림(멘션) 수에 상한을 둔다 (폭주 방지).
-import { eq, gt } from 'drizzle-orm';
+import { eq, gt, like } from 'drizzle-orm';
 import { getState, inTx, setState, type Ctx } from '../context.ts';
 import { budgetStatus } from '../core/budget.ts';
-import { approvals, events, meetingMinutes, plans, tickets } from '../db/schema.ts';
+import { approvals, events, meetingMinutes, orders, plans, systemState, tickets } from '../db/schema.ts';
 import { approvalLink } from '../reports.ts';
-import { approvalMessageFor, blockedMessage, decidedMessage } from './messages.ts';
+import { approvalMessageFor, blockedMessage, blockedPlanMessage, decidedMessage } from './messages.ts';
 import { isCeoPresent } from './presence.ts';
 import { isInCheckWindow } from './schedule.ts';
 import type { ChannelKey, DiscordPort } from './types.ts';
@@ -17,6 +17,8 @@ const CURSOR = 'discord.cursor';
 const HELD = 'discord.held';
 const MENTIONS = 'discord.mentions';
 const NEAR = 'discord.nearLimit';
+/** #막힘에 이미 올린 "계획 작성 멈춤" 지시 */
+const PLAN_NOTICED = 'discord.planBlockedNoticed';
 
 interface Held {
   kind: 'approval' | 'blocked' | 'alert';
@@ -89,8 +91,44 @@ export class Notifier {
       }
       setState(c, CURSOR, ev.seq);
     }
+    posts += await this.checkBlockedPlans();
     posts += await this.checkNearLimits();
     posts += await this.flushHeld();
+    return posts;
+  }
+
+  /**
+   * 계획 작성이 멈춘 지시를 #막힘에 [다시 시도][취소]와 함께 한 번 올린다.
+   * 이벤트가 아니라 멈춤 상태를 직접 보므로, 이 기능이 생기기 전에 멈춘 지시도 올라간다.
+   * 다시 시도·취소로 풀리면 목록에서 빠지고, 또 멈추면 다시 올린다.
+   */
+  private async checkBlockedPlans(): Promise<number> {
+    const c = this.c;
+    // 멈출 때마다 '지시@멈춘 시각'으로 구분한다(예전 값은 글자만 있어 'legacy')
+    const blocked = c.db
+      .select()
+      .from(systemState)
+      .where(like(systemState.key, 'planBlocked:%'))
+      .all()
+      .map((r) => {
+        const v = r.value as string | { issues: string; at: string };
+        const orderId = r.key.slice('planBlocked:'.length);
+        const { issues, at } = typeof v === 'string' ? { issues: v, at: 'legacy' } : v;
+        return { orderId, issues, mark: `${orderId}@${at}` };
+      });
+    const live = new Set(blocked.map((b) => b.mark));
+    const noticed = getState<string[]>(c, PLAN_NOTICED, []).filter((m) => live.has(m));
+    let posts = 0;
+    for (const b of blocked) {
+      if (noticed.includes(b.mark)) continue;
+      const order = c.db.select().from(orders).where(eq(orders.id, b.orderId)).get();
+      if (!order || order.status !== 'planning') continue;
+      await this.sendImmediate('blocked', blockedPlanMessage(order, b.issues), { kind: 'blocked', text: `${order.id} 계획 작성 멈춤` });
+      noticed.push(b.mark);
+      setState(c, PLAN_NOTICED, noticed); // 올릴 때마다 남긴다(중간에 실패해도 두 번 올리지 않게)
+      posts++;
+    }
+    setState(c, PLAN_NOTICED, noticed);
     return posts;
   }
 

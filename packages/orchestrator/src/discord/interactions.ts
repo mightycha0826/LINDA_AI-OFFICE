@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import type { Ctx } from '../context.ts';
 import { pendingApprovals, requestApproval, type ApprovalDecision } from '../core/approvals.ts';
 import { budgetStatus } from '../core/budget.ts';
-import { approvals, messages, plans, tickets } from '../db/schema.ts';
+import { approvals, messages, orders, plans, tickets } from '../db/schema.ts';
 import type { Engine } from '../engine.ts';
 import { AlreadyDecidedError, OfficeError, StaleApprovalError } from '../errors.ts';
 import { buildReportData, formatReportData } from '../reports.ts';
@@ -77,6 +77,19 @@ export class InteractionHandler {
       }
       this.engine.ceoTicketAction(target, this.c.config.ceoDiscordId, action === 'retry' ? 'retry' : 'cancel');
       return { kind: 'update', content: `${this.ticketLine(target)}\n\n**${action === 'retry' ? '다시 시도해요' : '취소했어요'}**`, buttons: [] };
+    }
+    if (kind === 'pb') {
+      // 계획 작성 멈춤 (#막힘): [다시 시도] [취소]
+      const order = this.c.db.select().from(orders).where(eq(orders.id, target)).get();
+      if (!order) return { kind: 'reply', content: `${target} 지시를 찾지 못했어요`, ephemeral: true };
+      if (order.status !== 'planning') return { kind: 'update', content: `**${order.id}**는 이미 계획 단계가 아니에요(${order.status})`, buttons: [] };
+      const head = `**계획 작성 멈춤 · ${order.projectId ? `[${order.projectId}] ` : ''}${order.id}**\n> ${order.rawText.slice(0, 200)}`;
+      if (action === 'cancel') {
+        this.engine.cancelBlockedOrder(order.id, this.c.config.ceoDiscordId);
+        return { kind: 'update', content: `${head}\n\n**취소했어요**`, buttons: [] };
+      }
+      this.engine.retryPlanning(order.id, this.c.config.ceoDiscordId);
+      return { kind: 'update', content: `${head}\n\n**다시 시도해요** · PM이 계획서를 다시 써요. 결과는 결재함이나 여기에 올라와요`, buttons: [] };
     }
     if (kind === 'push') {
       const a = this.approval(target);

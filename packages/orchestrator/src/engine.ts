@@ -28,7 +28,7 @@ import { agendaFromLastReview, concludeMeeting, saveMinutes, type RoundPositions
 import { registerOrder } from './core/orders.ts';
 import { checkPlanRules, createPlanVersion, GATE_REVIEWER_ID, latestPlan, recordGateResult, setDesignCombo, startGateReview, type PlanRow } from './core/plans.ts';
 import { designComboTable } from './staff/design-combos.ts';
-import { dismissTemp, hireTemp, needsDesignCombo } from './staff/temp-staff.ts';
+import { dismissAllTemps, dismissTemp, hireTemp, needsDesignCombo } from './staff/temp-staff.ts';
 import { claimLinks, createWeb, type Web } from './web/research.ts';
 import { CommitDraftSchema, type CommitDraft, type CommitTicketInfo } from './gitcat/commit-message.ts';
 import { resumeAll, stopAll } from './core/stop.ts';
@@ -114,6 +114,21 @@ export class Engine {
   retryPlanning(orderId: string, discordUserId: string): void {
     if (discordUserId !== this.c.config.ceoDiscordId) throw new NotCeoError();
     clearState(this.c, planBlockedKey(orderId));
+  }
+
+  /** 계획 작성이 멈춘 지시를 CEO가 취소한다(#막힘 [취소]). 아직 계획 단계인 지시만. */
+  cancelBlockedOrder(orderId: string, discordUserId: string): void {
+    if (discordUserId !== this.c.config.ceoDiscordId) throw new NotCeoError();
+    inTx(this.c, (t) => {
+      const order = t.db.select().from(orders).where(eq(orders.id, orderId)).get();
+      if (!order) throw new NotFoundError(`지시 ${orderId}`);
+      if (order.status !== 'planning') throw new OfficeError('order-closed', `${orderId}는 이미 계획 단계가 아니라 취소할 수 없어요(${order.status})`);
+      t.db.update(orders).set({ status: 'cancelled' }).where(eq(orders.id, orderId)).run();
+      clearState(t, planBlockedKey(orderId));
+      recordMessage(t, { orderId, fromId: 'orchestrator', kind: 'system', content: 'CEO가 계획 작성이 멈춘 지시를 취소함' });
+      emit(t, 'plan.status', { orderId, status: 'cancelled' });
+    });
+    dismissAllTemps(this.c, orderId);
   }
 
   /** /정지: 진행 중인 AI 호출(자식 프로세스 포함)을 끊고 모든 티켓을 멈춘다. */
@@ -249,7 +264,7 @@ export class Engine {
 
   private async advancePlanning(orderId: string): Promise<boolean> {
     const c = this.c;
-    if (getState<string | null>(c, planBlockedKey(orderId), null)) return false; // 형식 오류로 멈춤. CEO가 다시 시도해야 한다
+    if (getState<unknown>(c, planBlockedKey(orderId), null)) return false; // 형식 오류로 멈춤. CEO가 다시 시도해야 한다
     const plan = latestPlan(c, orderId);
     try {
       if (plan?.status === 'draft') {
@@ -298,7 +313,8 @@ export class Engine {
       if (err instanceof FormatError || err instanceof BrainError) {
         const issues = err instanceof FormatError ? err.issues : err.message;
         inTx(c, (t) => {
-          setState(t, planBlockedKey(orderId), issues);
+          // at: 멈춘 시각. 다시 시도 뒤 또 멈추면 #막힘에 새로 알리는 기준이 된다
+          setState(t, planBlockedKey(orderId), { issues, at: t.clock.now().toISOString() });
           recordMessage(t, { orderId, fromId: 'orchestrator', kind: 'system', content: `계획 작성을 멈춤(다시 시도 필요): ${issues}` });
           emit(t, 'plan.status', { orderId, status: 'format-error' });
         });

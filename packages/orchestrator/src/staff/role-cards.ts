@@ -1,8 +1,10 @@
 // 역할 카드 (DESIGN.md 2장, 6장 공통 입력). 다섯 부분으로 만든다.
 // 1. 정체성 2. 하는 일과 하면 안 되는 일 3. 출력 JSON 형식 4. 회사 공통 규칙 5. 회고 규칙(범위가 맞는 승인된 것만, 최대 10개)
 import type { z } from 'zod';
-import type { EmployeeRole, TicketType } from '@ai-office/shared';
+import { brainModel, type EmployeeRole, type TicketType } from '@ai-office/shared';
 import type { Ctx } from '../context.ts';
+import { reviewerCandidates } from '../core/plans.ts';
+import { employees } from '../db/schema.ts';
 import type { EmployeeRow } from '../core/budget.ts';
 import { activeRuleRows } from '../retro/rules.ts';
 import { toJsonSchema } from '../brains/json-schema.ts';
@@ -26,7 +28,7 @@ const DUTIES: Record<EmployeeRole, Duties> = {
     does: [
       '지시를 분류하고 계획서를 쓴다. 티켓은 최대 6개',
       '완료 조건은 확인할 수 있는 문장으로 쓴다. 코딩은 "○○ 테스트 통과", 문서는 "△△ 항목 포함"',
-      '검토자는 담당자와 다른 모델의 직원으로 배정한다',
+      '검토자는 담당자와 다른 모델의 직원으로 배정한다. 아래 6번 표에서 고른다(예: 같은 qwen3:14b인 marketing과 pm은 서로 검토할 수 없다)',
       '코딩 티켓이 있으면 등록된 프로젝트 중 하나를 projectId로 고른다',
       '모호한 점은 questions에 담는다',
     ],
@@ -128,5 +130,13 @@ export function roleCard(c: Ctx, e: EmployeeRow, task: BrainTask, schema: z.ZodT
     list(COMPANY_RULES),
     `## 5. 회고 규칙 (${retro.length}/${MAX_RULES_PER_CARD})`,
     list(retro),
+    // PM이 같은 모델 검토자를 거듭 골라 계획이 멈췄다(2026-10-19). 고를 수 있는 짝을 표로 준다
+    ...(e.role === 'pm' && task === 'plan' ? ['## 6. 검토자 고르기 (담당자와 다른 모델만)', list(reviewerTable(c))] : []),
   ].join('\n\n');
+}
+
+/** PM 계획서용: 담당자마다 검토할 수 있는 직원. 같은 모델끼리는 서로 검토할 수 없다 (6장 PM) */
+function reviewerTable(c: Ctx): string[] {
+  const staff = c.db.select().from(employees).all().filter((x) => !x.isTemporary && x.brain.provider !== 'none');
+  return staff.map((a) => `${a.id}(${brainModel(a.brain)}) 담당 → 검토: ${reviewerCandidates(staff, a).map((r) => r.id).join(', ') || '없음'}`);
 }

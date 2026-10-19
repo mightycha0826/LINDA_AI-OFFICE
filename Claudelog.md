@@ -1,6 +1,6 @@
 # Claudelog: AI 사무실 인수인계
 
-다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-19 20:40 KST**.
+다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-19 21:40 KST**.
 저장소는 **공개**다(https://github.com/mightycha0826/LINDA_AI-OFFICE). 토큰, 비밀번호, Discord ID는 여기 적지 않는다(`C:\ai-office\data`에 있다).
 
 ## 0. 먼저 읽을 것
@@ -52,7 +52,7 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5, qwen3:14b·gemma4:12b. C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 433개 통과, typecheck·lint:ds 깨끗하다.
+- **테스트**: `npm test` 440개 통과, typecheck·lint:ds 깨끗하다.
 - **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 그 뒤 커밋(64K 원인, 0단계 결과, 메시지 ID 기록)은 로컬에만 있다.
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
@@ -66,6 +66,7 @@
 | --- | --- | --- |
 | 비서실장 두뇌 Qwen3-14B → **Gemma 4 12B** (CEO 승인) | 헤르메스는 문맥 64K 미만을 거부한다. Qwen은 40,960이 한계이고 CPU로 35% 밀린다. Gemma는 64K에서 100% GPU, 66 tok/s | DESIGN 2·6·16·18장, `seed.ts` |
 | 헤르메스 모델을 `gemma4:12b-64k` 태그로, `SOUL.md` 한국어화 | 비서실장이 영어로 답하고 skills_list만 반복했다. Ollama `/v1`이 `ollama_num_ctx`를 무시해 4096으로 떠서 입력이 2,051토큰에서 잘렸다(`ollama ps`로 확인). `SOUL.md`도 기본 영어 문구였다 | DESIGN 6장, HERMES-SETUP |
+| 계획 작성 멈춤을 #막힘에 [다시 시도][취소]로 알림, PM 검토자 표 | O-2(포트폴리오)가 PM의 같은 모델 검토자 실수로 멈췄는데 **알림도 다시 시도할 길도 없었다**(retryPlanning을 부르는 곳이 없었음). 멈춘 시각으로 구분해 한 번씩 알리고, PM 역할 카드에 담당자별 검토 가능 직원 표, 위반 안내에 후보를 적음 | DESIGN 6·9장 ④-2, `discord/notifier.ts`, `staff/role-cards.ts` |
 | `/새프로젝트`: GitHub 비공개 저장소 + Discord 카테고리 `아이디` › `#작업` (CEO 요청, 선택은 모두 추천안) | 저장소를 따로 만들고 `/프로젝트`로 등록하는 게 번거로움. 토큰을 모든 저장소(Administration·Contents 쓰기)로 넓히고 고양이는 DB 등록 저장소에만 푸시. `#작업`의 `/지시`는 그 프로젝트로 고정, PM은 그 프로젝트만 보고 비우면 코드가 채움. 비서실장은 #비서실에만 | DESIGN 6·9·11장, `workspace/new-project.ts`, `gitcat/github-repo.ts`, 마이그레이션 0006 |
 | `create_order` 메시지 ID를 코드가 채움 (CEO 선택 A) | 헤르메스가 모델에게 ID를 안 보여 줘서 모델이 `current_message_id`를 지어냈다. LINDA가 #비서실 주인 마지막 메시지 ID·시각만 기록(내용 안 받음), 10분 넘으면 거부, 같은 ID는 지시 하나 | DESIGN 6·9장, `chief/order-message.ts` |
 | `/지시` 슬래시 명령 추가 (CEO 요청) | 헤르메스 없이도 지시할 수 있게. 상호작용 ID로 중복을 막는다 | DESIGN 9장 |

@@ -81,12 +81,25 @@ export function checkPlanRules(c: Ctx, out: PmPlanOutput, boundProjectId?: strin
     if (!a || !r) return;
     if (a.brain.provider === 'none') problems.push(`${label}: ${a.id}은(는) AI 직원이 아니라 담당자가 될 수 없음`);
     if (r.brain.provider === 'none') problems.push(`${label}: ${r.id}은(는) AI 직원이 아니라 검토자가 될 수 없음`);
-    if (a.id === r.id) problems.push(`${label}: 담당자와 검토자가 같음`);
+    if (a.id === r.id) problems.push(`${label}: 담당자와 검토자가 같음 → ${reviewerHint([...staff.values()], a)}`);
     else if (brainModel(a.brain) === brainModel(r.brain)) {
-      problems.push(`${label}: 담당자(${a.id})와 검토자(${r.id})가 같은 모델(${brainModel(a.brain)})임`);
+      problems.push(`${label}: 담당자(${a.id})와 검토자(${r.id})가 같은 모델(${brainModel(a.brain)})임 → ${reviewerHint([...staff.values()], a)}`);
     }
   });
   return problems;
+}
+
+type StaffRow = typeof employees.$inferSelect;
+
+/** 담당자를 검토할 수 있는 직원: 상근 AI 직원 중 담당자와 다른 모델 (6장 PM) */
+export function reviewerCandidates(staff: StaffRow[], assignee: StaffRow): StaffRow[] {
+  return staff.filter((r) => !r.isTemporary && r.brain.provider !== 'none' && r.id !== assignee.id && brainModel(r.brain) !== brainModel(assignee.brain));
+}
+
+/** 규칙 위반을 고칠 때 PM이 바로 고를 수 있게 후보를 적어 준다 */
+function reviewerHint(staff: StaffRow[], assignee: StaffRow): string {
+  const ok = reviewerCandidates(staff, assignee).map((r) => `${r.id}(${brainModel(r.brain)})`);
+  return ok.length ? `검토자를 이 중에서 고를 것: ${ok.join(', ')}` : '검토할 수 있는 다른 모델 직원이 없음';
 }
 
 /** 새 계획서 버전을 만든다. 살아 있는 이전 버전은 superseded로, 그 결재는 expired로. */

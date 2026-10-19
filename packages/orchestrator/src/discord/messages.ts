@@ -111,6 +111,29 @@ export function blockedMessage(ticket: TicketRow, minutes: MinutesRow | null): {
   };
 }
 
+/** 계획 작성이 멈춘 지시 (#막힘). PM이 형식·규칙 위반을 두 번 했을 때 (6장) */
+export function blockedPlanMessage(order: { id: string; rawText: string; projectId: string | null }, issues: string): { content: string; buttons: Button[][] } {
+  const lines = [
+    `**계획 작성 멈춤 · ${order.projectId ? `[${order.projectId}] ` : ''}${order.id}**`,
+    `> ${order.rawText.slice(0, 200)}`,
+    'PM이 규칙에 맞는 계획서를 두 번 쓰지 못했어요:',
+    ...issues
+      .split('\n')
+      .filter(Boolean)
+      .slice(0, 8)
+      .map((x) => `- ${x.slice(0, 300)}`),
+  ];
+  return {
+    content: lines.join('\n'),
+    buttons: [
+      [
+        { id: `pb:${order.id}:retry`, label: '다시 시도', style: 'primary' },
+        { id: `pb:${order.id}:cancel`, label: '취소', style: 'danger' },
+      ],
+    ],
+  };
+}
+
 const DECISION_NAME: Record<string, string> = { approved: '승인됨', rejected: '반려됨', revision: '수정 요청됨', expired: '새 버전이 올라와 닫혔어요' };
 
 /** 결정된 결재: 원래 내용 + 결과, 버튼은 모두 비활성 */
