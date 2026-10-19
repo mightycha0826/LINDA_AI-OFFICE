@@ -14,6 +14,7 @@ import { OfficeError } from '../errors.ts';
 import { approvalLink, buildReportData } from '../reports.ts';
 import type { ReportService } from './report-service.ts';
 import type { GitCatPort } from '../discord/interactions.ts';
+import { resolveOrderMessageId } from './order-message.ts';
 import { TOOL_DEFS, type ToolName } from './tool-defs.ts';
 
 export class ChiefTools {
@@ -73,8 +74,9 @@ export class ChiefTools {
       case 'get_usage':
         return (['dev', 'research', 'review'] as const).map((b) => ({ ...budgetStatus(c, b), estimated: true }));
       case 'create_order': {
-        const { order, created } = this.engine.submitOrder({ discordMessageId: args.discordMessageId!, rawText: args.rawText! });
-        return { orderId: order.id, created, status: order.status };
+        const messageId = resolveOrderMessageId(c, args.discordMessageId);
+        const { order, created } = this.engine.submitOrder({ discordMessageId: messageId.id, rawText: args.rawText! });
+        return { orderId: order.id, created, status: order.status, discordMessageId: messageId.id, messageIdSource: messageId.source };
       }
       case 'request_confirmation': {
         const t = c.db.select().from(tickets).where(eq(tickets.id, args.targetId!)).get();

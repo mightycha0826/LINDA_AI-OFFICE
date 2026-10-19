@@ -1,6 +1,6 @@
 # Claudelog: AI 사무실 인수인계
 
-다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-19 20:00 KST**.
+다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-19 20:15 KST**.
 저장소는 **공개**다(https://github.com/mightycha0826/LINDA_AI-OFFICE). 토큰, 비밀번호, Discord ID는 여기 적지 않는다(`C:\ai-office\data`에 있다).
 
 ## 0. 먼저 읽을 것
@@ -42,23 +42,23 @@
 - pm2: `C:\Users\Aranea\.pm2` (앱 `ai-office`, 로그 `logs\ai-office-out.log`)
 
 ## 3. 지금 상태
-- **오케스트레이터**: pm2로 실행 중(19:44 `pm2 restart`로 리팩터링 반영, 데몬은 작업 스케줄러 `AI_Office_pm2`가 띄운 것). LINDA#9825 접속, 화면 :8780, 내부 API :8790.
+- **오케스트레이터**: pm2로 실행 중(20:11 `pm2 restart`로 메시지 ID 기록 반영, 데몬은 작업 스케줄러 `AI_Office_pm2`가 띄운 것). LINDA#9825 접속, 화면 :8780, 내부 API :8790.
 - **Discord**: 비공개 서버와 채널 5개(#비서실, #결재함, #보고, #막힘, #사무실-대화). 슬래시 명령이 등록됐고 `/상태` 응답을 확인했다. `/지시` 명령을 추가했다(헤르메스 없이 직접 지시).
 - **헤르메스(백서진)**: 설치·연결 완료. #비서실에서 답하는 것을 주인이 확인했다(Gemma, 한 번에 5~12초).
   - Blank Slate 설정이다. `agent.disabled_toolsets`에 terminal·file·vision을 추가했다.
   - `platform_toolsets.discord: [cronjob, memory, session_search, skills]`, MCP `office`(8 도구, tool_search로 지연 로딩).
   - `model.default: gemma4:12b-64k`(num_ctx 65536을 박은 태그), `ollama_num_ctx: 65536`. `SOUL.md`는 한국어 비서실장 지침(백업 `SOUL.md.bak-20261019-2000`).
-  - **19:55 바꾼 설정은 게이트웨이 재시작 전이라 아직 반영 안 됨.** 주인이 `hermes gateway restart`를 한 뒤 0단계 #1을 처음부터 다시 본다.
+  - 주인이 `hermes gateway restart`로 64K·SOUL.md를 반영했다(19:58). 20:11에 SOUL.md의 지시 등록 줄을 "discordMessageId는 넣지 않는다"로 바꿨다(게이트웨이 재시작 필요).
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5, qwen3:14b·gemma4:12b. C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 411개 통과, typecheck·lint:ds 깨끗하다.
-- **GitHub**: `2ba8847`(10-19 리팩터링)까지 푸시했다(주인 승인, gitleaks 통과). 이 문서 갱신 커밋은 로컬에만 있다.
+- **테스트**: `npm test` 420개 통과, typecheck·lint:ds 깨끗하다.
+- **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 그 뒤 커밋(64K 원인, 0단계 결과, 메시지 ID 기록)은 로컬에만 있다.
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
 ### 0단계 결과
 #2 모델 교체 통과(4~7초), #3 RAM 통과(최소 39GB 여유), #4·#5·#6 통과, #8 통과(낮), #9 조사 요약(최종 판단은 주인).
-**#1 통과(5개 중 4개), #7 통과(10-19 20:03).** 과제 4(지시 등록)는 헤르메스가 Discord 메시지 ID를 모델에게 보여 주지 않아 실패했다. 해결 방법은 주인 결정 대기.
+**#1 통과(5개 중 4개), #7 통과(10-19 20:03).** 과제 4(지시 등록)는 헤르메스가 Discord 메시지 ID를 모델에게 보여 주지 않아 실패했다. → LINDA가 #비서실 주인 마지막 메시지 ID를 기록하고 `create_order`가 ID 없이 오면 그것을 쓰게 함(주인 선택 A). 과제 4만 다시 시험해야 한다.
 #10 SearXNG는 보류: WSL이 없어 관리자 승인과 재부팅이 필요하다.
 
 ## 4. 오늘(10-19) 내린 결정과 이유
@@ -66,6 +66,7 @@
 | --- | --- | --- |
 | 비서실장 두뇌 Qwen3-14B → **Gemma 4 12B** (CEO 승인) | 헤르메스는 문맥 64K 미만을 거부한다. Qwen은 40,960이 한계이고 CPU로 35% 밀린다. Gemma는 64K에서 100% GPU, 66 tok/s | DESIGN 2·6·16·18장, `seed.ts` |
 | 헤르메스 모델을 `gemma4:12b-64k` 태그로, `SOUL.md` 한국어화 | 비서실장이 영어로 답하고 skills_list만 반복했다. Ollama `/v1`이 `ollama_num_ctx`를 무시해 4096으로 떠서 입력이 2,051토큰에서 잘렸다(`ollama ps`로 확인). `SOUL.md`도 기본 영어 문구였다 | DESIGN 6장, HERMES-SETUP |
+| `create_order` 메시지 ID를 코드가 채움 (CEO 선택 A) | 헤르메스가 모델에게 ID를 안 보여 줘서 모델이 `current_message_id`를 지어냈다. LINDA가 #비서실 주인 마지막 메시지 ID·시각만 기록(내용 안 받음), 10분 넘으면 거부, 같은 ID는 지시 하나 | DESIGN 6·9장, `chief/order-message.ts` |
 | `/지시` 슬래시 명령 추가 (CEO 요청) | 헤르메스 없이도 지시할 수 있게. 상호작용 ID로 중복을 막는다 | DESIGN 9장 |
 | 남은 worktree 폴더 재사용 금지 | 시험(`smoke --flow`)이 남긴 `wt\T-1`을 진짜 첫 티켓이 쓸 뻔했다. 같은 저장소·브랜치가 아니면 `stale-worktree`로 멈춘다 | `workspace/worktrees.ts` |
 | Codex 회사 홈에서 기본 스킬·플러그인 끄기 | 입력 토큰이 75,764에서 42,290으로 줄었다 | `brains/codex.ts` |

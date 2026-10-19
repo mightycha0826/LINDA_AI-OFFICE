@@ -1,6 +1,6 @@
 // discord.js 연결 (9장 회사 시스템 봇). discord.js는 이 파일에서만 쓴다.
 // - 인텐트는 Guilds, GuildMessages만. 메시지 내용(Message Content)은 받지 않는다:
-//   채팅 글자로는 아무것도 하지 않기 때문이다(결재는 버튼만). 주인 메시지는 "접속 중" 표시에만 쓴다.
+//   채팅 글자로는 아무것도 하지 않기 때문이다(결재는 버튼만). 주인 메시지는 "접속 중" 표시와 #비서실 메시지 ID 기록에만 쓴다.
 // - 휴대폰 알림 없이 올릴 때는 SuppressNotifications 플래그(@silent).
 // - 멘션은 주인 한 명만 허용한다(allowedMentions).
 import {
@@ -25,7 +25,7 @@ import {
 } from 'discord.js';
 import type { Ctx } from '../context.ts';
 import { SLASH_COMMANDS, type InteractionHandler } from './interactions.ts';
-import { markCeoActive } from './presence.ts';
+import { onDiscordMessage } from '../chief/order-message.ts';
 import type { Button, ChannelKey, DiscordPort, InteractionReply, MirrorPort, OutgoingMessage } from './types.ts';
 
 const STYLE: Record<Button['style'], ButtonStyle> = {
@@ -97,9 +97,9 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
     }
   });
 
-  // 주인의 메시지는 "CEO 접속 중" 표시에만 쓴다. 내용은 받지도 읽지도 않는다.
+  // 주인의 메시지는 "CEO 접속 중" 표시와 #비서실 마지막 메시지 ID 기록에만 쓴다. 내용은 받지도 읽지도 않는다.
   client.on(Events.MessageCreate, (m) => {
-    if (m.guildId === c.config.discord.guildId && m.author.id === c.config.ceoDiscordId) markCeoActive(c);
+    onDiscordMessage(c, { guildId: m.guildId, channelId: m.channelId, authorId: m.author.id, messageId: m.id });
   });
 
   client.once(Events.ClientReady, async (ready) => {

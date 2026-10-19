@@ -47,9 +47,10 @@ describe('내부 API', () => {
     expect((await call('get_status', {})).status).toBe(200);
   });
 
-  it('지시 등록은 Discord 메시지 ID가 있어야 하고, 같은 메시지로는 한 번만', async () => {
+  it('지시 등록은 Discord 메시지 ID가 있어야 하고(넣거나 #비서실 기록), 같은 메시지로는 한 번만', async () => {
     const s = setup();
     const { call } = await api(s);
+    // 넣은 ID도 #비서실 기록도 없으면 거부 (자세한 경우는 order-message.test.ts)
     expect((await call('create_order', { rawText: '로그인 추가해줘' })).status).toBe(400);
     const r1 = (await (await call('create_order', { rawText: '로그인 추가해줘', discordMessageId: '1300000000000000042' })).json()) as { result: { created: boolean } };
     const r2 = (await (await call('create_order', { rawText: '로그인 추가해줘', discordMessageId: '1300000000000000042' })).json()) as { result: { created: boolean } };
@@ -106,6 +107,8 @@ describe('MCP 서버 (헤르메스가 띄움)', () => {
     const tools = await client.listTools();
     expect(tools.tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
     expect(TOOL_NAMES).toHaveLength(8);
+    // 헤르메스는 메시지 ID를 모르니 필수로 알리지 않는다 (비우면 #비서실 기록을 쓴다)
+    expect(tools.tools.find((t) => t.name === 'create_order')!.inputSchema.required).toEqual(['rawText']);
 
     const res = await client.callTool({ name: 'create_order', arguments: { rawText: '비밀번호 찾기 추가해줘', discordMessageId: '1300000000000000077' } });
     expect(res.isError).toBeFalsy();

@@ -32,10 +32,10 @@ export const TOOL_DEFS = {
   },
   create_order: {
     description:
-      'CEO의 업무 지시를 원문 그대로 등록한다. #비서실에 CEO가 쓴 메시지의 Discord 메시지 ID가 반드시 필요하다. 위험한 실행(push, 삭제, 전송)은 이 도구가 아니라 request_confirmation으로 요청한다.',
+      'CEO의 업무 지시를 원문 그대로 등록한다. Discord 메시지 ID를 모르면 discordMessageId는 비운다(지어내지 않는다). 그러면 회사 시스템이 #비서실 CEO 마지막 메시지 ID를 쓴다. 위험한 실행(push, 삭제, 전송)은 이 도구가 아니라 request_confirmation으로 요청한다.',
     input: z.object({
       rawText: z.string().min(1).max(4000).describe('CEO 원문 그대로'),
-      discordMessageId: z.string().regex(/^\d{17,20}$/, 'Discord 메시지 ID(숫자)'),
+      discordMessageId: z.string().regex(/^\d{17,20}$/, 'Discord 메시지 ID(숫자)').optional().describe('모르면 비운다'),
     }),
     writes: true,
   },
