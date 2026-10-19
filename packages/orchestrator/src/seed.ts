@@ -26,10 +26,11 @@ export const STANDING_STAFF: readonly Seed[] = [
   { id: 'dev-a', displayName: '개발자 A', role: 'developer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false, spriteSet: 'developer' },
   { id: 'dev-b', displayName: '개발자 B', role: 'developer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false, spriteSet: 'developer' },
   { id: 'reviewer', displayName: '리뷰어 · 감사관', role: 'reviewer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false },
-  // 마케팅: 7-2부터 로컬 Gemma(예전 Qwen). 7-4에서 GPT 카피라이터로 옮긴다
-  { id: 'marketing', displayName: '마케팅', role: 'marketing', department: '마케팅 · 경영', brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: true },
-  { id: 'strategy', displayName: '경영전략 · 리서치', role: 'strategy', department: '마케팅 · 경영', brain: { provider: 'claude-code', budget: 'research' }, canSearchWeb: true },
-  { id: 'qa-local', displayName: '검토 담당', role: 'qa-local', department: '기획 · 검토', brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: true },
+  // 카피라이터·전략가: 7-4부터 GPT(Codex, 읽기 전용). 웹은 오케스트레이터가 대신 검색해 넘긴다(15장)
+  { id: 'marketing', displayName: '카피라이터', role: 'marketing', department: '마케팅 · 콘텐츠팀', brain: { provider: 'codex' }, canSearchWeb: true },
+  { id: 'strategy', displayName: '전략가', role: 'strategy', department: '리서치 · 전략팀', brain: { provider: 'codex' }, canSearchWeb: true },
+  // 교정 담당(예전 검토 담당): 문서 1차 점검, 문서 검토, 회고 초안 (7-1, 7-4)
+  { id: 'qa-local', displayName: '교정 담당', role: 'qa-local', department: '품질보증팀', brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: true },
   { id: 'git-cat', displayName: 'Git 고양이', role: 'git-cat', department: 'Git 코너', brain: { provider: 'none' }, canSearchWeb: false },
 ];
 
@@ -44,7 +45,7 @@ export function seedStaff(c: Ctx): void {
         .run();
     }
     // 이미 만든 DB의 두뇌도 설계에 맞춘다: 비서실장(예전 qwen3:14b), 기획실장(7-1 Claude), 로컬 직원(7-2 Gemma 64K), 개발팀장(7-3 이름)
-    for (const id of ['chief-of-staff', 'pm', 'marketing', 'qa-local', 'developer']) {
+    for (const id of ['chief-of-staff', 'pm', 'marketing', 'strategy', 'qa-local', 'developer']) {
       const s = STANDING_STAFF.find((x) => x.id === id)!;
       t.db.update(employees).set({ brain: s.brain, displayName: s.displayName, department: s.department }).where(eq(employees.id, id)).run();
     }

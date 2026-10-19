@@ -13,9 +13,9 @@ import { roleCard } from '../src/staff/role-cards.ts';
 import { FakeDiscord } from './fakes/fake-discord.ts';
 import { CEO, setup, STRANGER } from './helpers.ts';
 
-/** 경영전략(claude) 담당을 기획실장(claude)이 검토하는, 늘 규칙에 걸리는 계획서 */
+/** 개발팀장(claude) 담당을 기획실장(claude)이 검토하는, 늘 규칙에 걸리는 계획서 */
 const sameModelPlan = () =>
-  planOutput({ tickets: [{ title: '콘텐츠 정리', type: 'strategy', assignee: 'strategy', reviewer: 'pm', acceptanceCriteria: ['자기소개 항목 포함'], needsCeoApproval: false, estimatedTokens: 5_000 }] });
+  planOutput({ tickets: [{ title: '콘텐츠 정리', type: 'strategy', assignee: 'developer', reviewer: 'pm', acceptanceCriteria: ['자기소개 항목 포함'], needsCeoApproval: false, estimatedTokens: 5_000 }] });
 
 describe('같은 모델 검토자', () => {
   it('규칙 위반 안내에 고를 수 있는 검토자를 적어 준다 (PM이 다시 쓸 때 바로 고치게)', () => {
@@ -35,7 +35,7 @@ describe('같은 모델 검토자', () => {
     const staff = (id: string) => s.db.select().from(employees).where(eq(employees.id, id)).get()!;
     const card = roleCard(s.ctx, staff('pm'), 'plan', PmPlanOutputSchema);
     expect(card).toContain('## 6. 검토자 고르기');
-    const line = card.split('\n').find((l) => l.startsWith('- strategy(claude) 담당'))!;
+    const line = card.split('\n').find((l) => l.startsWith('- developer(claude) 담당'))!;
     expect(line).toContain('qa-local');
     expect(line).not.toMatch(/검토:.*\bpm\b/);
     expect(line).not.toMatch(/검토:.*\bdeveloper\b/);

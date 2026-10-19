@@ -102,7 +102,7 @@ describe('7-3 개발팀 구성과 검토 짝', () => {
     const coding = (assignee: string, reviewer: string) => planOutput({ tickets: [{ ...planOutput().tickets[0]!, assignee, reviewer }] });
     expect(fixReviewers(s.ctx, coding('dev-a', 'reviewer')).out.tickets[0]!.reviewer).toBe('developer');
     expect(fixReviewers(s.ctx, coding('dev-b', 'dev-a')).out.tickets[0]!.reviewer).toBe('developer');
-    expect(fixReviewers(s.ctx, coding('developer', 'strategy')).out.tickets[0]!.reviewer).toBe('reviewer');
+    expect(fixReviewers(s.ctx, coding('developer', 'pm')).out.tickets[0]!.reviewer).toBe('reviewer');
     expect(checkPlanRules(s.ctx, coding('dev-a', 'developer'))).toEqual([]);
   });
 

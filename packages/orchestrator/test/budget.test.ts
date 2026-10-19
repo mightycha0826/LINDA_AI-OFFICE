@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { planOutput } from '../src/brains/mock.ts';
 import { budgetOf, budgetStatus, enforceBudgets, recordUsage } from '../src/core/budget.ts';
 import { employees, messages, usage } from '../src/db/schema.ts';
-import { approvedTickets, setup, ticket } from './helpers.ts';
+import { approvedTickets, setup, ticket, asClaudeResearcher } from './helpers.ts';
 
 /** 5시간 한도를 pct만큼, 주간 한도를 weekly만큼 쓴다 (기본: 5시간의 0.2배) */
 const spend = (s: ReturnType<typeof setup>, budget: 'dev' | 'research' | 'review', pct: number, weekly = pct * 0.2) =>
@@ -68,6 +68,7 @@ describe('몫 칸막이', () => {
   it('리서치 몫이 소진되면 로컬(저정밀 모드)로 계속하고 표시를 단다', async () => {
     const t = planOutput().tickets[0]!;
     const s = setup({ handlers: { plan: () => planOutput({ tickets: [{ ...t, title: '시장 조사', type: 'research', assignee: 'strategy', reviewer: 'qa-local' }] }) } });
+    asClaudeResearcher(s);
     const { tickets: [tk] } = await approvedTickets(s);
     spend(s, 'research', 15);
     await s.engine.runUntilIdle();

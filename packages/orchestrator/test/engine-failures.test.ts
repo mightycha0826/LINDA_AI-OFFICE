@@ -10,7 +10,8 @@ const twoTickets = () =>
   planOutput({
     tickets: [
       { ...base, title: '코드' },
-      { ...base, title: '문구', type: 'marketing', assignee: 'marketing', reviewer: 'qa-local' },
+      // 로컬 직원(교정 담당)의 문서. 검토는 GPT 리뷰어 (7-2부터 로컬끼리 검토 불가)
+      { ...base, title: '문구', type: 'marketing', assignee: 'qa-local', reviewer: 'reviewer' },
     ],
   });
 
@@ -38,7 +39,7 @@ describe('인터넷 끊김', () => {
     await s.engine.runUntilIdle();
     expect(ticket(s, code!.id)).toMatchObject({ status: 'paused', pauseReason: 'offline', pausedFrom: 'in_progress' });
     // 7-2부터 로컬 모델이 하나라 로컬 직원끼리는 검토할 수 없다. 문구 작업(Gemma)은 끝냈고 검토는 GPT가 맡아 연결을 기다린다
-    expect(s.mock.callsFor('work').some((c) => c.employee.id === 'marketing')).toBe(true);
+    expect(s.mock.callsFor('work').some((c) => c.employee.id === 'qa-local')).toBe(true);
     expect(ticket(s, copy!.id)).toMatchObject({ status: 'paused', pauseReason: 'offline', pausedFrom: 'in_review', reviewerId: 'reviewer' });
     expect(s.engine.connectivity.isOnline()).toBe(false);
 

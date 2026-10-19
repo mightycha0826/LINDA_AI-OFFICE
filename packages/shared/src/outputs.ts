@@ -106,6 +106,18 @@ export const MeetingPositionSchema = z.object({
 export type MeetingPosition = z.infer<typeof MeetingPositionSchema>;
 
 /** 로컬 직원의 검색 1단계: 검색어 (15장, 2.5단계 결정 C). 오케스트레이터가 SearXNG로 검색한다. */
+/**
+ * 교정 담당 1차 점검 (16장 7-4). 지적 목록만 낸다. 합격·불합격 판정은 하지 않는다(그것은 검토자 몫).
+ * missingCriteria: 완료 조건 중 결과물에서 찾지 못한 항목 (원문 그대로)
+ */
+export const ProofreadOutputSchema = z.object({
+  issues: z
+    .array(z.object({ kind: z.enum(['spelling', 'tone', 'missing', 'unclear']), where: text, note: text }))
+    .max(20),
+  missingCriteria: z.array(text),
+});
+export type ProofreadOutput = z.infer<typeof ProofreadOutputSchema>;
+
 export const SearchQueriesSchema = z.object({
   queries: z.array(text).min(1).max(3),
 });

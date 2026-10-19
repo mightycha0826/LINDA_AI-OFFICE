@@ -128,7 +128,7 @@ describe('계획서 규칙', () => {
   });
 
   it('임시 직원과 검토자도 다른 모델이어야 한다', () => {
-    expect(problems(writerPlan({ tickets: [{ ...base, type: 'writing', assignee: 'temp:writer-1', reviewer: 'marketing' }] }))).toEqual([expect.stringContaining('같은 모델(gemma4:12b-64k)')]);
+    expect(problems(writerPlan({ tickets: [{ ...base, type: 'writing', assignee: 'temp:writer-1', reviewer: 'qa-local' }] }))).toEqual([expect.stringContaining('같은 모델(gemma4:12b-64k)')]);
     expect(problems(writerPlan())).toEqual([]);
   });
 

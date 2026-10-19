@@ -72,6 +72,7 @@ export const DEFAULT_HANDLERS: Record<BrainTask, MockHandler> = {
   review: (req) => passReview((req.input as TicketInput).ticket.acceptanceCriteria),
   meeting: (): MeetingPosition => ({ claim: '완료 조건대로 고치면 된다', agree: true, nextActions: ['수정 후 다시 제출'] }),
   search: (req): SearchQueries => ({ queries: [(req.input as TicketInput).ticket.title] }),
+  proofread: () => ({ issues: [{ kind: 'tone', where: '첫 문단', note: '말투가 섞임' }], missingCriteria: [] }),
   design: (): DesignComboOutput => ({ combo: 2, mode: 'light', reason: '관리 화면이라 오래 들여다봄' }),
   commit: (req) => ({ type: 'feat', scope: 'app', subject: `${(req.input as TicketInput).ticket.title} 추가` }),
   retro: (req) => {

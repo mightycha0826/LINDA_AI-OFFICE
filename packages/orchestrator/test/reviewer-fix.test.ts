@@ -17,7 +17,7 @@ const plan = (tickets: Partial<PmPlanOutput['tickets'][number]>[], over: Partial
 describe('fixReviewers', () => {
   it('문서 티켓: 같은 모델(claude) 검토자는 qa-local로', () => {
     const s = setup();
-    const { out, changes } = fixReviewers(s.ctx, plan([{ type: 'writing', assignee: 'strategy', reviewer: 'pm' }]));
+    const { out, changes } = fixReviewers(s.ctx, plan([{ type: 'writing', assignee: 'developer', reviewer: 'pm' }]));
     expect(out.tickets[0]!.reviewer).toBe('qa-local');
     expect(changes).toEqual(['티켓 1(일1): 검토자 pm → qa-local (같은 모델 claude)']);
     expect(checkPlanRules(s.ctx, out)).toEqual([]);
@@ -25,7 +25,7 @@ describe('fixReviewers', () => {
 
   it('코딩 티켓: 같은 모델(claude) 검토자는 reviewer(Codex)로', () => {
     const s = setup();
-    const { out, changes } = fixReviewers(s.ctx, plan([{ type: 'coding', assignee: 'developer', reviewer: 'strategy' }]));
+    const { out, changes } = fixReviewers(s.ctx, plan([{ type: 'coding', assignee: 'developer', reviewer: 'pm' }]));
     expect(out.tickets[0]!.reviewer).toBe('reviewer');
     expect(changes).toEqual([expect.stringContaining('같은 모델 claude')]);
   });
@@ -53,7 +53,7 @@ describe('fixReviewers', () => {
     const s = setup();
     const { out, changes } = fixReviewers(
       s.ctx,
-      plan([{ type: 'writing', assignee: 'temp:writer-1', reviewer: 'marketing' }], { tempStaff: [{ key: 'writer-1', kind: 'writer', reason: '긴 안내문' }] }),
+      plan([{ type: 'writing', assignee: 'temp:writer-1', reviewer: 'qa-local' }], { tempStaff: [{ key: 'writer-1', kind: 'writer', reason: '긴 안내문' }] }),
     );
     // 7-2부터 로컬은 Gemma 하나라 qa-local도 같은 모델 → 다음 후보 GPT 리뷰어
     expect(out.tickets[0]!.reviewer).toBe('reviewer');
@@ -72,7 +72,7 @@ describe('fixReviewers', () => {
 
 describe('계획서에 반영', () => {
   it('PM이 같은 모델 검토자를 골라도 다시 시키지 않고 고쳐서 결재에 올린다. 결재 메시지에 보인다', async () => {
-    const s = setup({ handlers: { plan: () => plan([{ type: 'writing', assignee: 'strategy', reviewer: 'pm', acceptanceCriteria: ['자기소개 항목 포함'] }], { projectId: undefined }) } });
+    const s = setup({ handlers: { plan: () => plan([{ type: 'writing', assignee: 'developer', reviewer: 'pm', acceptanceCriteria: ['자기소개 항목 포함'] }], { projectId: undefined }) } });
     const { order, approval } = await orderUntilPlanApproval(s);
     expect(s.mock.callsFor('plan')).toHaveLength(1);
     const p = s.db.select().from(plans).where(eq(plans.orderId, order.id)).get()!;

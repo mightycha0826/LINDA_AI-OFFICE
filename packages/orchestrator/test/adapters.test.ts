@@ -101,7 +101,8 @@ describe('Claude Code 어댑터', () => {
   it('리서치: 웹 검색·읽기 도구만, 빈 샌드박스에서', async () => {
     const s = setup();
     const { logFile, extraEnv } = env(s);
-    await claude(s, extraEnv).call(request(s, { employee: emp(s, 'strategy'), task: 'work', schema: DocOutputSchema, workdir: dir(s, '_sandbox/T-2') }));
+    // 7-4부터 전략가는 GPT라, Claude 리서치 프로필은 기획실장(Claude, 리서치 몫)으로 본다
+    await claude(s, extraEnv).call(request(s, { employee: emp(s, 'pm'), task: 'work', schema: DocOutputSchema, workdir: dir(s, '_sandbox/T-2') }));
     const [run] = readLog(logFile) as { argv: string[]; settings: { permissions: { deny: string[] } } }[];
     expect(run!.argv[run!.argv.indexOf('--tools') + 1]).toBe('WebSearch,WebFetch');
     expect(run!.settings.permissions.deny).toEqual(expect.arrayContaining(['Bash', 'Edit', 'Write']));
@@ -224,7 +225,7 @@ describe('Ollama 어댑터', () => {
     const fake = await startFakeOllama({ reply: () => '결과는 이렇습니다\n```json\n{"passed": true, "issues": [], "objection": null}\n```' });
     try {
       const brain = new OllamaBrain({ host: fake.host, numCtx: 8192, timeoutMs: 5000, keepAlive: '30m', queue: new GpuQueue({ maxWaitMs: 60_000 }) });
-      const res = await brain.call(request(s, { employee: emp(s, 'marketing'), task: 'gate', schema: GateOutputSchema }));
+      const res = await brain.call(request(s, { employee: emp(s, 'qa-local'), task: 'gate', schema: GateOutputSchema }));
       expect(res.output).toEqual({ passed: true, issues: [], objection: null });
     } finally {
       await fake.close();
@@ -234,7 +235,7 @@ describe('Ollama 어댑터', () => {
   it('Ollama가 꺼져 있으면 인터넷 끊김이 아니라 비정상(crash)으로 본다', async () => {
     const s = setup();
     const brain = new OllamaBrain({ host: 'http://127.0.0.1:1', numCtx: 8192, timeoutMs: 3000, keepAlive: '30m', queue: new GpuQueue({ maxWaitMs: 60_000 }) });
-    await expect(brain.call(request(s, { employee: emp(s, 'marketing'), task: 'gate', schema: GateOutputSchema }))).rejects.toMatchObject({ failure: 'crash' });
+    await expect(brain.call(request(s, { employee: emp(s, 'qa-local'), task: 'gate', schema: GateOutputSchema }))).rejects.toMatchObject({ failure: 'crash' });
   });
 
   it('응답이 늦으면 시간 초과', async () => {
@@ -242,7 +243,7 @@ describe('Ollama 어댑터', () => {
     const fake = await startFakeOllama({ delayMs: 2000 });
     try {
       const brain = new OllamaBrain({ host: fake.host, numCtx: 8192, timeoutMs: 300, keepAlive: '30m', queue: new GpuQueue({ maxWaitMs: 60_000 }) });
-      await expect(brain.call(request(s, { employee: emp(s, 'marketing'), task: 'gate', schema: GateOutputSchema }))).rejects.toMatchObject({ failure: 'timeout' });
+      await expect(brain.call(request(s, { employee: emp(s, 'qa-local'), task: 'gate', schema: GateOutputSchema }))).rejects.toMatchObject({ failure: 'timeout' });
     } finally {
       await fake.close();
     }

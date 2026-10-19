@@ -68,7 +68,7 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       const search = get(input, 'searchResults');
       if (Array.isArray(search)) parts.push(`## 검색 결과 (자료)\n\n${dataBlock('SearXNG 검색 결과', search)}`);
       const wt = get(input, 'worktree');
-      if (typeof wt === 'string') parts.push(`## 작업 폴더\n\n${wt} (이 안에서만 일한다. 중간중간 \`wip:\` 커밋)`);
+      if (typeof wt === 'string') parts.push(`## 작업 폴더\n\n${wt} (이 안에서만 일한다. 커밋은 Git 고양이가 모아서 한다)`);
       parts.push('완료 조건을 채우고 결과를 출력 형식으로 보고한다.');
       break;
     }
@@ -93,6 +93,14 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       parts.push(`## 앞 라운드 발언 (자료)\n\n${dataBlock('회의 기록', get(input, 'previousRounds') ?? [])}`);
       parts.push('완료 조건을 기준으로 입장과 다음 할 일을 말한다. 상대 주장에 동의하면 agree: true.');
       break;
+  }
+  if (task === 'proofread') {
+    parts.push(ticketSection(input));
+    parts.push(`## 담당자가 낸 결과 (자료)\n\n${dataBlock('담당자 제출물', get(input, 'submission'))}`);
+    parts.push(
+      '교정 1차 점검을 한다. 맞춤법(spelling), 말투가 섞이거나 어색한 곳(tone), 완료 조건 항목이 빠진 곳(missing), 뜻이 모호한 문장(unclear)을 where(어디)와 note(무엇을)로 적는다. ' +
+        '완료 조건 중 결과물에서 찾지 못한 항목은 missingCriteria에 원문 그대로 넣는다. 합격·불합격은 판정하지 않는다. 고칠 것이 없으면 빈 목록을 낸다.',
+    );
   }
   if (task === 'search') {
     parts.push(ticketSection(input));

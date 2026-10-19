@@ -77,16 +77,20 @@ describe('계획서 코드 규칙', () => {
   it('검토자는 담당자와 다른 모델이어야 한다', () => {
     const s = setup();
     const sameModel = planOutput({
-      tickets: [{ ...planOutput().tickets[0]!, type: 'research', assignee: 'strategy', reviewer: 'developer' }],
+      tickets: [{ ...planOutput().tickets[0]!, type: 'research', assignee: 'pm', reviewer: 'developer' }],
     });
     expect(checkPlanRules(s.ctx, sameModel)).toEqual([expect.stringContaining('같은 모델(claude)')]);
   });
 
   it('로컬 작성 → GPT 검토는 허용되고, 로컬끼리는 같은 모델이라 안 된다 (7-2부터 로컬은 Gemma 하나)', () => {
     const s = setup();
-    const ok = planOutput({ tickets: [{ ...planOutput().tickets[0]!, type: 'marketing', assignee: 'marketing', reviewer: 'reviewer' }] });
+    const ok = planOutput({ tickets: [{ ...planOutput().tickets[0]!, type: 'marketing', assignee: 'qa-local', reviewer: 'reviewer' }] });
     expect(checkPlanRules(s.ctx, ok)).toEqual([]);
-    const local = planOutput({ tickets: [{ ...planOutput().tickets[0]!, type: 'marketing', assignee: 'marketing', reviewer: 'qa-local' }] });
+    // 로컬 임시 작가(Gemma)를 로컬 교정 담당(Gemma)이 검토
+    const local = planOutput({
+      tempStaff: [{ key: 'w', kind: 'writer', reason: '안내문' }],
+      tickets: [{ ...planOutput().tickets[0]!, type: 'writing', assignee: 'temp:w', reviewer: 'qa-local' }],
+    });
     expect(checkPlanRules(s.ctx, local)).toEqual([expect.stringContaining('같은 모델(gemma4:12b-64k)')]);
   });
 

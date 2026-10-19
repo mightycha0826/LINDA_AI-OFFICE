@@ -11,6 +11,8 @@ import {
   GateOutputSchema,
   MeetingPositionSchema,
   PmPlanOutputSchema,
+  ProofreadOutputSchema,
+  type ProofreadOutput,
   ReviewOutputSchema,
   DesignComboOutputSchema,
   SearchQueriesSchema,
@@ -65,6 +67,8 @@ interface CallOptions {
 }
 
 const orchestrator = { kind: 'orchestrator' } as const;
+/** 교정 1차 점검을 하는 직원 (16장 7-4) */
+const PROOFREADER_ID = 'qa-local';
 const planBlockedKey = (orderId: string) => `planBlocked:${orderId}`;
 const isCloud = (e: EmployeeRow) => e.brain.provider === 'claude-code' || e.brain.provider === 'codex';
 /** 클라우드 직원의 호출 차선. 로컬 모델은 GPU 대기열이 따로 줄을 세운다 */
@@ -415,7 +419,8 @@ export class Engine {
     }
 
     let searchResults: unknown[] | undefined;
-    if (assignee.canSearchWeb && (assignee.brain.provider === 'ollama' || lowPrecision)) {
+    // 웹 검색은 오케스트레이터가 대신 한다: 로컬·GPT 직원(웹 도구 없음, 15장 7-4). Claude는 자기 검색 도구가 있다
+    if (assignee.canSearchWeb && (assignee.brain.provider !== 'claude-code' || lowPrecision)) {
       const found = await this.localSearch(tk, assignee, lowPrecision);
       if (!found || getTicket(c, tk.id).status !== 'in_progress') return true;
       searchResults = found;
@@ -455,12 +460,14 @@ export class Engine {
     const submission = submissionForReview(handoff?.content ?? '');
     // 문서 검토: 근거 링크 본문을 오케스트레이터가 직접 가져와 넘긴다 (15장 근거 규칙)
     const sources = coding ? [] : await this.readSources(submission);
+    // 문서 티켓은 검토 전에 교정 담당이 1차 점검한다 (16장 7-4). 판정은 하지 않고, 실패해도 멈추지 않는다
+    const proofread = coding ? null : await this.proofread(tk, submission);
     const out = await this.ticketCall(
       tk,
       reviewer,
       'review',
       ReviewOutputSchema,
-      { ticket: this.ticketInput(tk), submission, tests, ...(diff ? { diff } : {}), ...(sources.length ? { sources } : {}) },
+      { ticket: this.ticketInput(tk), submission, tests, ...(diff ? { diff } : {}), ...(sources.length ? { sources } : {}), ...(proofread ? { proofread } : {}) },
       {
         lowPrecision,
         ...this.dir(this.workdirFor(tk, reviewer, lowPrecision)),
@@ -559,7 +566,7 @@ export class Engine {
    * 1) 직원이 검색어를 정하고 2) 오케스트레이터가 SearXNG로 검색하고 3) 결과를 자료로 본 작업에 넘긴다.
    */
   private async localSearch(tk: TicketRow, e: EmployeeRow, lowPrecision: boolean): Promise<unknown[] | null> {
-    const q = await this.ticketCall(tk, e, 'search', SearchQueriesSchema, { ticket: this.ticketInput(tk) }, { lowPrecision });
+    const q = await this.ticketCall(tk, e, 'search', SearchQueriesSchema, { ticket: this.ticketInput(tk) }, { lowPrecision, ...this.dir(this.workdirFor(tk, e, lowPrecision)) });
     if (!q) return null;
     const results: unknown[] = [];
     let count = 0;
@@ -575,6 +582,23 @@ export class Engine {
     }
     recordMessage(this.c, { ticketId: tk.id, orderId: tk.orderId, fromId: 'orchestrator', toId: e.id, kind: 'system', content: `검색 ${q.queries.join(' / ')} → ${count}건`, countsForPingpong: false });
     return results;
+  }
+
+  /** 교정 1차 점검 (16장 7-4). 교정 담당 자신이 쓴 문서는 건너뛴다. 어떤 실패도 티켓을 멈추지 않는다(교정 없이 검토로) */
+  private async proofread(tk: TicketRow, submission: unknown): Promise<ProofreadOutput | null> {
+    if (tk.assigneeId === PROOFREADER_ID) return null;
+    let out: ProofreadOutput | null;
+    try {
+      out = await this.callAs(PROOFREADER_ID, 'proofread', ProofreadOutputSchema, { ticket: this.ticketInput(tk), submission }, { workdir: `proofread-${tk.id}` });
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') throw err;
+      this.log(`${tk.id} 교정 실패(건너뜀): ${(err as Error).message}`);
+      return null;
+    }
+    if (out) {
+      recordMessage(this.c, { ticketId: tk.id, orderId: tk.orderId, fromId: PROOFREADER_ID, toId: tk.reviewerId, kind: 'chat', content: `교정 1차 점검: ${JSON.stringify(out)}`, countsForPingpong: false });
+    }
+    return out;
   }
 
   /** 제출물의 근거 링크를 가져온다. http(s)만, 내부 주소는 가지 않는다. 티켓당 최대 maxLinksPerTicket개. */

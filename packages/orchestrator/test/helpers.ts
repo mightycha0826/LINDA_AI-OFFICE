@@ -13,7 +13,7 @@ import { FakeClock } from '../src/clock.ts';
 import { makeConfig } from '../src/config.ts';
 import type { Ctx } from '../src/context.ts';
 import { openDb } from '../src/db/client.ts';
-import { approvals, events, tickets } from '../src/db/schema.ts';
+import { approvals, employees, events, tickets } from '../src/db/schema.ts';
 import { Engine } from '../src/engine.ts';
 import { seedStaff } from '../src/seed.ts';
 import type { BrainTask } from '../src/brains/brain.ts';
@@ -53,6 +53,11 @@ export function setup(
   return { db, clock, config, ctx, mock, engine, workspace, root, web };
 }
 export type Setup = ReturnType<typeof setup>;
+
+/** 7-4부터 전략가는 GPT다. Claude 리서치(자체 검색, 몫 소진 시 저정밀) 동작을 시험할 때만 Claude로 되돌린다 */
+export function asClaudeResearcher(s: Setup, id = 'strategy'): void {
+  s.db.update(employees).set({ brain: { provider: 'claude-code', budget: 'research' } }).where(eq(employees.id, id)).run();
+}
 
 let msgSeq = 0;
 /** 지시를 넣고 계획서가 CEO 결재 대기에 올라갈 때까지 돌린다. */

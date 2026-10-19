@@ -5,7 +5,7 @@ import { failReview, passReview, planOutput, type TicketInput } from '../src/bra
 import { recordUsage } from '../src/core/budget.ts';
 import { OfficeError } from '../src/errors.ts';
 import { MockWeb } from '../src/web/mock-web.ts';
-import { approvedTickets, setup, ticket } from './helpers.ts';
+import { approvedTickets, setup, ticket, asClaudeResearcher } from './helpers.ts';
 
 const base = planOutput().tickets[0]!;
 const marketingPlan = () => planOutput({ tickets: [{ ...base, title: '랜딩 문구', type: 'marketing', assignee: 'marketing', reviewer: 'qa-local', acceptanceCriteria: ['요금 항목 포함'] }] });
@@ -60,6 +60,7 @@ describe('로컬 직원의 검색 (결정 C)', () => {
   it('리서치 몫이 떨어진 경영전략은 로컬 + SearXNG로 바꿔 계속한다', async () => {
     const web = new MockWeb();
     const s = setup({ web, handlers: { plan: () => planOutput({ tickets: [{ ...base, title: '시장 조사', type: 'research', assignee: 'strategy', reviewer: 'qa-local' }] }), work: () => doc } });
+    asClaudeResearcher(s);
     await approvedTickets(s);
     recordUsage(s.ctx, { budget: 'research', inputTokens: 1, outputTokens: 1, estimatedPct: 15, estimatedWeeklyPct: 3, source: 'estimated' });
     await s.engine.runUntilIdle();
@@ -70,6 +71,7 @@ describe('로컬 직원의 검색 (결정 C)', () => {
   it('리서치 몫이 있는 경영전략은 Claude 자체 검색을 쓴다 (SearXNG 안 거침)', async () => {
     const web = new MockWeb();
     const s = setup({ web, handlers: { plan: () => planOutput({ tickets: [{ ...base, title: '시장 조사', type: 'research', assignee: 'strategy', reviewer: 'qa-local' }] }), work: () => doc } });
+    asClaudeResearcher(s);
     await approvedTickets(s);
     await s.engine.runUntilIdle();
     expect(s.mock.callsFor('search')).toHaveLength(0);
