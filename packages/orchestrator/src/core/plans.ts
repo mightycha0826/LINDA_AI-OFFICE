@@ -10,7 +10,7 @@ import { NotFoundError, OfficeError, PlanRuleError } from '../errors.ts';
 import { expirePendingApprovals, requestApproval, type ApprovalDecision } from './approvals.ts';
 import { saveMinutes } from './meeting.ts';
 import { applyTicketEvent } from './tickets.ts';
-import { checkTempRules, dismissAllTemps, hireTemp, isTempRef, tempRef } from '../staff/temp-staff.ts';
+import { checkTempRules, dismissAllTemps, hireTemp, isTempRef, tempBrain, tempRef } from '../staff/temp-staff.ts';
 import type { Actor } from './transitions.ts';
 import { DS_LINT_CRITERION } from '../design/ds-lint.ts';
 
@@ -67,6 +67,7 @@ export function checkPlanRules(c: Ctx, out: PmPlanOutput, boundProjectId?: strin
   );
   out.tickets.forEach((tk, i) => {
     const label = `티켓 ${i + 1}(${tk.title})`;
+    if (NOT_REVIEWERS.includes(tk.reviewer)) problems.push(`${label}: ${tk.reviewer}은(는) 티켓을 검토하지 않음`);
     if (isTempRef(tk.assignee)) {
       // 임시 직원 담당 티켓은 checkTempRules가 본다. 검토자만 확인한다.
       const r = staff.get(tk.reviewer);
@@ -91,9 +92,58 @@ export function checkPlanRules(c: Ctx, out: PmPlanOutput, boundProjectId?: strin
 
 type StaffRow = typeof employees.$inferSelect;
 
+/** 티켓을 검토하지 않는 직원. 비서실장은 헤르메스 쪽 대화·보고 담당이다 (6장 PM) */
+export const NOT_REVIEWERS: readonly string[] = ['chief-of-staff'];
+
+/** 검토자를 코드가 바꿀 때의 순서 (6장 PM, 2026-10-19 CEO 승인): 코딩은 Codex 리뷰어, 그 밖은 Gemma 검토 담당 */
+export const REVIEWER_ORDER: Record<'coding' | 'other', readonly string[]> = { coding: ['reviewer', 'qa-local'], other: ['qa-local', 'reviewer'] };
+
 /** 담당자를 검토할 수 있는 직원: 상근 AI 직원 중 담당자와 다른 모델 (6장 PM) */
 export function reviewerCandidates(staff: StaffRow[], assignee: StaffRow): StaffRow[] {
-  return staff.filter((r) => !r.isTemporary && r.brain.provider !== 'none' && r.id !== assignee.id && brainModel(r.brain) !== brainModel(assignee.brain));
+  return staff.filter(
+    (r) => !r.isTemporary && r.brain.provider !== 'none' && !NOT_REVIEWERS.includes(r.id) && r.id !== assignee.id && brainModel(r.brain) !== brainModel(assignee.brain),
+  );
+}
+
+/**
+ * 검토자 짝을 코드가 고친다 (6장 PM). 검토자가 담당자와 같은 모델·담당자 본인·비서실장이면
+ * REVIEWER_ORDER에서 담당자와 다른 모델인 첫 직원으로 바꾸고 기록을 남긴다.
+ * 담당자나 검토자가 없는 직원이면 고치지 않는다(규칙 검사가 PM에게 돌려보낸다).
+ */
+export function fixReviewers(c: Ctx, out: PmPlanOutput): { out: PmPlanOutput; changes: string[] } {
+  const staff = new Map(
+    c.db
+      .select()
+      .from(employees)
+      .all()
+      .filter((e) => !e.isTemporary)
+      .map((e) => [e.id, e]),
+  );
+  const temps = new Map(out.tempStaff.map((r) => [tempRef(r.key), r]));
+  const changes: string[] = [];
+  const tickets = out.tickets.map((tk, i) => {
+    const temp = temps.get(tk.assignee);
+    const assignee = staff.get(tk.assignee);
+    const model = temp ? brainModel(tempBrain(temp)) : assignee && assignee.brain.provider !== 'none' ? brainModel(assignee.brain) : null;
+    const r = staff.get(tk.reviewer);
+    if (!model || !r) return tk;
+    const reason = NOT_REVIEWERS.includes(r.id)
+      ? `${r.id}은(는) 검토하지 않음`
+      : r.id === tk.assignee
+        ? '담당자와 같음'
+        : brainModel(r.brain) === model
+          ? `같은 모델 ${model}`
+          : null;
+    if (!reason) return tk;
+    const pick = REVIEWER_ORDER[tk.type === 'coding' ? 'coding' : 'other'].find((id) => {
+      const x = staff.get(id);
+      return x && x.brain.provider !== 'none' && id !== tk.assignee && brainModel(x.brain) !== model;
+    });
+    if (!pick) return tk;
+    changes.push(`티켓 ${i + 1}(${tk.title}): 검토자 ${r.id} → ${pick} (${reason})`);
+    return { ...tk, reviewer: pick };
+  });
+  return { out: changes.length ? { ...out, tickets } : out, changes };
 }
 
 /** 규칙 위반을 고칠 때 PM이 바로 고를 수 있게 후보를 적어 준다 */
@@ -103,10 +153,12 @@ function reviewerHint(staff: StaffRow[], assignee: StaffRow): string {
 }
 
 /** 새 계획서 버전을 만든다. 살아 있는 이전 버전은 superseded로, 그 결재는 expired로. */
-export function createPlanVersion(c: Ctx, orderId: string, out: PmPlanOutput, opts: { afterGateRejection: boolean }): PlanRow {
+export function createPlanVersion(c: Ctx, orderId: string, pmOut: PmPlanOutput, opts: { afterGateRejection: boolean }): PlanRow {
   return inTx(c, (t) => {
     const order = t.db.select().from(orders).where(eq(orders.id, orderId)).get();
     if (!order) throw new NotFoundError(`지시 ${orderId}`);
+    // 검토자 짝은 코드가 먼저 고친다 (6장 PM). 나머지 위반은 그대로 PM에게 돌려보낸다
+    const { out, changes: reviewerChanges } = fixReviewers(t, pmOut);
     const problems = checkPlanRules(t, out, order.projectId);
     if (problems.length) throw new PlanRuleError(problems);
     if (!['planning', 'awaiting-plan-approval'].includes(order.status)) {
@@ -131,6 +183,7 @@ export function createPlanVersion(c: Ctx, orderId: string, out: PmPlanOutput, op
         questions: out.questions,
         tickets: out.tickets,
         tempStaff: out.tempStaff,
+        reviewerChanges,
         // 프로젝트 채널에서 온 지시는 PM이 비워도 그 프로젝트 (6장 PM)
         projectId: out.projectId ?? order.projectId ?? null,
         estimate: out.estimate,

@@ -41,8 +41,11 @@ describe('같은 모델 검토자', () => {
   });
 });
 
+/** 코드가 고치지 않는 위반: 없는 직원을 검토자로 */
+const ghostPlan = () => planOutput({ tickets: [{ ...planOutput().tickets[0]!, reviewer: 'ghost' }] });
+
 /** PM이 계속 같은 실수를 해서 계획 작성이 멈춘 상태까지 */
-async function blockedOrder(handlers: Parameters<typeof setup>[0] = { handlers: { plan: () => sameModelPlan() } }) {
+async function blockedOrder(handlers: Parameters<typeof setup>[0] = { handlers: { plan: () => ghostPlan() } }) {
   const s = setup(handlers);
   const discord = new FakeDiscord();
   const notifier = new Notifier(s.ctx, discord);
@@ -61,7 +64,7 @@ describe('#막힘: 계획 작성 멈춤', () => {
     const msgs = s.discord.in('blocked');
     expect(msgs).toHaveLength(1);
     expect(msgs[0]!.content).toContain(`계획 작성 멈춤 · ${s.order.id}`);
-    expect(msgs[0]!.content).toContain('같은 모델(qwen3:14b)');
+    expect(msgs[0]!.content).toContain('검토자 ghost');
     expect(msgs[0]!.buttons!.flat().map((b) => [b.id, b.label])).toEqual([
       [`pb:${s.order.id}:retry`, '다시 시도'],
       [`pb:${s.order.id}:cancel`, '취소'],
@@ -72,7 +75,7 @@ describe('#막힘: 계획 작성 멈춤', () => {
 
   it('[다시 시도]를 누르면 PM이 다시 쓰고, 또 멈추면 다시 알린다', async () => {
     let n = 0;
-    const s = await blockedOrder({ handlers: { plan: () => (++n <= 4 ? sameModelPlan() : planOutput()) } });
+    const s = await blockedOrder({ handlers: { plan: () => (++n <= 4 ? ghostPlan() : planOutput()) } });
     await s.notifier.tick();
     expect(await s.click('retry')).toMatchObject({ kind: 'update', content: expect.stringContaining('다시 시도해요'), buttons: [] });
     s.clock.advance(60_000); // PM 호출 사이에는 시간이 흐른다

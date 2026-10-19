@@ -96,13 +96,14 @@ describe('계획서 코드 규칙', () => {
   });
 
   it('PM이 규칙을 어기면 오류를 붙여 한 번 다시 시킨다', async () => {
-    const bad = planOutput({ tickets: [{ ...planOutput().tickets[0]!, assignee: 'developer', reviewer: 'strategy' }] });
+    // 같은 모델 검토자는 코드가 고치므로(fixReviewers) 고치지 않는 위반(없는 직원)으로 본다
+    const bad = planOutput({ tickets: [{ ...planOutput().tickets[0]!, assignee: 'developer', reviewer: 'ghost' }] });
     const s = setup({ handlers: { plan: (_r, n) => (n === 1 ? bad : planOutput()) } });
     const { approval } = await orderUntilPlanApproval(s);
     expect(approval).toBeDefined();
     const calls = s.mock.callsFor('plan');
     expect(calls).toHaveLength(2);
-    expect(calls[1]).toMatchObject({ attempt: 2, previousError: expect.stringContaining('같은 모델') });
+    expect(calls[1]).toMatchObject({ attempt: 2, previousError: expect.stringContaining('검토자 ghost') });
   });
 
   it('PM 출력이 두 번 틀리면 계획 작성을 멈추고 CEO의 다시 시도를 기다린다', async () => {

@@ -109,6 +109,8 @@ export const plans = sqliteTable(
     questions: text('questions', { mode: 'json' }).$type<string[]>().notNull(),
     tickets: text('tickets', { mode: 'json' }).$type<PlannedTicket[]>().notNull(),
     tempStaff: text('temp_staff', { mode: 'json' }).$type<TempStaffRequest[]>().notNull(),
+    /** 같은 모델 검토자 등을 코드가 바꾼 기록 (6장 PM, 결재 메시지에 보인다) */
+    reviewerChanges: text('reviewer_changes', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
     /** 디자인 시스템 담당이 고른 포인트 조합 (CEO가 계획서와 함께 승인) */
     designCombo: text('design_combo', { mode: 'json' }).$type<DesignComboOutput>(),
     projectId: text('project_id').references(() => projects.id),

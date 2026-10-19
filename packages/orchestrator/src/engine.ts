@@ -26,7 +26,7 @@ import { blockBudget, budgetOf, enforceBudgets, isExhausted, recordUsage, type E
 import { isOverCap, recordMessage, recordTurn } from './core/guards.ts';
 import { agendaFromLastReview, concludeMeeting, saveMinutes, type RoundPositions } from './core/meeting.ts';
 import { registerOrder } from './core/orders.ts';
-import { checkPlanRules, createPlanVersion, GATE_REVIEWER_ID, latestPlan, recordGateResult, setDesignCombo, startGateReview, type PlanRow } from './core/plans.ts';
+import { checkPlanRules, createPlanVersion, fixReviewers, GATE_REVIEWER_ID, latestPlan, recordGateResult, setDesignCombo, startGateReview, type PlanRow } from './core/plans.ts';
 import { designComboTable } from './staff/design-combos.ts';
 import { dismissAllTemps, dismissTemp, hireTemp, needsDesignCombo } from './staff/temp-staff.ts';
 import { claimLinks, createWeb, type Web } from './web/research.ts';
@@ -300,7 +300,7 @@ export class Engine {
         ...(plan && !afterGateRejection ? { ceoNote: plan.ceoNote ?? '' } : {}),
         ...(plan && afterGateRejection ? { gateIssues: plan.gateResult?.issues ?? [] } : {}),
       };
-      const out = await this.callStructured(pm, 'plan', PmPlanOutputSchema, input, { orderId }, { check: (o: z.infer<typeof PmPlanOutputSchema>) => checkPlanRules(c, o, order.projectId) });
+      const out = await this.callStructured(pm, 'plan', PmPlanOutputSchema, input, { orderId }, { check: (o: z.infer<typeof PmPlanOutputSchema>) => checkPlanRules(c, fixReviewers(c, o).out, order.projectId) });
       const created = createPlanVersion(c, orderId, out, { afterGateRejection });
       if (!needsDesignCombo(created.tempStaff)) startGateReview(c, created.id);
       this.log(`${created.id} v${created.version} 작성`);

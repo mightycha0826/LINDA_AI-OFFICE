@@ -17,6 +17,7 @@ export function planApprovalMessage(plan: PlanRow, a: ApprovalRow): { content: s
     '',
     '**티켓과 담당자**',
     ...plan.tickets.map((t, i) => `${i + 1}. ${t.title} (${t.type}) · 담당 ${t.assignee} · 검토 ${t.reviewer}${t.needsCeoApproval ? ' · CEO 결재 필요' : ''}\n   완료 조건: ${t.acceptanceCriteria.join(' / ')}`),
+    ...(plan.reviewerChanges.length ? ['', '**검토자 자동 변경** (같은 모델끼리는 검토하지 않아요)', ...plan.reviewerChanges.map((x) => `- ${x}`)] : []),
     ...(plan.tempStaff.length ? ['', `**임시 직원**: ${plan.tempStaff.map((s) => `${s.key}(${s.kind}${s.brain ? `, ${s.brain}` : ''}) — ${s.reason}`).join(' · ')}`] : []),
     ...(plan.designCombo ? ['', `**디자인 조합**: ${plan.designCombo.combo} (${plan.designCombo.mode}) — ${plan.designCombo.reason}`] : []),
     '',

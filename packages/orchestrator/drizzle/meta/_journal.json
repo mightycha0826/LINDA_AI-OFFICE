@@ -50,6 +50,13 @@
       "when": 1792409095996,
       "tag": "0006_project_channels",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1792413054250,
+      "tag": "0007_plan_reviewer_changes",
+      "breakpoints": true
     }
   ]
 }
