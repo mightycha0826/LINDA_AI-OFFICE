@@ -1,11 +1,11 @@
 // Codex 어댑터 (리뷰어 · 감사관). 항상 읽기 전용 샌드박스로 돌린다 (6장, 7장 권한 분리, 0단계 #6).
 // 샌드박스 모드는 상수다. 설정이나 AI 출력으로 바꿀 길을 만들지 않는다.
-import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertInside } from '../workspace/paths.ts';
 import { BrainError, type Brain, type BrainRequest, type BrainResult } from './brain.ts';
-import { classifyFailure, findResetTime, tail } from './classify.ts';
+import { tail } from './classify.ts';
+import { assertRan, cliFailure, withRunDir } from './cli-run.ts';
 import { dropNullOptionals, extractJson, toJsonSchema, toStrictJsonSchema } from './json-schema.ts';
 import { runProcess } from './process.ts';
 
@@ -136,17 +136,16 @@ export class CodexBrain implements Brain {
     const cwd = assertInside(this.o.wtRoot, req.workdir, `Codex(${req.employee.id})`);
     const schema = toJsonSchema(req.schema);
 
-    const runDir = join(this.o.dataDir, 'runs', `codex-${randomUUID()}`);
-    mkdirSync(runDir, { recursive: true });
-    const files = { schema: join(runDir, 'schema.json'), lastMessage: join(runDir, 'last.json') };
-    writeFileSync(files.schema, JSON.stringify(toStrictJsonSchema(schema)), 'utf8');
     // Codex에는 시스템 프롬프트 옵션이 없어 역할 카드를 앞에 붙인다.
     // Windows 샌드박스에서는 -C 폴더가 아니라 C:\에서 명령이 돈다(0단계 #6). 작업 폴더를 절대 경로로 알려 준다.
     const prompt = `${req.prompt.system}\n\n---\n\n${codexWorkdirNote(cwd)}\n\n${req.prompt.user}`;
 
     if (this.o.home) ensureCodexHome(this.o.home);
     const env = { ...(this.o.home ? { CODEX_HOME: this.o.home } : {}), ...this.o.extraEnv };
-    try {
+    return withRunDir(this.o.dataDir, 'codex', async (runDir) => {
+      const files = { schema: join(runDir, 'schema.json'), lastMessage: join(runDir, 'last.json') };
+      writeFileSync(files.schema, JSON.stringify(toStrictJsonSchema(schema)), 'utf8');
+
       const r = await runProcess({
         bin: this.o.bin,
         args: this.buildArgs(cwd, files, prompt),
@@ -156,15 +155,12 @@ export class CodexBrain implements Brain {
         signal: req.signal,
         ...(Object.keys(env).length ? { extraEnv: env } : {}),
       });
-      if (r.aborted) throw new DOMException('정지됨', 'AbortError');
-      if (r.timedOut) throw new BrainError('timeout', `Codex가 ${Math.round(this.o.timeoutMs / 60000)}분 안에 끝나지 않았어요`);
-      if (r.spawnError) throw new BrainError('crash', `Codex를 실행하지 못했어요: ${r.spawnError}`);
+      assertRan(r, 'Codex', this.o.timeoutMs);
 
       const last = existsSync(files.lastMessage) ? readFileSync(files.lastMessage, 'utf8') : '';
       if (r.code !== 0 || !last.trim()) {
         const text = `${r.stderr}\n${tail(r.stdout, 2000)}`;
-        const failure = classifyFailure(text);
-        throw new BrainError(failure, `Codex 실패(종료 코드 ${r.code}): ${tail(text.trim())}`, failure === 'limit' ? findResetTime(text) : undefined);
+        throw cliFailure(text, `Codex 실패(종료 코드 ${r.code}): ${tail(text.trim())}`);
       }
       const usage = findCodexUsage(r.stdout);
       return {
@@ -176,8 +172,6 @@ export class CodexBrain implements Brain {
           source: 'estimated',
         },
       };
-    } finally {
-      rmSync(runDir, { recursive: true, force: true });
-    }
+    });
   }
 }

@@ -51,8 +51,8 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5, qwen3:14b·gemma4:12b. C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 406개 통과, typecheck·lint:ds 깨끗하다.
-- **GitHub**: `d7ed96e`까지 푸시했다. **`368bda5`(비서실장 Gemma 전환)와 이 문서 갱신은 로컬에만 있다.**
+- **테스트**: `npm test` 411개 통과, typecheck·lint:ds 깨끗하다.
+- **GitHub**: `d7ed96e`까지 푸시했다. **그 뒤 커밋(`368bda5` Gemma 전환, `ef387a0` 이 문서, `6eb2ef6` pm2 자동 시작, 10-19 리팩터링)은 로컬에만 있다.**
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
 ### 0단계 결과
@@ -71,7 +71,7 @@
 
 ## 5. 반드시 알아야 할 함정
 - **pm2를 Claude 앱의 터미널 탭에서 띄우면, 앱이 재시작될 때 같이 죽는다.** 10-19 16:25~19:18 사무실이 꺼져 있었다.
-  - 해결(주인 승인): 작업 스케줄러 `AI_Office_pm2`(로그온 30초 뒤 `scripts/pm2-resurrect.vbs` → `pm2 resurrect`, 기록 `C:i-office\data\pm2-autostart.log`)를 등록했고, 지금 pm2 데몬도 이 작업으로 띄웠다.
+  - 해결(주인 승인): 작업 스케줄러 `AI_Office_pm2`(로그온 30초 뒤 `scripts/pm2-resurrect.vbs` → `pm2 resurrect`, 기록 `C:\ai-office\data\pm2-autostart.log`)를 등록했고, 지금 pm2 데몬도 이 작업으로 띄웠다.
   - **터미널 탭에서 `pm2 kill`이나 새 데몬을 만들지 않는다.** 데몬이 없으면 `Start-ScheduledTask AI_Office_pm2`로 띄운다. `pm2 restart ai-office`, `pm2 save`는 괜찮다.
   - 등록 스크립트: `scripts/register-pm2-autostart.ps1 [-StartNow]`
 - Claude Code의 Bash/PowerShell은 샌드박스다. 실제 셸 작업은 Terminal 패널(`run_in_terminal`)에서 한다. 패널 명령에는 파이프와 변수를 쓸 수 없다.
@@ -102,7 +102,7 @@ Discord 명령: `/지시`, `/보고`, `/상태 T-n`, `/push T-n`, `/되돌리기
 1. **0단계 #1·#7 채점**: 주인이 #비서실에 `/new` 뒤 과제 5개를 보낸다. `agent.log`에서 도구 호출을 확인하고 `RESULTS.md`에 기록한다.
    - 과제 4는 실제 지시(소개 문구)가 등록된다. PM 계획서가 #결재함에 오는지까지 본다.
 2. **재부팅 대비**: pm2 로그온 작업은 등록 완료(`AI_Office_pm2`). 헤르메스도 자체 작업(`Hermes_Gateway`)이 있다. 주인 몫: 자동 로그인, 업데이트 자동 재시작 막기(지금 사용 시간이 16~23시뿐이다).
-3. `368bda5`와 이 문서를 푸시한다(주인 승인 후).
+3. `d7ed96e` 뒤의 로컬 커밋을 푸시한다(주인 승인 후).
 4. `/프로젝트`로 GitHub 저장소를 등록한다(코딩 지시 전 필수).
 5. 버튼 결재를 실제로 시험한다: 두 번 클릭, 다른 계정, 오래된 버전.
 6. WSL → Docker → SearXNG(#10). 주인이 `wsl --install`과 재부팅을 한다.

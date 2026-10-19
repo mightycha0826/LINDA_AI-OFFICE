@@ -4,13 +4,13 @@
 // - 그 밖(회의 발언 등): 읽기 전용.
 // - 권한 설정과 역할 카드는 worktree 밖(paths.data)에 두고 --settings, --append-system-prompt-file로 넘긴다.
 // - 묻는 창이 뜨면 아무도 답할 수 없으므로 --permission-prompts none으로 거부한다.
-import { randomUUID } from 'node:crypto';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { devSettings, readonlySettings } from '../workspace/claude-settings.ts';
 import { assertInside } from '../workspace/paths.ts';
 import { BrainError, type AccountUsage, type Brain, type BrainRequest, type BrainResult } from './brain.ts';
-import { classifyFailure, findResetTime, tail } from './classify.ts';
+import { tail } from './classify.ts';
+import { assertRan, cliFailure, withRunDir } from './cli-run.ts';
 import { extractJson, toJsonSchema } from './json-schema.ts';
 import { runProcess } from './process.ts';
 
@@ -125,13 +125,11 @@ export class ClaudeCodeBrain implements Brain {
     const profile = claudeProfileFor(req);
     const cwd = assertInside(this.o.wtRoot, req.workdir, `Claude Code(${req.employee.id})`);
 
-    const runDir = join(this.o.dataDir, 'runs', `claude-${randomUUID()}`);
-    mkdirSync(runDir, { recursive: true });
-    const files = { settings: join(runDir, 'settings.json'), systemPrompt: join(runDir, 'role-card.md') };
-    writeFileSync(files.settings, JSON.stringify(CLAUDE_PROFILES[profile].settings(), null, 2), 'utf8');
-    writeFileSync(files.systemPrompt, req.prompt.system, 'utf8');
+    return withRunDir(this.o.dataDir, 'claude', async (runDir) => {
+      const files = { settings: join(runDir, 'settings.json'), systemPrompt: join(runDir, 'role-card.md') };
+      writeFileSync(files.settings, JSON.stringify(CLAUDE_PROFILES[profile].settings(), null, 2), 'utf8');
+      writeFileSync(files.systemPrompt, req.prompt.system, 'utf8');
 
-    try {
       const r = await runProcess({
         bin: this.o.bin,
         args: this.buildArgs(profile, files, toJsonSchema(req.schema)),
@@ -141,15 +139,12 @@ export class ClaudeCodeBrain implements Brain {
         signal: req.signal,
         ...(this.o.extraEnv ? { extraEnv: this.o.extraEnv } : {}),
       });
-      if (r.aborted) throw new DOMException('정지됨', 'AbortError');
-      if (r.timedOut) throw new BrainError('timeout', `Claude Code가 ${Math.round(this.o.timeoutMs / 60000)}분 안에 끝나지 않았어요`);
-      if (r.spawnError) throw new BrainError('crash', `Claude Code를 실행하지 못했어요: ${r.spawnError}`);
+      assertRan(r, 'Claude Code', this.o.timeoutMs);
 
       const { result: json, account } = parseClaudeStream(r.stdout);
       if (!json || json.is_error || r.code !== 0) {
         const text = `${json?.result ?? ''}\n${json?.subtype ?? ''}\n${r.stderr}\n${json ? '' : r.stdout}`;
-        const failure = classifyFailure(text);
-        throw new BrainError(failure, `Claude Code 실패(${json?.subtype ?? `종료 코드 ${r.code}`}): ${tail(text.trim())}`, failure === 'limit' ? findResetTime(text) : undefined);
+        throw cliFailure(text, `Claude Code 실패(${json?.subtype ?? `종료 코드 ${r.code}`}): ${tail(text.trim())}`);
       }
       const u = json.usage ?? {};
       return {
@@ -162,8 +157,6 @@ export class ClaudeCodeBrain implements Brain {
           ...(account ? { account } : {}),
         },
       };
-    } finally {
-      rmSync(runDir, { recursive: true, force: true });
-    }
+    });
   }
 }

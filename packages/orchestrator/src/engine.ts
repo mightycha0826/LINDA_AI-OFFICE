@@ -65,6 +65,12 @@ interface CallOptions {
 const orchestrator = { kind: 'orchestrator' } as const;
 const planBlockedKey = (orderId: string) => `planBlocked:${orderId}`;
 const isCloud = (e: EmployeeRow) => e.brain.provider === 'claude-code' || e.brain.provider === 'codex';
+/** 클라우드 직원의 호출 차선. 로컬 모델은 GPU 대기열이 따로 줄을 세운다 */
+const laneOf = (e: EmployeeRow) => (e.brain.provider === 'claude-code' ? 'claude' : e.brain.provider === 'codex' ? 'codex' : null);
+/** 인터넷 끊김·한도 도달: 직원 탓이 아니라 기다리면 풀리는 실패 */
+const isQuiet = (err: unknown): err is BrainError => err instanceof BrainError && (err.failure === 'offline' || err.failure === 'limit');
+/** 이미 멈췄거나 끝난 티켓은 다시 멈추지 않는다 */
+const SETTLED: readonly string[] = ['paused', 'done', 'cancelled'];
 
 export class Engine {
   private readonly c: Ctx;
@@ -132,11 +138,8 @@ export class Engine {
     try {
       return await this.callStructured(gate, 'gate', GateOutputSchema, { report }, {}, { workdir: this.workspace.sandbox('gate-report') });
     } catch (err) {
-      if (err instanceof BrainError) {
-        if (err.failure === 'offline' || err.failure === 'limit') this.handleQuietFailure(err, gate);
-        return null;
-      }
-      if (err instanceof FormatError) return null;
+      if (isQuiet(err)) this.handleQuietFailure(err, gate);
+      if (err instanceof BrainError || err instanceof FormatError) return null;
       throw err;
     }
   }
@@ -165,9 +168,12 @@ export class Engine {
     try {
       return await this.callStructured(e, task, schema, input, {}, { workdir: this.workspace.sandbox(opts.workdir ?? `${task}-${employeeId}`), ...(opts.check ? { check: opts.check as (out: never) => string[] } : {}) });
     } catch (err) {
+      if (isQuiet(err)) {
+        this.handleQuietFailure(err, e);
+        return null;
+      }
       if (err instanceof BrainError) {
-        if (err.failure === 'offline' || err.failure === 'limit') this.handleQuietFailure(err, e);
-        else this.log(`${employeeId} ${task} 실패: ${err.message}`);
+        this.log(`${employeeId} ${task} 실패: ${err.message}`);
         return null;
       }
       if (err instanceof FormatError) {
@@ -281,8 +287,8 @@ export class Engine {
       this.log(`${created.id} v${created.version} 작성`);
       return true;
     } catch (err) {
-      if (err instanceof BrainError && (err.failure === 'offline' || err.failure === 'limit')) {
-        this.handleQuietFailure(err, plan?.status === 'gate-review' ? this.employee(GATE_REVIEWER_ID) : this.employee('pm'));
+      if (isQuiet(err)) {
+        this.handleQuietFailure(err, this.employee(plan?.status === 'gate-review' ? GATE_REVIEWER_ID : 'pm'));
         return false;
       }
       if (err instanceof FormatError || err instanceof BrainError) {
@@ -588,10 +594,13 @@ export class Engine {
 
   private pauseSystemError(tk: TicketRow, message: string): void {
     recordMessage(this.c, { ticketId: tk.id, orderId: tk.orderId, fromId: 'orchestrator', kind: 'system', content: message, countsForPingpong: false });
-    const now = getTicket(this.c, tk.id);
-    if (now.status !== 'paused' && now.status !== 'done' && now.status !== 'cancelled') {
-      applyTicketEvent(this.c, tk.id, { type: 'system.pause', reason: 'system-error' }, orchestrator);
-    }
+    this.pauseUnlessSettled(tk, 'system-error');
+  }
+
+  /** 호출이 도는 사이 티켓이 멈췄거나 끝났을 수 있다. 그때는 그대로 둔다. */
+  private pauseUnlessSettled(tk: TicketRow, reason: 'offline' | 'system-error'): void {
+    if (SETTLED.includes(getTicket(this.c, tk.id).status)) return;
+    applyTicketEvent(this.c, tk.id, { type: 'system.pause', reason }, orchestrator);
   }
 
   private markLowPrecision(tk: TicketRow): void {
@@ -619,14 +628,12 @@ export class Engine {
         this.pauseSystemError(tk, `형식 오류 2회로 멈춤 (${e.id}): ${err.issues}`);
         return null;
       }
+      if (isQuiet(err)) {
+        this.handleQuietFailure(err, e);
+        if (err.failure === 'offline') this.pauseUnlessSettled(tk, 'offline');
+        return null;
+      }
       if (err instanceof BrainError) {
-        if (err.failure === 'offline' || err.failure === 'limit') {
-          this.handleQuietFailure(err, e);
-          if (err.failure === 'offline' && getTicket(this.c, tk.id).status !== 'paused') {
-            applyTicketEvent(this.c, tk.id, { type: 'system.pause', reason: 'offline' }, orchestrator);
-          }
-          return null;
-        }
         this.pauseSystemError(tk, `두뇌 호출 실패 2회로 멈춤 (${e.id}): ${err.message}`);
         return null;
       }
@@ -653,7 +660,7 @@ export class Engine {
     const lowPrecision = opts.lowPrecision ?? false;
     const brain = this.brainFor(e, { lowPrecision });
     const budget = lowPrecision ? 'local' : (budgetOf(e) ?? 'local');
-    const lane = lowPrecision ? null : e.brain.provider === 'claude-code' ? 'claude' : e.brain.provider === 'codex' ? 'codex' : null;
+    const lane = lowPrecision ? null : laneOf(e);
     const system = roleCard(this.c, e, task, schema, opts.ticketType);
     // 회고 규칙 효과 측정(14장 6): 규칙이 붙은 채로 일한 대상(티켓, 계획이면 지시)을 센다
     const target = refs.ticketId ?? refs.orderId;
