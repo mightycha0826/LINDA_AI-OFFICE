@@ -48,7 +48,7 @@
   - Blank Slate 설정이다. `agent.disabled_toolsets`에 terminal·file·vision을 추가했다.
   - `platform_toolsets.discord: [cronjob, memory, session_search, skills]`, MCP `office`(8 도구, tool_search로 지연 로딩).
   - `model.default: gemma4:12b-64k`(num_ctx 65536을 박은 태그), `ollama_num_ctx: 65536`. `SOUL.md`는 한국어 비서실장 지침(백업 `SOUL.md.bak-20261019-2000`).
-  - 주인이 `hermes gateway restart`로 64K·SOUL.md를 반영했다(19:58). 20:11에 SOUL.md의 지시 등록 줄을 "discordMessageId는 넣지 않는다"로 바꿨다(게이트웨이 재시작 필요).
+  - 주인이 `hermes gateway restart`로 64K·SOUL.md를 반영했다(19:58). 20:11에 SOUL.md의 지시 등록 줄을 "discordMessageId는 넣지 않는다"로 바꿨고, 주인이 재시작과 `/new`로 반영했다.
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5, qwen3:14b·gemma4:12b. C: 여유 약 62GB. VRAM 12GB(RTX 3060).
@@ -58,7 +58,7 @@
 
 ### 0단계 결과
 #2 모델 교체 통과(4~7초), #3 RAM 통과(최소 39GB 여유), #4·#5·#6 통과, #8 통과(낮), #9 조사 요약(최종 판단은 주인).
-**#1 통과(5개 중 4개), #7 통과(10-19 20:03).** 과제 4(지시 등록)는 헤르메스가 Discord 메시지 ID를 모델에게 보여 주지 않아 실패했다. → LINDA가 #비서실 주인 마지막 메시지 ID를 기록하고 `create_order`가 ID 없이 오면 그것을 쓰게 함(주인 선택 A). 과제 4만 다시 시험해야 한다.
+**#1 통과(재시험 뒤 5개 모두), #7 통과(10-19).** 과제 4(지시 등록)는 헤르메스가 Discord 메시지 ID를 모델에게 보여 주지 않아 실패했다. → LINDA가 #비서실 주인 마지막 메시지 ID를 기록하고 `create_order`가 ID 없이 오면 그것을 쓰게 함(주인 선택 A). 20:15 재시험에서 지시 `O-1`이 실제 메시지 ID로 등록됐다.
 #10 SearXNG는 보류: WSL이 없어 관리자 승인과 재부팅이 필요하다.
 
 ## 4. 오늘(10-19) 내린 결정과 이유
@@ -80,7 +80,8 @@
 - Claude Code의 Bash/PowerShell은 샌드박스다. 실제 셸 작업은 Terminal 패널(`run_in_terminal`)에서 한다. 패널 명령에는 파이프와 변수를 쓸 수 없다.
 - **헤르메스 실행 파일은 Claude의 터미널에서 '액세스 거부'된다.** `hermes gateway restart`는 주인이 자기 PowerShell에서 한다. 설정 파일 읽기와 쓰기는 Claude도 된다(실제 파일에 반영됨을 확인했다).
 - **Ollama `/v1`(OpenAI 호환)은 요청의 `num_ctx`를 무시한다.** 헤르메스처럼 `/v1`로 붙는 쪽은 Modelfile로 num_ctx를 박은 태그를 써야 한다. 확인은 `ollama ps`의 CONTEXT. `config.yaml`은 게이트웨이가 잡고 있어 `sed -i`가 실패한다(Node로 제자리 쓰기).
-- 헤르메스 `config.yaml`을 고친 뒤에는 게이트웨이를 재시작해야 반영된다. MCP 추가만은 약 1분 뒤 자동 반영된다.
+- 헤르메스 `config.yaml`을 고친 뒤에는 게이트웨이를 재시작해야 반영된다.
+- **헤르메스는 대화를 시작할 때의 지침(SOUL.md)을 그 대화 끝까지 쓴다.** SOUL.md를 바꾸면 재시작 뒤 #비서실에서 `/new`(또는 `/reset`)까지 해야 한다. 안 하면 예전 답을 되풀이한다(10-19 20:13). MCP 추가만은 약 1분 뒤 자동 반영된다.
 - Windows PowerShell 5.1:
   - 한글이 든 `.ps1`은 UTF-8 BOM이 필요하다.
   - JSON은 Node로 쓴다.
