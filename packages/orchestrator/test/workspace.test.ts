@@ -74,6 +74,44 @@ describe('티켓 worktree', () => {
     expect(await ws.ensureWorktree(ticket(s, tk!.id))).toEqual({ path, branch });
   });
 
+  it('같은 번호의 폴더가 다른 저장소 worktree로 남아 있으면 쓰지 않는다 (시험 찌꺼기)', async () => {
+    const s = setup();
+    initRepo(s);
+    // 다른 저장소의 worktree가 <wt>\T-1에 남아 있다
+    const other = join(s.config.paths.repos, 'other');
+    mkdirSync(other, { recursive: true });
+    git(other, 'init', '-q', '-b', 'main');
+    git(other, 'config', 'user.email', 'test@localhost');
+    git(other, 'config', 'user.name', 'test');
+    writeFileSync(join(other, 'x.txt'), 'x\n');
+    git(other, 'add', '-A');
+    git(other, 'commit', '-q', '-m', 'init');
+    git(other, 'worktree', 'add', '-q', '-b', 'feature/T1-work', join(s.config.paths.wt, 'T-1'));
+    const { tickets: [tk] } = await approvedTickets(s);
+    const err = await new GitWorkspace(s.ctx).ensureWorktree(tk!).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OfficeError);
+    expect((err as OfficeError).code).toBe('stale-worktree');
+    expect((err as OfficeError).message).toContain('다른 저장소');
+  });
+
+  it('같은 저장소라도 브랜치가 다르거나 git 폴더가 아니면 쓰지 않는다', async () => {
+    const s = setup();
+    const repo = initRepo(s);
+    git(repo, 'worktree', 'add', '-q', '-b', 'feature/T1-old', join(s.config.paths.wt, 'T-1'));
+    const { tickets: [tk] } = await approvedTickets(s);
+    const e1 = await new GitWorkspace(s.ctx).ensureWorktree(tk!).catch((e: unknown) => e);
+    expect((e1 as OfficeError).code).toBe('stale-worktree');
+    expect((e1 as OfficeError).message).toContain('브랜치가 달라요');
+
+    const s2 = setup();
+    initRepo(s2);
+    mkdirSync(join(s2.config.paths.wt, 'T-1'), { recursive: true });
+    const { tickets: [tk2] } = await approvedTickets(s2);
+    const e2 = await new GitWorkspace(s2.ctx).ensureWorktree(tk2!).catch((e: unknown) => e);
+    expect((e2 as OfficeError).code).toBe('stale-worktree');
+    expect((e2 as OfficeError).message).toContain('git 작업 폴더가 아니에요');
+  });
+
   it('비밀 파일이 있으면 일을 시작하지 않는다 (.env.example은 괜찮다)', async () => {
     const s = setup();
     initRepo(s, { '.env': 'SECRET=1', '.env.example': 'SECRET=' });

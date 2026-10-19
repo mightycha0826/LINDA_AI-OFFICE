@@ -3,7 +3,7 @@
 //   npm run smoke -- [--config C:\ai-office\data\config.json] [--only ollama|claude|codex] [--flow]
 //
 // 기본: 두뇌마다 작은 구조화 호출 한 번씩 (Claude·GPT 한도를 조금 쓴다).
-// --flow: 임시 저장소(repos\smoke-<시각>)를 만들어 지시 하나를 끝까지 돌린다. 계획서 결재는 이 스크립트가 CEO 대신 누른다(시험용).
+// --flow: 임시 저장소(repos\smoke-<시각>, worktree는 wt\_smoke\<시각>)를 만들어 지시 하나를 끝까지 돌린다. 계획서 결재는 이 스크립트가 CEO 대신 누른다(시험용).
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -42,7 +42,10 @@ if (!existsSync(configPath)) {
   process.exitCode = 1;
   throw new Error('설정 파일 없음');
 }
-const config: Config = loadConfig(configPath);
+const loaded: Config = loadConfig(configPath);
+// 시험 티켓(T-1…)의 worktree는 진짜 사무실과 겹치지 않게 <wt>\_smoke\<시각> 아래에 둔다
+const runStamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+const config: Config = { ...loaded, paths: { ...loaded.paths, wt: join(loaded.paths.wt, '_smoke', runStamp) } };
 const ctx: Ctx = { db: openDb(':memory:'), config, clock: systemClock };
 seedStaff(ctx);
 const { brainFor, queue } = createBrainRegistry(config, { onModelSwitch: (from, to) => emit(ctx, 'model.loaded', { from, to }) });

@@ -85,6 +85,19 @@ export class GitWorkspace implements Workspace {
     return sandboxDir(this.c.config.paths.wt, name);
   }
 
+  private async assertOwnWorktree(path: string, repo: string, branch: string, ticketId: string): Promise<void> {
+    const commonDir = async (cwd: string) => resolve(cwd, await git(cwd, ['rev-parse', '--git-common-dir'])).toLowerCase();
+    const stale = (why: string) => new OfficeError('stale-worktree', `${ticketId}: ${path} 폴더가 이미 있는데 ${why}. 남은 폴더를 치운 뒤 /재개해 주세요`);
+    let mine: string, theirs: string, head: string;
+    try {
+      [mine, theirs, head] = await Promise.all([commonDir(repo), commonDir(path), git(path, ['rev-parse', '--abbrev-ref', 'HEAD'])]);
+    } catch {
+      throw stale('git 작업 폴더가 아니에요');
+    }
+    if (mine !== theirs) throw stale('다른 저장소의 작업 폴더예요');
+    if (head !== branch) throw stale(`브랜치가 달라요(${head}, 필요한 것 ${branch})`);
+  }
+
   async ensureWorktree(ticket: TicketRow): Promise<{ path: string; branch: string }> {
     const c = this.c;
     if (ticket.worktreePath && ticket.branch && existsSync(ticket.worktreePath)) return { path: ticket.worktreePath, branch: ticket.branch };
@@ -99,6 +112,9 @@ export class GitWorkspace implements Workspace {
     if (!existsSync(path)) {
       const exists = await git(project.localPath, ['branch', '--list', branch]);
       await git(project.localPath, exists ? ['worktree', 'add', path, branch] : ['worktree', 'add', '-b', branch, path, project.defaultBranch]);
+    } else {
+      // 같은 번호의 폴더가 남아 있으면(시험·예전 DB의 티켓 등) 다른 저장소나 다른 브랜치일 수 있다. 그대로 쓰면 엉뚱한 곳에 커밋한다.
+      await this.assertOwnWorktree(path, project.localPath, branch, ticket.id);
     }
 
     const secrets = findSecretFiles(path);
