@@ -1,6 +1,6 @@
 # Claudelog: AI 사무실 인수인계
 
-다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-19 19:45 KST**.
+다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-19 20:00 KST**.
 저장소는 **공개**다(https://github.com/mightycha0826/LINDA_AI-OFFICE). 토큰, 비밀번호, Discord ID는 여기 적지 않는다(`C:\ai-office\data`에 있다).
 
 ## 0. 먼저 읽을 것
@@ -47,7 +47,8 @@
 - **헤르메스(백서진)**: 설치·연결 완료. #비서실에서 답하는 것을 주인이 확인했다(Gemma, 한 번에 5~12초).
   - Blank Slate 설정이다. `agent.disabled_toolsets`에 terminal·file·vision을 추가했다.
   - `platform_toolsets.discord: [cronjob, memory, session_search, skills]`, MCP `office`(8 도구, tool_search로 지연 로딩).
-  - `model.default: gemma4:12b`, `ollama_num_ctx: 65536`.
+  - `model.default: gemma4:12b-64k`(num_ctx 65536을 박은 태그), `ollama_num_ctx: 65536`. `SOUL.md`는 한국어 비서실장 지침(백업 `SOUL.md.bak-20261019-2000`).
+  - **19:55 바꾼 설정은 게이트웨이 재시작 전이라 아직 반영 안 됨.** 주인이 `hermes gateway restart`를 한 뒤 0단계 #1을 처음부터 다시 본다.
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5, qwen3:14b·gemma4:12b. C: 여유 약 62GB. VRAM 12GB(RTX 3060).
@@ -64,6 +65,7 @@
 | 결정 | 이유 | 기록 |
 | --- | --- | --- |
 | 비서실장 두뇌 Qwen3-14B → **Gemma 4 12B** (CEO 승인) | 헤르메스는 문맥 64K 미만을 거부한다. Qwen은 40,960이 한계이고 CPU로 35% 밀린다. Gemma는 64K에서 100% GPU, 66 tok/s | DESIGN 2·6·16·18장, `seed.ts` |
+| 헤르메스 모델을 `gemma4:12b-64k` 태그로, `SOUL.md` 한국어화 | 비서실장이 영어로 답하고 skills_list만 반복했다. Ollama `/v1`이 `ollama_num_ctx`를 무시해 4096으로 떠서 입력이 2,051토큰에서 잘렸다(`ollama ps`로 확인). `SOUL.md`도 기본 영어 문구였다 | DESIGN 6장, HERMES-SETUP |
 | `/지시` 슬래시 명령 추가 (CEO 요청) | 헤르메스 없이도 지시할 수 있게. 상호작용 ID로 중복을 막는다 | DESIGN 9장 |
 | 남은 worktree 폴더 재사용 금지 | 시험(`smoke --flow`)이 남긴 `wt\T-1`을 진짜 첫 티켓이 쓸 뻔했다. 같은 저장소·브랜치가 아니면 `stale-worktree`로 멈춘다 | `workspace/worktrees.ts` |
 | Codex 회사 홈에서 기본 스킬·플러그인 끄기 | 입력 토큰이 75,764에서 42,290으로 줄었다 | `brains/codex.ts` |
@@ -76,6 +78,7 @@
   - 등록 스크립트: `scripts/register-pm2-autostart.ps1 [-StartNow]`
 - Claude Code의 Bash/PowerShell은 샌드박스다. 실제 셸 작업은 Terminal 패널(`run_in_terminal`)에서 한다. 패널 명령에는 파이프와 변수를 쓸 수 없다.
 - **헤르메스 실행 파일은 Claude의 터미널에서 '액세스 거부'된다.** `hermes gateway restart`는 주인이 자기 PowerShell에서 한다. 설정 파일 읽기와 쓰기는 Claude도 된다(실제 파일에 반영됨을 확인했다).
+- **Ollama `/v1`(OpenAI 호환)은 요청의 `num_ctx`를 무시한다.** 헤르메스처럼 `/v1`로 붙는 쪽은 Modelfile로 num_ctx를 박은 태그를 써야 한다. 확인은 `ollama ps`의 CONTEXT. `config.yaml`은 게이트웨이가 잡고 있어 `sed -i`가 실패한다(Node로 제자리 쓰기).
 - 헤르메스 `config.yaml`을 고친 뒤에는 게이트웨이를 재시작해야 반영된다. MCP 추가만은 약 1분 뒤 자동 반영된다.
 - Windows PowerShell 5.1:
   - 한글이 든 `.ps1`은 UTF-8 BOM이 필요하다.

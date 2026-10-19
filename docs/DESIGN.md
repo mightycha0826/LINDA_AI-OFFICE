@@ -482,6 +482,8 @@ type TicketStatus =
 ### 비서실장 (헤르메스 + Gemma 4 12B)
 
 > **2026-10-19 변경 (CEO 승인)**: 처음에는 Qwen3-14B였다. 실제로 연결해 보니 헤르메스는 문맥 64K 토큰 미만 모델을 거부하는데(`Model ... below the minimum 64,000`), Qwen3-14B는 40,960이 한계이고 그것만으로도 VRAM 12GB를 넘어 35%가 CPU로 밀려 속도가 절반(15.8 tok/s)이 됐다. Gemma 4 12B는 문맥 262K, 64K로 띄워도 100% GPU, 66 tok/s였다. 헤르메스 `config.yaml`의 `model.default: gemma4:12b`, `model.ollama_num_ctx: 65536`. PM·마케팅 등 오케스트레이터가 직접 부르는 직원의 두뇌는 그대로다.
+>
+> **2026-10-19 추가**: Ollama의 OpenAI 호환 주소(`/v1`)는 `ollama_num_ctx`를 무시해 모델이 4096으로 떴다. 입력이 2,051토큰에서 잘려 역할 지시와 도구 정의가 빠졌고, 영어로 답하거나 엉뚱한 도구(skills_list)를 반복했다. 그래서 `PARAMETER num_ctx 65536`을 넣은 태그 `gemma4:12b-64k`(같은 가중치)를 만들어 `model.default`로 쓴다. 헤르메스 `SOUL.md`(성격 파일)도 기본 영어 문구에서 한국어 비서실장 지침과 도구 고르기 표로 바꿨다.
 
 - 입력: #비서실의 CEO 메시지, 오케스트레이터가 MCP로 열어준 도구
 - 출력: Discord 답장, 지시 등록, 정기 보고문

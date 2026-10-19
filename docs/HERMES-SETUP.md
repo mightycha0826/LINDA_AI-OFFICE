@@ -45,6 +45,14 @@ hermes model
 - 사용자 지정(OpenAI 호환) 주소를 고르고: 주소 `http://127.0.0.1:11434/v1`, 모델 `gemma4:12b`, 문맥(Context length) `65536`
 - 그다음 `config.yaml`의 `model:` 아래에 `ollama_num_ctx: 65536`이 있어야 한다. 없으면 헤르메스가 "below the minimum 64,000"으로 답을 못 한다
 - 메뉴 이름은 버전마다 다를 수 있다. 헤르메스 문서의 AI Providers 항목을 따른다.
+- **`/v1` 주소는 `ollama_num_ctx`를 무시한다(2026-10-19 확인).** 그대로 두면 모델이 4096으로 떠서 지시가 잘리고 영어로 답한다. 64K 태그를 만들고 모델 이름을 `gemma4:12b-64k`로 쓴다. `ollama ps`의 CONTEXT가 65536이면 맞다.
+
+  ```powershell
+  Set-Content -Encoding ascii Modelfile.gemma64k "FROM gemma4:12b`nPARAMETER num_ctx 65536"
+  ollama create gemma4:12b-64k -f Modelfile.gemma64k
+  ```
+
+- 성격 파일 `%LOCALAPPDATA%\hermes\SOUL.md`는 기본이 영어 문구다. 한국어 비서실장 지침(말투, 할 수 있는 일, 도구 고르기 표)으로 바꾼다.
 
 ## 4. 회사 연결 설정 (스크립트)
 
