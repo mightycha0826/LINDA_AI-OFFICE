@@ -22,6 +22,12 @@
 **확인한 것**
 - 테스트 493개 통과, 타입 검사·디자인 lint 통과, 화면 빌드 통과.
 - 마이그레이션 0008: 운영 DB 복사본에서 직원 10명·이벤트 56개 그대로, 외래 키 검사 깨끗, 트리거 11개 그대로. 티켓이 있는 시험 DB에서도 같은 SQL로 다시 만들어 참조가 유지됨.
+- 운영 반영: 08:15 pm2 재시작, 직원 17명, 0008 적용, 외래 키 깨끗, 화면 200.
+- 진짜 두뇌 코딩 흐름(`smoke --flow`): 기획실장 계획 → 개발자 A(GPT) 구현 → 개발팀장(Claude) 검토 → done, 반려 0.
+- 진짜 두뇌 문서 흐름(`smoke --doc`): 1차는 토큰 상한(2만)에 걸려 멈춤 → 기획실장 역할 카드에 문서 티켓 토큰 기준을 넣음(상한 규칙은 그대로) → 2차 카피라이터(GPT) → 교정 담당(Gemma) 1차 점검 → 기획실장 검토 → done. 자세한 것은 stage0/RESULTS.md 맨 아래.
+
+**주인이 정할 것**
+- 상한에 걸린 그 호출의 결과: 지금은 검토가 끝난 호출 직후 상한에 걸리면 **그 검토 결과도 버리고** 멈춘다(토큰은 이미 씀). 결과는 기록하고 다음 호출부터 멈추게 할지는 7장 안전 한도에 관한 일이라 고치지 않았다.
 
 **주인이 할 일 (돌아와서)**
 1. 비밀 파일 막기: `powershell -ExecutionPolicy Bypass -File C:\ai-office\office\scripts\protect-secrets.ps1 -IncludeCodexAuth`, 확인은 `cd C:\ai-office\office\packages\orchestrator; node src/sim/secrets-read-check.ts`.

@@ -86,5 +86,24 @@ npx pm2 save
 | `npm run hermes:restore` | 헤르메스 백업 목록 |
 | `npm run hermes:restore -- 2026-10-15` | 그날 백업으로 되돌리기 (헤르메스를 끄고) |
 | `npm run smoke` | 실제 CLI(claude, codex, ollama) 연결 한 번씩 확인 (비용 조금) |
+| `npm run smoke -- --flow` | 임시 저장소로 코딩 지시 하나를 끝까지 (개발자 A 구현 → 개발팀장 검토). Claude·GPT 한도 몇 % 씀 |
+| `npm run smoke -- --doc` | 문서 지시 하나를 끝까지 (카피라이터 작성 → 교정 담당 1차 점검 → 검토). 저장소 안 씀 |
+| `node src/sim/helper-check.ts` (orchestrator 폴더에서) | 로컬 보조 직원 출력 품질 확인. 로컬 모델만 씀 |
+| `node src/sim/codex-write-check.ts` (orchestrator 폴더에서) | Codex 쓰기 샌드박스가 worktree 밖 쓰기·네트워크를 막는지 확인 |
+
+smoke·실험 도구는 모두 메모리 DB를 써서 운영 사무실을 건드리지 않는다. 계획서 결재는 스크립트가 CEO 대신 누른다(시험용).
+
+### 직원 (7단계 조직, DESIGN 2-0)
+
+| 부서 | 직원 | 두뇌 |
+| --- | --- | --- |
+| CEO실 | 비서실장(헤르메스) | Gemma 4 12B 64K |
+| 기획실 | 기획실장(pm) | Claude |
+| 품질보증팀 | 교정 담당(qa-local) | Gemma |
+| 개발팀 | 개발팀장(developer) | Claude |
+| 개발팀 | 개발자 A·B(dev-a, dev-b) | GPT(Codex), worktree 안에서만 쓰기 |
+| 개발팀 | 리뷰어 · 감사관(reviewer) | GPT |
+| 마케팅 · 콘텐츠팀, 리서치 · 전략팀 | 카피라이터(marketing), 전략가(strategy) | GPT |
+| 각 부서 보조 (7-5) | 막힘 해설가, 변경 요약가, 거울 통역사, 커밋 서기, 회고 서기, 보고 초안가, 초안 작가 | Gemma. 판정·검토는 하지 않음 |
 
 Discord에서: `/새프로젝트 아이디`(GitHub 비공개 저장소 + 카테고리 `아이디` › `#작업`을 함께 만든다. `#작업`에서 쓴 `/지시`는 그 저장소 일이 된다), `/지시`(헤르메스 없이 직접 지시), `/정지`, `/재개`, `/보고`, `/설정`, `/push`, `/되돌리기`, `/프로젝트` 등 (9장).

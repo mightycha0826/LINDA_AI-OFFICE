@@ -1,6 +1,6 @@
 // npm run smoke — 실제 두뇌(Ollama, Claude Code, Codex)로 연결을 확인한다. 0단계 #2·#4·#5·#6 통과 뒤에 돌린다.
 //
-//   npm run smoke -- [--config C:\ai-office\data\config.json] [--only ollama|claude|codex] [--flow]
+//   npm run smoke -- [--config C:\ai-office\data\config.json] [--only ollama|claude|codex] [--flow] [--doc]
 //
 // 기본: 두뇌마다 작은 구조화 호출 한 번씩 (Claude·GPT 한도를 조금 쓴다).
 // --flow: 임시 저장소(repos\smoke-<시각>, worktree는 wt\_smoke\<시각>)를 만들어 지시 하나를 끝까지 돌린다. 계획서 결재는 이 스크립트가 CEO 대신 누른다(시험용).
@@ -16,7 +16,8 @@ import { Connectivity } from '../connectivity.ts';
 import { emit, type Ctx } from '../context.ts';
 import { pendingApprovals } from '../core/approvals.ts';
 import { openDb } from '../db/client.ts';
-import { employees, tickets, usage } from '../db/schema.ts';
+import { employees, messages, tickets, usage } from '../db/schema.ts';
+import { eq } from 'drizzle-orm';
 import { Engine } from '../engine.ts';
 import { seedStaff } from '../seed.ts';
 import { roleCard } from '../staff/role-cards.ts';
@@ -121,6 +122,36 @@ async function fullFlow(): Promise<boolean> {
   return all.length > 0 && all.every((t) => t.status === 'done');
 }
 
-const ok = (await pings()) && (!flow || (await fullFlow()));
+/**
+ * --doc (16장 7-4·7-5): 문서 지시 하나를 끝까지. 카피라이터(GPT) → 교정 담당(Gemma) 1차 점검 → 검토 → 완료.
+ * 저장소는 쓰지 않는다. 계획서 결재는 이 스크립트가 CEO 대신 누른다(시험용, 메모리 DB).
+ */
+async function docFlow(): Promise<boolean> {
+  const engine = new Engine({ ctx, brainFor, tests: new ProjectTestRunner(ctx), workspace: new GitWorkspace(ctx), connectivity: new Connectivity(ctx), log: (l) => say(`  · ${l}`) });
+  engine.submitOrder({
+    discordMessageId: String(Date.now() + 1).padEnd(19, '0'),
+    rawText: '개인 포트폴리오 첫 화면에 넣을 한 줄 소개 문구 후보 3개를 써줘. 각 40자 이내, 내 정보는 모르니 [자리표시]를 써. 코드는 필요 없어',
+  });
+  say('문서 지시: 계획 작성·관문 검사 중…');
+  await engine.runUntilIdle();
+  for (const a of pendingApprovals(ctx)) {
+    say(`(시험용) CEO 대신 승인: ${a.summary.split('\n')[0]}`);
+    engine.decide({ approvalId: a.id, discordUserId: config.ceoDiscordId, decision: 'approved' });
+  }
+  say('작업·교정·검토 중…');
+  await engine.runUntilIdle();
+  const all = ctx.db.select().from(tickets).all();
+  for (const t of all) {
+    say(`  ${t.id} ${t.title}: ${t.status}${t.pauseReason ? `(${t.pauseReason})` : ''} · 담당 ${t.assigneeId} · 검토 ${t.reviewerId} · 반려 ${t.reworkCount} · 토큰 ${t.tokensUsed}/${t.tokenCap} (예상 ${t.estimatedTokens})`);
+    for (const m of ctx.db.select().from(messages).where(eq(messages.ticketId, t.id)).all()) {
+      if (['handoff', 'review', 'chat'].includes(m.kind)) say(`    [${m.kind} · ${m.fromId}] ${m.content.replace(/\s+/g, ' ').slice(0, 400)}`);
+    }
+  }
+  for (const u of ctx.db.select().from(usage).all()) say(`  사용량 ${u.budget}: 토큰 ${u.inputTokens}+${u.outputTokens}, 5시간 ${u.estimatedPct}% (추정치)`);
+  return all.length > 0 && all.every((t) => t.status === 'done');
+}
+
+const doc = args.includes('--doc');
+const ok = (await pings()) && (!flow || (await fullFlow())) && (!doc || (await docFlow()));
 say(ok ? '\n[통과] 스모크 테스트' : '\n[실패] 스모크 테스트 — 위 [실패] 줄을 RESULTS.md에 붙여 주세요');
 process.exitCode = ok ? 0 : 1;
