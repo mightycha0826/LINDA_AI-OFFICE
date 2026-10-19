@@ -105,6 +105,8 @@ modelUsage: claude-opus-5-5
 ```
 
 - 판정: **#6 통과** (Windows에서 그대로, WSL2 필요 없음)
+- 2026-10-19 10:02 **회사 전용 CODEX_HOME 로그인으로 다시 확인: 통과** (모델 지정 없음 = 계정 기본, 37초, `stage0\out\codex-events-20261019-100244.jsonl`). 읽기 전용 지킴, JSON 보고, 사용량 이벤트 있음.
+  - 주의: 입력 토큰 75,764(캐시 59,392). Codex가 회사 폴더에도 기본 스킬(`skills\.system`: imagegen, openai-docs, review-agent, skill-creator 등)과 원격 플러그인 캐시(`plugins\cache\openai-curated-remote`)를 스스로 깔았다. 리뷰어 프롬프트에 섞이는지, 설정으로 끌 수 있는지 따로 확인할 것.
 - `codex exec --help`에 웹 검색 옵션: 없음 (search/web이 들어간 줄 0개). 다만 모델 정보에 `supports_search_tool: true`가 있어 설정으로 켤 수는 있다. 회사 전용 CODEX_HOME 설정에는 넣지 않았다.
 - 메모 (실패와 고친 것 순서대로):
   1. 16:35 저장된 로그인 토큰을 새로 고치지 못함(401) → 주인이 다시 로그인.
