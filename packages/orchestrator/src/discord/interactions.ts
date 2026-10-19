@@ -45,7 +45,7 @@ export class InteractionHandler {
     try {
       if (i.type === 'button') return await this.button(i.customId);
       if (i.type === 'modal') return await this.modal(i.customId, i.fields);
-      return await this.command(i.name, i.options);
+      return await this.command(i.name, i.options, i.id);
     } catch (err) {
       if (err instanceof StaleApprovalError || err instanceof AlreadyDecidedError || err instanceof OfficeError) return { kind: 'reply', content: err.message, ephemeral: true };
       throw err;
@@ -120,7 +120,7 @@ export class InteractionHandler {
 
   // --- 슬래시 명령 -------------------------------------------------------------
 
-  private async command(name: string, o: Record<string, string | number | undefined>): Promise<InteractionReply> {
+  private async command(name: string, o: Record<string, string | number | undefined>, interactionId?: string): Promise<InteractionReply> {
     const c = this.c;
     const ticketArg = () => {
       const id = String(o['티켓'] ?? '').toUpperCase().trim();
@@ -130,6 +130,17 @@ export class InteractionHandler {
       return t;
     };
     switch (name) {
+      case '지시': {
+        // 헤르메스(비서실장) 없이 CEO가 직접 지시한다. 되묻기 없이 적은 글이 그대로 지시서가 된다.
+        // 상호작용 ID가 지시의 discordMessageId라, 같은 명령이 두 번 처리돼도 지시는 하나만 생긴다.
+        const text = String(o['내용'] ?? '').trim();
+        if (text.length < 4) throw new OfficeError('arg', '지시 내용을 조금 더 자세히 적어 주세요');
+        if (!interactionId || !/^\d{17,20}$/.test(interactionId)) throw new OfficeError('arg', '지시 번호를 만들 수 없어요. 다시 시도해 주세요');
+        const { order, created } = this.engine.submitOrder({ discordMessageId: interactionId, rawText: text });
+        if (!created) return { kind: 'reply', content: `이미 받은 지시예요 (${order.id})`, ephemeral: true };
+        return { kind: 'reply', content: `지시를 받았어요 (**${order.id}**). PM이 계획서를 만들면 결재함에 올라와요.
+> ${text.slice(0, 300)}`, ephemeral: false };
+      }
       case '보고': {
         const since = new Date(c.clock.now().getTime() - 24 * 3_600_000).toISOString();
         return { kind: 'reply', content: `**지금 상태** (최근 24시간)\n${formatReportData(buildReportData(c, since))}`, ephemeral: false };
@@ -207,6 +218,7 @@ export class InteractionHandler {
 
 /** 슬래시 명령 정의 (bot.ts가 Discord에 등록한다) */
 export const SLASH_COMMANDS: { name: string; description: string; options: { name: string; description: string; required: boolean; choices?: { name: string; value: string }[] }[] }[] = [
+  { name: '지시', description: '회사에 일을 맡겨요 (PM이 계획서를 만들어 결재함에 올려요)', options: [{ name: '내용', description: '예: demo 프로젝트에 로그인 기능 추가', required: true }] },
   { name: '보고', description: '지금 상태를 바로 보고해요', options: [] },
   { name: '상태', description: '티켓 하나의 상세', options: [{ name: '티켓', description: '예: T-12', required: true }] },
   { name: 'push', description: '푸시 확인 버튼을 결재함에 올려요', options: [{ name: '티켓', description: '예: T-12', required: true }] },

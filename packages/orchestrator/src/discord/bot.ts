@@ -90,7 +90,7 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
         await respond(it, await o.handler.handle({ type: 'modal', userId: it.user.id, customId: it.customId, fields }));
       } else if (it.isChatInputCommand()) {
         const options = Object.fromEntries(it.options.data.map((x) => [x.name, x.value as string | number | undefined]));
-        await respond(it, await o.handler.handle({ type: 'command', userId: it.user.id, name: it.commandName, options }));
+        await respond(it, await o.handler.handle({ type: 'command', userId: it.user.id, name: it.commandName, options, id: it.id }));
       }
     } catch (err) {
       o.log(`Discord 상호작용 처리 실패: ${(err as Error).stack ?? err}`);

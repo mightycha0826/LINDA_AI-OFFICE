@@ -185,3 +185,33 @@ describe('슬래시 명령', () => {
     expect(fresh.schedule.checkTimes).toEqual(['07:30', '19:00']);
   });
 });
+
+describe('/지시 (헤르메스 없이 CEO가 직접 지시)', () => {
+  const order = (text: string, id: string, userId = CEO): Interaction => ({ type: 'command', userId, name: '지시', options: { 내용: text }, id });
+
+  it('CEO가 적은 글이 지시가 되고, 엔진이 계획을 시작한다', async () => {
+    const s = setup();
+    const r = await handler(s).handle(order('로그인 기능 추가', '1400000000000000001'));
+    expect(r).toMatchObject({ kind: 'reply', ephemeral: false });
+    expect((r as { content: string }).content).toContain('O-1');
+    expect(eventsOf(s, 'order.created')).toHaveLength(1);
+    await s.engine.runUntilIdle();
+    expect(pendingPlanApproval(s)).toBeTruthy();
+  });
+
+  it('같은 상호작용이 두 번 와도 지시는 하나만 생긴다', async () => {
+    const s = setup();
+    await handler(s).handle(order('로그인 기능 추가', '1400000000000000002'));
+    const again = await handler(s).handle(order('로그인 기능 추가', '1400000000000000002'));
+    expect((again as { content: string }).content).toContain('이미 받은 지시');
+    expect(eventsOf(s, 'order.created')).toHaveLength(1);
+  });
+
+  it('CEO가 아닌 계정, 너무 짧은 글, 상호작용 ID가 없으면 지시가 생기지 않는다', async () => {
+    const s = setup();
+    expect(await handler(s).handle(order('로그인 기능 추가', '1400000000000000003', STRANGER))).toEqual({ kind: 'ignore' });
+    expect(await handler(s).handle(order('ㄱ', '1400000000000000004'))).toMatchObject({ kind: 'reply', ephemeral: true });
+    expect(await handler(s).handle({ type: 'command', userId: CEO, name: '지시', options: { 내용: '로그인 기능 추가' } })).toMatchObject({ kind: 'reply', ephemeral: true });
+    expect(eventsOf(s, 'order.created')).toHaveLength(0);
+  });
+});

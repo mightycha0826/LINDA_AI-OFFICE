@@ -38,7 +38,8 @@ export interface MirrorPort {
 export type Interaction =
   | { type: 'button'; userId: string; customId: string }
   | { type: 'modal'; userId: string; customId: string; fields: Record<string, string> }
-  | { type: 'command'; userId: string; name: string; options: Record<string, string | number | undefined> };
+  /** id: Discord 상호작용 ID(스노플레이크). /지시는 이 값을 지시 번호의 중복 방지 키로 쓴다 */
+  | { type: 'command'; userId: string; name: string; options: Record<string, string | number | undefined>; id?: string };
 
 export interface ModalField {
   id: string;
