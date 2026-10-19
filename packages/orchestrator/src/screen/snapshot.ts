@@ -9,7 +9,7 @@ import { localTime, nextCheckTime } from '../discord/schedule.ts';
 import { approvalLink } from '../reports.ts';
 
 export function brainLabel(id: string, b: Brain): string {
-  if (id === 'chief-of-staff') return '헤르메스 · Qwen3-14B';
+  if (id === 'chief-of-staff') return '헤르메스 · Gemma 4 12B';
   switch (b.provider) {
     case 'claude-code':
       return b.budget === 'research' ? 'Claude' : 'Claude Code';

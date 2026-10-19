@@ -49,16 +49,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File stage0\env.ps1
 
 ---
 
-## #1 헤르메스 + Qwen3-14B 도구 호출
+## #1 헤르메스 + Gemma 4 12B 도구 호출 (원래 Qwen3-14B. 헤르메스가 64K 문맥 미만을 거부해 2026-10-19 변경)
 
 - **통과 기준:** 아래 과제 5개 중 4개 이상에서 맞는 도구를 맞는 인자로 부른다.
 - **실패하면:** 비서실장 두뇌를 키우거나 로컬 비중을 줄인다.
 
 준비:
 
-1. Ollama에 `qwen3:14b`를 받는다: `ollama pull qwen3:14b`
+1. Ollama에 `gemma4:12b`를 받는다: `ollama pull gemma4:12b`
 2. 헤르메스를 설치한다(Windows 네이티브): 공식 저장소 README의 PowerShell 설치 명령을 따른다. 설치 위치는 `%LOCALAPPDATA%\hermes`다.
-3. `hermes model`에서 모델 제공자를 사용자 지정 OpenAI 호환 주소로 고른다: 주소 `http://127.0.0.1:11434/v1`, 모델 `qwen3:14b`. (헤르메스 문서의 AI Providers 항목에서 정확한 메뉴 이름을 확인한다.)
+3. `hermes model`에서 모델 제공자를 사용자 지정 OpenAI 호환 주소로 고른다: 주소 `http://127.0.0.1:11434/v1`, 모델 `gemma4:12b`, 그리고 `config.yaml`의 `model.ollama_num_ctx: 65536`. (헤르메스 문서의 AI Providers 항목에서 정확한 메뉴 이름을 확인한다.)
 4. 가짜 MCP 서버를 헤르메스 설정(`~/.hermes/config.yaml`, Windows에서는 `%USERPROFILE%\.hermes\config.yaml`)에 추가한다. 이 서버는 설계 6장의 비서실장 도구 7개를 가짜 데이터로 흉내 내고, 불린 도구와 인자를 `stage0\out\mcp-calls.jsonl`에 기록한다.
 
    ```yaml

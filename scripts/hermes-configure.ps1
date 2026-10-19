@@ -113,4 +113,4 @@ Write-Host "config.json: hermes.homeDir = $HermesHome (매일 백업)"
 
 Write-Host ''
 Write-Host '끝. 다음: hermes model 로 모델을 고르고(아래 안내), hermes gateway 로 Discord 연결을 켜요.'
-Write-Host '  모델: 사용자 지정 OpenAI 호환 주소 http://127.0.0.1:11434/v1 · 모델 qwen3:14b'
+Write-Host '  모델: 사용자 지정 OpenAI 호환 주소 http://127.0.0.1:11434/v1 · 모델 gemma4:12b, config.yaml model.ollama_num_ctx: 65536'

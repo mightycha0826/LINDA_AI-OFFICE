@@ -20,7 +20,7 @@
 
 | ID | 역할 | 두뇌 |
 | --- | --- | --- |
-| chief-of-staff | 비서실장 | 헤르메스 + Qwen3-14B (헤르메스 미설치) |
+| chief-of-staff | 비서실장 | 헤르메스 + Gemma 4 12B (2026-10-19 Qwen3-14B에서 변경: 헤르메스 64K 문맥 하한) |
 | pm | PM | Ollama qwen3:14b |
 | developer | 개발자 | Claude Code (`claude -p`) |
 | reviewer | 리뷰어·감사관 | Codex (`codex exec`, 읽기 전용) |
@@ -215,12 +215,17 @@ pm2 logs ai-office --lines 30 --nostream
 ## 8. 남은 일
 
 ### 주인이 해야 하는 것
-1. **헤르메스 설치** (`docs/HERMES-SETUP.md`):
-   - 비서실장 봇 앱을 새로 만든다. 이 봇은 Message Content와 Server Members 인텐트를 켠다.
-   - `iex (irm https://hermes-agent.nousresearch.com/install.ps1)`
-   - `hermes model`: `http://127.0.0.1:11434/v1`, `qwen3:14b`
-   - `scripts/hermes-configure.ps1`
-   - `hermes gateway`
+1. **헤르메스: 설치 완료 (2026-10-19)**
+   - 비서실장 봇 "백서진"이 서버에 있다.
+   - 설치 위치는 `%LOCALAPPDATA%\hermes`이고, 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
+   - Blank Slate로 설치했다. `config.yaml` 설정:
+     - `agent.disabled_toolsets`에 terminal·file·vision 추가
+     - `platform_toolsets.discord: [cronjob, memory, session_search, skills]`
+     - MCP `office` 연결
+     - `model.default: gemma4:12b`, `model.ollama_num_ctx: 65536`
+   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
+   - **Claude Code 터미널에서는 `hermes` 실행이 '액세스 거부'된다.** `hermes gateway restart`는 주인이 자기 PowerShell에서 한다. 설정 파일 읽기와 쓰기는 Claude도 된다.
+   - 남은 것: 0단계 #1(5과제), #7 확인. 기록은 `%LOCALAPPDATA%\hermes\logs\agent.log`.
 2. `/프로젝트`로 일할 저장소를 등록한다.
 3. Docker/SearXNG: PC 앞에서 관리자 PowerShell로 `wsl --install` → 재부팅. 그다음 Claude가 Docker Desktop을 설치하고 #10을 확인한다. Docker 약관 동의는 주인이 한다.
 4. 재부팅 자동 복구:

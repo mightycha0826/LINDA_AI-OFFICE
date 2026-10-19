@@ -1,4 +1,5 @@
 // 상시 직원 7명과 Git 고양이 (DESIGN.md 2장). 이름은 나중에 정하므로 지금은 직함을 쓴다.
+import { eq } from 'drizzle-orm';
 import type { Brain, EmployeeRole } from '@ai-office/shared';
 import { inTx, type Ctx } from './context.ts';
 import { employees } from './db/schema.ts';
@@ -13,7 +14,8 @@ interface Seed {
 }
 
 export const STANDING_STAFF: readonly Seed[] = [
-  { id: 'chief-of-staff', displayName: '비서실장', role: 'chief-of-staff', department: 'CEO실', brain: { provider: 'ollama', model: 'qwen3:14b' }, canSearchWeb: false },
+  // 비서실장 두뇌는 헤르메스 설정이 정한다. 여기 값은 화면 표시용 (2026-10-19 Qwen3-14B → Gemma 4 12B, 헤르메스 64K 문맥 하한)
+  { id: 'chief-of-staff', displayName: '비서실장', role: 'chief-of-staff', department: 'CEO실', brain: { provider: 'ollama', model: 'gemma4:12b' }, canSearchWeb: false },
   { id: 'pm', displayName: 'PM', role: 'pm', department: '기획', brain: { provider: 'ollama', model: 'qwen3:14b' }, canSearchWeb: false },
   { id: 'developer', displayName: '개발자', role: 'developer', department: '개발팀', brain: { provider: 'claude-code', budget: 'dev' }, canSearchWeb: true },
   { id: 'reviewer', displayName: '리뷰어 · 감사관', role: 'reviewer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false },
@@ -33,5 +35,8 @@ export function seedStaff(c: Ctx): void {
         .onConflictDoNothing()
         .run();
     }
+    // 이미 만든 DB의 비서실장 두뇌 표시도 맞춘다 (예전 값 qwen3:14b)
+    const chief = STANDING_STAFF.find((s) => s.id === 'chief-of-staff')!;
+    t.db.update(employees).set({ brain: chief.brain }).where(eq(employees.id, 'chief-of-staff')).run();
   });
 }

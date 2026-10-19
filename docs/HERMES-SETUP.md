@@ -1,6 +1,6 @@
 # 헤르메스(비서실장) 설치와 연결
 
-비서실장은 [헤르메스 에이전트](https://github.com/NousResearch/hermes-agent)에 로컬 Qwen3-14B를 붙여 만든다(설계 6·9장).
+비서실장은 [헤르메스 에이전트](https://github.com/NousResearch/hermes-agent)에 로컬 Gemma 4 12B를 붙여 만든다(설계 6·9장). 처음 설계는 Qwen3-14B였지만 헤르메스가 문맥 64K 미만 모델을 거부해 바꿨다(2026-10-19).
 #비서실에서 평소 말투로 대화하면, 비서실장이 회사 도구(MCP)로 지시를 등록하고 상태를 알려 준다.
 결재는 여전히 회사 시스템 봇(LINDA)의 버튼으로만 한다.
 
@@ -8,7 +8,7 @@
 
 ## 0. 준비물 (이미 된 것)
 
-- Ollama와 `qwen3:14b` 모델
+- Ollama와 `gemma4:12b` 모델
 - 회사 오케스트레이터 실행 중 (pm2 `ai-office`, 내부 API 127.0.0.1:8790)
 - 회사 MCP 서버: `packages/orchestrator/src/mcp/main.ts`. 도구 8개(get_status, get_ticket, get_pending_approvals, get_report_data, get_usage, create_order, request_confirmation, submit_report)가 실제 사무실에 연결되는 것을 확인했다(2026-10-19).
 
@@ -42,7 +42,8 @@ iex (irm https://hermes-agent.nousresearch.com/install.ps1)
 hermes model
 ```
 
-- 사용자 지정(OpenAI 호환) 주소를 고르고: 주소 `http://127.0.0.1:11434/v1`, 모델 `qwen3:14b`
+- 사용자 지정(OpenAI 호환) 주소를 고르고: 주소 `http://127.0.0.1:11434/v1`, 모델 `gemma4:12b`, 문맥(Context length) `65536`
+- 그다음 `config.yaml`의 `model:` 아래에 `ollama_num_ctx: 65536`이 있어야 한다. 없으면 헤르메스가 "below the minimum 64,000"으로 답을 못 한다
 - 메뉴 이름은 버전마다 다를 수 있다. 헤르메스 문서의 AI Providers 항목을 따른다.
 
 ## 4. 회사 연결 설정 (스크립트)
