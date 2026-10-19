@@ -74,7 +74,7 @@ npx pm2 save
 - 사무실 화면: http://127.0.0.1:8780 (보기 전용)
 - 비서실장 MCP 서버: 헤르메스 `config.yaml`의 `mcp_servers`에 `node C:/ai-office/office/packages/orchestrator/src/mcp/main.ts`
 
-부팅 때 켜지게 하려면 Windows 작업 스케줄러에서 로그인 시 `pm2 resurrect`를 실행한다.
+부팅 때 켜지게 하려면 Windows 작업 스케줄러에서 로그인 시 `pm2 resurrect`를 실행한다: `powershell -ExecutionPolicy Bypass -File scriptsegister-pm2-autostart.ps1 -StartNow` (작업 이름 `AI_Office_pm2`, 2026-10-19 등록). Claude 앱의 터미널 탭에서 pm2 데몬을 새로 띄우면 앱 재시작 때 같이 꺼지니, 데몬은 이 작업으로 띄운다.
 
 ## 6. 자주 쓰는 명령
 
