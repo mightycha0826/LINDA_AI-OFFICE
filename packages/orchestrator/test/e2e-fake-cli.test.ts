@@ -53,7 +53,8 @@ describe('가짜 CLI로 끝까지', () => {
         paths: { wt: join(root, 'wt'), data: join(root, 'data'), repos: join(root, 'repos') },
         ollama: { host: fakeOllama.host },
         claude: { bin: process.execPath, binArgs: [join(FAKES, 'fake-claude.mjs')] },
-        codex: { bin: process.execPath, binArgs: [join(FAKES, 'fake-codex.mjs')] },
+        // 진짜 회사 CODEX_HOME(C:\ai-office\data\codex-home)을 건드리지 않게 임시 폴더를 쓴다
+        codex: { bin: process.execPath, binArgs: [join(FAKES, 'fake-codex.mjs')], home: join(root, 'codex-home') },
       });
       const ctx: Ctx = { db: openDb(':memory:'), config, clock: new FakeClock() };
       seedStaff(ctx);
