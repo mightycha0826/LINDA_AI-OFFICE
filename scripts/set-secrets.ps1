@@ -22,7 +22,7 @@ $items = @(
   @{ key = 'mirrorWebhookUrl'; label = '#사무실-대화 웹훅 URL'; ok = { param($v) $v -match '^https://(discord|discordapp)\.com/api/webhooks/\d+/[\w-]+$' } }
 )
 if ($WithGithub) {
-  $items += @{ key = 'githubToken'; label = 'GitHub 세분화 토큰 (등록 저장소에만 쓰기 권한)'; ok = { param($v) $v.Length -ge 20 -and $v -notmatch '\s' } }
+  $items += @{ key = 'githubToken'; label = 'GitHub 세분화 토큰 (모든 저장소, Administration·Contents 쓰기)'; ok = { param($v) $v.Length -ge 20 -and $v -notmatch '\s' } }
 }
 
 foreach ($it in $items) {
