@@ -81,7 +81,7 @@ export class Engine {
   private readonly workspace: Workspace;
   readonly connectivity: Connectivity;
   private readonly web: Web;
-  readonly lanes = new Lanes();
+  readonly lanes: Lanes;
   private readonly log: (line: string) => void;
   private readonly inFlight = new Set<string>();
   private controller = new AbortController();
@@ -92,6 +92,7 @@ export class Engine {
     this.tests = deps.tests;
     this.workspace = deps.workspace;
     this.connectivity = deps.connectivity ?? new Connectivity(deps.ctx);
+    this.lanes = new Lanes({ claude: 1, codex: deps.ctx.config.codex.concurrency });
     this.web = deps.web ?? createWeb(deps.ctx.config);
     this.log = deps.log ?? (() => {});
   }

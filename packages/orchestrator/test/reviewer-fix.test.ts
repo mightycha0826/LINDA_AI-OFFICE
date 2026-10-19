@@ -36,9 +36,9 @@ describe('fixReviewers', () => {
     const r1 = fixReviewers(s.ctx, plan([{ type: 'writing', assignee: 'qa-local', reviewer: 'chief-of-staff' }]));
     expect(r1.out.tickets[0]!.reviewer).toBe('reviewer');
     expect(r1.changes[0]).toContain('chief-of-staff은(는) 검토하지 않음');
-    // reviewer(gpt) 담당 코딩을 reviewer 본인이 검토 → qa-local
+    // reviewer(gpt) 담당 코딩을 reviewer 본인이 검토 → 코드는 로컬이 보지 않으므로 개발팀장(Claude) (7-3)
     const r2 = fixReviewers(s.ctx, plan([{ type: 'coding', assignee: 'reviewer', reviewer: 'reviewer' }]));
-    expect(r2.out.tickets[0]!.reviewer).toBe('qa-local');
+    expect(r2.out.tickets[0]!.reviewer).toBe('developer');
     expect(r2.changes[0]).toContain('담당자와 같음');
   });
 

@@ -38,6 +38,9 @@ export const ENTRANCE: Point = { x: 0.4, y: CORRIDOR_Y };
 export const DESKS: Record<string, Point> = {
   developer: { x: 2.6, y: 4.8 },
   reviewer: { x: 6.0, y: 4.8 },
+  // 개발자 A·B (GPT, 7-3): 개발팀 방 위쪽
+  'dev-a': { x: 2.6, y: 2.2 },
+  'dev-b': { x: 6.0, y: 2.2 },
   pm: { x: 10.4, y: 4.4 },
   'qa-local': { x: 13.6, y: 4.4 },
   'chief-of-staff': { x: 17.4, y: 4.6 },

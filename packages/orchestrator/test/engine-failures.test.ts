@@ -150,7 +150,7 @@ describe('시간 초과·비정상 종료', () => {
 });
 
 describe('차선', () => {
-  it('티켓 여러 개가 동시에 진행돼도 Claude·Codex는 각각 한 번에 하나만 돈다', async () => {
+  it('티켓 여러 개가 동시에 진행돼도 Claude는 하나씩, Codex는 둘까지만 돈다 (8장, 7-3)', async () => {
     const s = setup({
       handlers: {
         plan: () => planOutput({ tickets: [1, 2, 3, 4].map((i) => ({ ...base, title: `코드 ${i}` })) }),
@@ -160,6 +160,6 @@ describe('차선', () => {
     await s.engine.runUntilIdle();
     expect(all.map((t) => ticket(s, t.id).status)).toEqual(['done', 'done', 'done', 'done']);
     expect(s.engine.lanes.peak.get('claude')).toBe(1);
-    expect(s.engine.lanes.peak.get('codex')).toBe(1);
+    expect(s.engine.lanes.peak.get('codex')).toBeLessThanOrEqual(2);
   });
 });

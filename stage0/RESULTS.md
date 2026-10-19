@@ -206,3 +206,15 @@ modelUsage: claude-opus-5-5
 - 측정 중 띄운 것: 오케스트레이터(Discord 봇 연결), `smoke --flow`(Qwen·Gemma 교체, Claude Code 개발 3건, Codex 관문), Claude 데스크톱 앱
 - 판정: **#3 통과**. 39GB 이상 늘 남았고 페이지 파일을 거의 쓰지 않았다(초당 페이지 순간 최대 1,664는 모델 파일 읽기).
 - 메모: 헤르메스는 아직 설치 전이라 빠졌다. 헤르메스를 깐 뒤 한 번 더 재면 좋다. "claude" 수치에는 이 작업을 하는 Claude 데스크톱 앱도 들어 있다.
+
+## 7-3 Codex 쓰기 샌드박스 (2026-10-19, sim/codex-write-check.ts)
+
+개발자 A(Codex)를 `--sandbox workspace-write -c sandbox_workspace_write.network_access=false`, 작업 폴더 = 시험 worktree(`wtT-1`)로 진짜 실행했다. 두 번(Claude Code 셸 안, 운영과 같은 터미널) 모두 같은 결과.
+
+| 시도 | 결과 |
+| --- | --- |
+| worktree 안 파일 쓰기 | 성공 (파일 생김) |
+| worktree 밖 파일 쓰기 | 막힘 ("경로에 대한 액세스가 거부되었습니다", 파일 없음) |
+| `curl https://example.com` | 막힘 ("Failed to connect … Could not connect to server") |
+
+- 호출 1번에 약 14~33초, 입력 약 2.9만 토큰(GPT).

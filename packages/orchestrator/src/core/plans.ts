@@ -86,6 +86,8 @@ export function checkPlanRules(c: Ctx, out: PmPlanOutput, boundProjectId?: strin
     else if (brainModel(a.brain) === brainModel(r.brain)) {
       problems.push(`${label}: 담당자(${a.id})와 검토자(${r.id})가 같은 모델(${brainModel(a.brain)})임 → ${reviewerHint([...staff.values()], a)}`);
     }
+    // 코드는 클라우드 모델만 판정한다 (7장 7-3)
+    if (tk.type === 'coding' && r.brain.provider === 'ollama') problems.push(`${label}: 코드는 로컬 모델이 검토하지 않음(${r.id}) → 개발팀장이나 리뷰어로`);
   });
   return problems;
 }
@@ -95,8 +97,12 @@ type StaffRow = typeof employees.$inferSelect;
 /** 티켓을 검토하지 않는 직원. 비서실장은 헤르메스 쪽 대화·보고 담당이다 (6장 PM) */
 export const NOT_REVIEWERS: readonly string[] = ['chief-of-staff'];
 
-/** 검토자를 코드가 바꿀 때의 순서 (6장 PM, 2026-10-19 CEO 승인): 코딩은 Codex 리뷰어, 그 밖은 Gemma 검토 담당 */
-export const REVIEWER_ORDER: Record<'coding' | 'other', readonly string[]> = { coding: ['reviewer', 'qa-local'], other: ['qa-local', 'reviewer'] };
+/**
+ * 검토자를 코드가 바꿀 때의 순서 (6장 PM, 2026-10-19 CEO 승인).
+ * 코딩: 리뷰어(GPT) → 개발팀장(Claude). GPT 개발자의 코드는 첫 후보가 같은 모델이라 개발팀장이 본다(7-3). 로컬은 코드를 보지 않는다.
+ * 그 밖: 검토 담당(Gemma) → 리뷰어(GPT).
+ */
+export const REVIEWER_ORDER: Record<'coding' | 'other', readonly string[]> = { coding: ['reviewer', 'developer'], other: ['qa-local', 'reviewer'] };
 
 /** 담당자를 검토할 수 있는 직원: 상근 AI 직원 중 담당자와 다른 모델 (6장 PM) */
 export function reviewerCandidates(staff: StaffRow[], assignee: StaffRow): StaffRow[] {
@@ -127,17 +133,20 @@ export function fixReviewers(c: Ctx, out: PmPlanOutput): { out: PmPlanOutput; ch
     const model = temp ? brainModel(tempBrain(temp)) : assignee && assignee.brain.provider !== 'none' ? brainModel(assignee.brain) : null;
     const r = staff.get(tk.reviewer);
     if (!model || !r) return tk;
+    const coding = tk.type === 'coding';
     const reason = NOT_REVIEWERS.includes(r.id)
       ? `${r.id}은(는) 검토하지 않음`
       : r.id === tk.assignee
         ? '담당자와 같음'
         : brainModel(r.brain) === model
           ? `같은 모델 ${model}`
-          : null;
+          : coding && r.brain.provider === 'ollama'
+            ? '로컬 모델은 코드를 검토하지 않음'
+            : null;
     if (!reason) return tk;
-    const pick = REVIEWER_ORDER[tk.type === 'coding' ? 'coding' : 'other'].find((id) => {
+    const pick = REVIEWER_ORDER[coding ? 'coding' : 'other'].find((id) => {
       const x = staff.get(id);
-      return x && x.brain.provider !== 'none' && id !== tk.assignee && brainModel(x.brain) !== model;
+      return x && x.brain.provider !== 'none' && !(coding && x.brain.provider === 'ollama') && id !== tk.assignee && brainModel(x.brain) !== model;
     });
     if (!pick) return tk;
     changes.push(`티켓 ${i + 1}(${tk.title}): 검토자 ${r.id} → ${pick} (${reason})`);

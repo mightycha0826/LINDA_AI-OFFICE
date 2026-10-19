@@ -72,6 +72,8 @@ export const ConfigSchema = z
       home: z.string().min(1),
       /** 비우면 계정 기본 모델 */
       model: z.string(),
+      /** 동시 실행 수 (8장, 7-3부터 2). 쓰기 작업은 티켓마다 다른 worktree */
+      concurrency: z.number().int().min(1).max(4),
     }),
     tests: z.object({ timeoutMin: count }),
     /**
@@ -194,7 +196,7 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
   // num_ctx는 로컬 모델 태그(gemma4:12b-64k)와 같아야 Ollama가 다시 올리지 않는다 (7-2)
   ollama: { host: 'http://127.0.0.1:11434', numCtx: LOCAL_NUM_CTX, timeoutSec: 600, keepAlive: '30m', maxWaitSec: 120 },
   claude: { bin: 'claude', binArgs: [], timeoutMin: 30, maxTurns: 40, model: '' },
-  codex: { bin: 'codex', binArgs: [], timeoutMin: 15, promptVia: 'stdin', home: 'C:\\ai-office\\data\\codex-home', model: '' },
+  codex: { bin: 'codex', binArgs: [], timeoutMin: 15, promptVia: 'stdin', home: 'C:\\ai-office\\data\\codex-home', model: '', concurrency: 2 },
   tests: { timeoutMin: 15 },
   // 임시값. 0단계 #5와 첫 1~2주 운영으로 보정한다.
   calibration: {

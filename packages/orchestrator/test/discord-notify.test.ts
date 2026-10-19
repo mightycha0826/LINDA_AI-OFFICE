@@ -153,7 +153,7 @@ describe('거울 채널 (⑦)', () => {
     const mirror = new Mirror(s.ctx, port, { maxPerFlush: 100 });
     while ((await mirror.flush()) > 0);
     expect(port.threads).toEqual([{ ticketId: 'T-1', title: 'T-1 기능 구현', id: 'thread-T-1' }]);
-    expect(new Set(port.posts.map((p) => p.username))).toEqual(new Set(['개발자', '리뷰어 · 감사관', '회사 시스템', '회의록']));
+    expect(new Set(port.posts.map((p) => p.username))).toEqual(new Set(['개발팀장', '리뷰어 · 감사관', '회사 시스템', '회의록']));
     const long = port.posts.find((p) => p.username === '리뷰어 · 감사관')!;
     expect(long.content.length).toBeLessThan(120);
     expect(long.content).toContain('http://office.ts.net/#ticket=T-1');

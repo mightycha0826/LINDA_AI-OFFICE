@@ -44,7 +44,7 @@ export function outputFor(schema, prompt) {
     return {
       goal: '기능 파일 추가',
       questions: [],
-      tickets: [{ title: 'feature file', type: 'coding', assignee: 'developer', reviewer: 'reviewer', acceptanceCriteria: ['check.js 테스트 통과'], needsCeoApproval: false, estimatedTokens: 50000 }],
+      tickets: [{ title: 'feature file', type: 'coding', assignee: process.env.FAKE_PLAN_ASSIGNEE ?? 'developer', reviewer: 'reviewer', acceptanceCriteria: ['check.js 테스트 통과'], needsCeoApproval: false, estimatedTokens: 50000 }],
       tempStaff: [],
       estimate: { claudeDevPct: 5, claudeResearchPct: 1, gptPct: 3, hours: 1 },
       projectId: 'demo',

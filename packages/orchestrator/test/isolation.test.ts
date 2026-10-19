@@ -70,7 +70,7 @@ describe('Codex: 회사 전용 CODEX_HOME', () => {
 
   it('설정 파일과 상관없이 실행할 때도 -c로 스킬·플러그인을 끈다', () => {
     const args = new CodexBrain({ bin: 'codex', binArgs: [], timeoutMs: 1000, promptVia: 'stdin', wtRoot: 'C:/wt', dataDir: 'C:/data' })
-      .buildArgs('C:/wt/T-1', { schema: 's.json', lastMessage: 'l.json' }, 'p');
+      .buildArgs('read-only', 'C:/wt/T-1', { schema: 's.json', lastMessage: 'l.json' }, 'p');
     const overrides = args.flatMap((a, i) => (args[i - 1] === '-c' ? [a] : []));
     expect(overrides).toEqual([...CODEX_ISOLATION_OVERRIDES]);
     expect(overrides).toEqual(expect.arrayContaining(['skills.bundled.enabled=false', 'features.plugins=false', 'features.remote_plugin=false']));
@@ -78,11 +78,11 @@ describe('Codex: 회사 전용 CODEX_HOME', () => {
 
   it('모델을 정하면 -m으로 넘기고, 읽기 전용 샌드박스는 그대로', () => {
     const b = new CodexBrain({ bin: 'codex', binArgs: [], timeoutMs: 1000, promptVia: 'stdin', wtRoot: 'C:/wt', dataDir: 'C:/data', model: 'gpt-x' });
-    const args = b.buildArgs('C:/wt/T-1', { schema: 's', lastMessage: 'l' }, 'p');
+    const args = b.buildArgs('read-only', 'C:/wt/T-1', { schema: 's', lastMessage: 'l' }, 'p');
     expect(args[args.indexOf('-m') + 1]).toBe('gpt-x');
     expect(args[args.indexOf('--sandbox') + 1]).toBe('read-only');
     const plain = new CodexBrain({ bin: 'codex', binArgs: [], timeoutMs: 1000, promptVia: 'stdin', wtRoot: 'C:/wt', dataDir: 'C:/data' });
-    expect(plain.buildArgs('C:/wt/T-1', { schema: 's', lastMessage: 'l' }, 'p')).not.toContain('-m');
+    expect(plain.buildArgs('read-only', 'C:/wt/T-1', { schema: 's', lastMessage: 'l' }, 'p')).not.toContain('-m');
   });
 });
 

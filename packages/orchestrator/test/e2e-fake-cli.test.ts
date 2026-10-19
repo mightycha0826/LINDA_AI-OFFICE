@@ -98,4 +98,51 @@ describe('가짜 CLI로 끝까지', () => {
       await fakeOllama.close();
     }
   }, 60_000);
+  it('7-3: 개발자 A(Codex, worktree 쓰기·네트워크 없음)가 구현 → 테스트 → 개발팀장(Claude, 읽기 전용)이 검토 → 완료', async () => {
+    const root = tempRoot();
+    const repo = join(root, 'repos', 'demo');
+    mkdirSync(repo, { recursive: true });
+    git(repo, 'init', '-q', '-b', 'main');
+    git(repo, 'config', 'user.email', 'test@localhost');
+    git(repo, 'config', 'user.name', 'test');
+    git(repo, 'config', 'core.autocrlf', 'false');
+    writeFileSync(join(repo, 'check.js'), "process.exit(require('fs').existsSync('feature.txt') ? 0 : 1);\n");
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', 'init');
+    const logFile = join(root, 'fake-log.jsonl');
+    const config = makeConfig({
+      ceoDiscordId: CEO,
+      paths: { wt: join(root, 'wt'), data: join(root, 'data'), repos: join(root, 'repos') },
+      claude: { bin: process.execPath, binArgs: [join(FAKES, 'fake-claude.mjs')] },
+      codex: { bin: process.execPath, binArgs: [join(FAKES, 'fake-codex.mjs')], home: join(root, 'codex-home') },
+    });
+    const ctx: Ctx = { db: openDb(':memory:'), config, clock: new FakeClock() };
+    seedStaff(ctx);
+    registerProject(ctx, { id: 'demo', repoUrl: 'https://github.com/owner/demo.git', localPath: repo, testCommand: 'node check.js' });
+    // 기획실장(가짜 Claude)이 개발자 A에게, 검토는 리뷰어(GPT)로 배정 → 같은 모델이라 코드가 개발팀장으로 바꾼다
+    const { brainFor } = createBrainRegistry(config, { extraEnv: { FAKE_LOG: logFile, FAKE_PLAN_ASSIGNEE: 'dev-a' } });
+    const engine = new Engine({ ctx, brainFor, tests: new ProjectTestRunner(ctx), workspace: new GitWorkspace(ctx), connectivity: new Connectivity(ctx, async () => true) });
+    engine.submitOrder({ discordMessageId: '1300000000000000002', rawText: '기능 파일을 하나 추가해줘' });
+    await engine.runUntilIdle();
+    const approval = pendingPlanApproval({ db: ctx.db } as never)!;
+    engine.decide({ approvalId: approval.id, discordUserId: CEO, decision: 'approved' });
+    await engine.runUntilIdle();
+
+    const [tk] = ctx.db.select().from(tickets).all();
+    expect(tk).toMatchObject({ status: 'done', assigneeId: 'dev-a', reviewerId: 'developer' });
+    const wt = join(config.paths.wt, 'T-1');
+    expect(existsSync(join(wt, 'feature.txt'))).toBe(true); // Codex가 worktree에 썼다
+    const runs = readFileSync(logFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { bin: string; argv: string[]; cwd: string });
+    const codexRuns = runs.filter((r) => r.bin === 'codex');
+    const sandboxOf = (r: { argv: string[] }) => r.argv[r.argv.indexOf('--sandbox') + 1];
+    // 관문(샌드박스, 읽기 전용) → 구현(worktree, 쓰기 + 네트워크 없음)
+    expect(codexRuns.map(sandboxOf)).toEqual(['read-only', 'workspace-write']);
+    expect(codexRuns[1]!.cwd.toLowerCase()).toBe(wt.toLowerCase());
+    expect(codexRuns[1]!.argv).toContain('sandbox_workspace_write.network_access=false');
+    // 개발팀장 검토는 worktree에서 읽기 도구만
+    const claudeRuns = runs.filter((r) => r.bin === 'claude');
+    const review = claudeRuns.find((r) => r.cwd.toLowerCase() === wt.toLowerCase())!;
+    expect(review.argv).toContain('Read,Glob,Grep');
+    expect(review.argv).not.toContain('Bash,Read,Edit,Write,Glob,Grep');
+  }, 60_000);
 });
