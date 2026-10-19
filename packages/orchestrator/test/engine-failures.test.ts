@@ -15,7 +15,7 @@ const twoTickets = () =>
   });
 
 describe('인터넷 끊김', () => {
-  it('클라우드 직원 티켓만 멈추고 로컬 직원은 계속 일한다. 연결되면 이어간다', async () => {
+  it('클라우드 직원 티켓은 멈추고, 로컬 직원은 작업까지 하고 검토(GPT)를 기다린다. 연결되면 이어간다', async () => {
     let online = true;
     let failed = false;
     const s = setup({
@@ -37,7 +37,9 @@ describe('인터넷 끊김', () => {
     const { tickets: [code, copy] } = await approvedTickets(s);
     await s.engine.runUntilIdle();
     expect(ticket(s, code!.id)).toMatchObject({ status: 'paused', pauseReason: 'offline', pausedFrom: 'in_progress' });
-    expect(ticket(s, copy!.id).status).toBe('done'); // 로컬(Qwen → Gemma)은 끝까지 갔다
+    // 7-2부터 로컬 모델이 하나라 로컬 직원끼리는 검토할 수 없다. 문구 작업(Gemma)은 끝냈고 검토는 GPT가 맡아 연결을 기다린다
+    expect(s.mock.callsFor('work').some((c) => c.employee.id === 'marketing')).toBe(true);
+    expect(ticket(s, copy!.id)).toMatchObject({ status: 'paused', pauseReason: 'offline', pausedFrom: 'in_review', reviewerId: 'reviewer' });
     expect(s.engine.connectivity.isOnline()).toBe(false);
 
     online = true;

@@ -44,9 +44,9 @@ describe('fixReviewers', () => {
 
   it('비서실장은 다른 모델이어도 검토자가 되지 않는다', () => {
     const s = setup();
-    const { out } = fixReviewers(s.ctx, plan([{ type: 'writing', assignee: 'marketing', reviewer: 'chief-of-staff' }]));
+    const { out } = fixReviewers(s.ctx, plan([{ type: 'writing', assignee: 'strategy', reviewer: 'chief-of-staff' }]));
     expect(out.tickets[0]!.reviewer).toBe('qa-local');
-    expect(checkPlanRules(s.ctx, plan([{ type: 'writing', assignee: 'marketing', reviewer: 'chief-of-staff' }]))).toEqual([expect.stringContaining('검토하지 않음')]);
+    expect(checkPlanRules(s.ctx, plan([{ type: 'writing', assignee: 'strategy', reviewer: 'chief-of-staff' }]))).toEqual([expect.stringContaining('검토하지 않음')]);
   });
 
   it('임시 직원 담당 티켓도 그 직원의 두뇌 모델로 고친다', () => {
@@ -55,8 +55,9 @@ describe('fixReviewers', () => {
       s.ctx,
       plan([{ type: 'writing', assignee: 'temp:writer-1', reviewer: 'marketing' }], { tempStaff: [{ key: 'writer-1', kind: 'writer', reason: '긴 안내문' }] }),
     );
-    expect(out.tickets[0]!.reviewer).toBe('qa-local');
-    expect(changes[0]).toContain('같은 모델 qwen3:14b');
+    // 7-2부터 로컬은 Gemma 하나라 qa-local도 같은 모델 → 다음 후보 GPT 리뷰어
+    expect(out.tickets[0]!.reviewer).toBe('reviewer');
+    expect(changes[0]).toContain('같은 모델 gemma4:12b-64k');
   });
 
   it('맞는 짝과 없는 직원은 건드리지 않는다 (없는 직원은 규칙 검사가 PM에게 돌려보냄)', () => {

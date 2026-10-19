@@ -6,7 +6,7 @@ AI 사무실을 설치하고 켜는 순서. 설계는 `docs/DESIGN.md`, 주인�
 
 - Windows, Node 24 이상(LTS), git 2.44 이상
 - 0단계 검증(`stage0/CHECKLIST.md`)을 먼저 끝낸다. 결과는 `stage0/RESULTS.md`
-- Ollama(qwen3:14b, gemma4:12b), Claude Code(`claude`), Codex(`codex`)가 설치·로그인되어 있어야 한다
+- Ollama의 로컬 두뇌는 `gemma4:12b-64k` 하나다(7-2). `ollama pull gemma4:12b` 뒤 num_ctx 65536 태그를 만든다(`docs/HERMES-SETUP.md`). Claude Code(`claude`), Codex(`codex`)가 설치·로그인되어 있어야 한다
 - SearXNG(Docker, 127.0.0.1:8888)와 gitleaks 8.19 이상
 
 ```bash

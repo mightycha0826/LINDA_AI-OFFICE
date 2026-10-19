@@ -81,9 +81,9 @@ async function pings(): Promise<boolean> {
   const results: boolean[] = [];
   const sandbox = sandboxDir(config.paths.wt, 'smoke');
   if (!only || only === 'ollama') {
-    results.push(await ping('Ollama · Qwen3-14B (PM)', 'pm', 'gate'));
-    results.push(await ping('Ollama · Gemma 4 12B (검토 담당)', 'qa-local', 'gate'));
-    results.push(await ping('Ollama · 다시 Qwen (모델 교체)', 'pm', 'gate'));
+    // 7-2부터 로컬 두뇌는 gemma4:12b-64k 하나다. 두 직원이 같은 모델을 쓰므로 교체가 없어야 한다
+    results.push(await ping('Ollama · Gemma 4 12B 64K (검토 담당)', 'qa-local', 'gate'));
+    results.push(await ping('Ollama · Gemma 4 12B 64K (마케팅)', 'marketing', 'gate'));
     say(`  GPU 대기열 처리 순서: ${queue.history.join(' → ')}`);
   }
   if (!only || only === 'claude') results.push(await ping('Claude Code (읽기 전용, 샌드박스)', 'developer', 'meeting', sandbox));

@@ -197,7 +197,7 @@ describe('Ollama 어댑터', () => {
       const brain = new OllamaBrain({ host: fake.host, numCtx: 8192, timeoutMs: 5000, keepAlive: '30m', queue: new GpuQueue({ maxWaitMs: 60_000 }) });
       const res = await brain.call(request(s, { employee: emp(s, 'qa-local'), task: 'review', schema: ReviewOutputSchema }));
       const body = fake.calls[0]!.body as { model: string; format: Record<string, unknown>; think: boolean; stream: boolean; messages: { role: string; content: string }[]; options: { num_ctx: number } };
-      expect(body).toMatchObject({ model: 'gemma4:12b', think: false, stream: false, options: { num_ctx: 8192 } });
+      expect(body).toMatchObject({ model: 'gemma4:12b-64k', think: false, stream: false, options: { num_ctx: 8192 } });
       expect(body.format).toMatchObject({ type: 'object', required: ['verdict', 'criteria', 'fixRequests'] });
       expect(body.messages[0]).toEqual({ role: 'system', content: '# 역할 카드\n시스템 프롬프트' });
       expect(ReviewOutputSchema.parse(res.output).verdict).toBe('pass');
@@ -207,13 +207,13 @@ describe('Ollama 어댑터', () => {
     }
   });
 
-  it('리서치 몫 소진 때는 Claude 직원도 로컬 Qwen으로 처리한다', async () => {
+  it('리서치 몫 소진 때는 Claude 직원도 로컬(7-2부터 Gemma 64K)로 처리한다', async () => {
     const s = setup();
     const fake = await startFakeOllama();
     try {
       const brain = new OllamaBrain({ host: fake.host, numCtx: 8192, timeoutMs: 5000, keepAlive: '30m', queue: new GpuQueue({ maxWaitMs: 60_000 }) });
       await brain.call(request(s, { employee: emp(s, 'strategy'), task: 'work', schema: DocOutputSchema, lowPrecision: true }));
-      expect(fake.calls[0]!.model).toBe('qwen3:14b');
+      expect(fake.calls[0]!.model).toBe('gemma4:12b-64k');
     } finally {
       await fake.close();
     }

@@ -48,7 +48,7 @@ describe('7-1 한도와 기획실장', () => {
         { id: 'pm', role: 'pm', model: 'claude' },
         { id: 'developer', role: 'developer', model: 'claude' },
         { id: 'reviewer', role: 'reviewer', model: 'gpt' },
-        { id: 'qa-local', role: 'qa-local', model: 'gemma4:12b' },
+        { id: 'qa-local', role: 'qa-local', model: 'gemma4:12b-64k' },
       ]),
     );
     expect(input.staffModels.map((x) => x.id)).not.toContain('git-cat'); // AI가 아닌 직원은 빼고

@@ -16,7 +16,7 @@ export function brainLabel(id: string, b: Brain): string {
     case 'codex':
       return 'Codex';
     case 'ollama':
-      return b.model === 'qwen3:14b' ? 'Qwen3-14B' : 'Gemma 4 12B';
+      return b.model === 'qwen3:14b' ? 'Qwen3-14B' : 'Gemma 4 12B'; // gemma4:12b·gemma4:12b-64k
     case 'none':
       return '코드';
   }

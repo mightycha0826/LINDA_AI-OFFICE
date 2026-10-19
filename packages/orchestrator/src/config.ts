@@ -1,6 +1,7 @@
 // 회사 설정. 한도 비율(8장), 티켓 상한(5장), 핑퐁 기준 등. `/설정`이 바꾸는 값들이다.
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
+import { LOCAL_NUM_CTX } from '@ai-office/shared';
 
 const pct = z.number().min(0).max(100);
 const count = z.number().int().positive();
@@ -190,7 +191,8 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
   maxGateRejections: 2,
   absenceMinutes: 20,
   paths: { wt: 'C:\\ai-office\\wt', data: 'C:\\ai-office\\data', repos: 'C:\\ai-office\\repos' },
-  ollama: { host: 'http://127.0.0.1:11434', numCtx: 16_384, timeoutSec: 600, keepAlive: '30m', maxWaitSec: 120 },
+  // num_ctx는 로컬 모델 태그(gemma4:12b-64k)와 같아야 Ollama가 다시 올리지 않는다 (7-2)
+  ollama: { host: 'http://127.0.0.1:11434', numCtx: LOCAL_NUM_CTX, timeoutSec: 600, keepAlive: '30m', maxWaitSec: 120 },
   claude: { bin: 'claude', binArgs: [], timeoutMin: 30, maxTurns: 40, model: '' },
   codex: { bin: 'codex', binArgs: [], timeoutMin: 15, promptVia: 'stdin', home: 'C:\\ai-office\\data\\codex-home', model: '' },
   tests: { timeoutMin: 15 },

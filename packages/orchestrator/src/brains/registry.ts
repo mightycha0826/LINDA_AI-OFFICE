@@ -1,5 +1,6 @@
 // 직원 → 두뇌 연결. 직원의 brain 설정(4장)으로 어댑터를 고른다.
 // 리서치 몫이 소진된 경영전략은 로컬 Qwen으로 바꿔 쓴다 (8장).
+import { LOCAL_MODEL } from '@ai-office/shared';
 import type { Config } from '../config.ts';
 import type { EmployeeRow } from '../core/budget.ts';
 import { BrainError, type Brain } from './brain.ts';
@@ -26,7 +27,7 @@ export function createBrainRegistry(config: Config, opts: RegistryOptions = {}):
     timeoutMs: config.ollama.timeoutSec * 1000,
     keepAlive: config.ollama.keepAlive,
     queue,
-    fallbackModel: 'qwen3:14b',
+    fallbackModel: LOCAL_MODEL,
     ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
   });
   const claude = new ClaudeCodeBrain({

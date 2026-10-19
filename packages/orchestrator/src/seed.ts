@@ -1,6 +1,6 @@
 // 상시 직원 7명과 Git 고양이 (DESIGN.md 2장). 이름은 나중에 정하므로 지금은 직함을 쓴다.
 import { eq } from 'drizzle-orm';
-import type { Brain, EmployeeRole } from '@ai-office/shared';
+import { LOCAL_MODEL, type Brain, type EmployeeRole } from '@ai-office/shared';
 import { inTx, type Ctx } from './context.ts';
 import { employees } from './db/schema.ts';
 
@@ -15,14 +15,15 @@ interface Seed {
 
 export const STANDING_STAFF: readonly Seed[] = [
   // 비서실장 두뇌는 헤르메스 설정이 정한다. 여기 값은 화면 표시용 (2026-10-19 Qwen3-14B → Gemma 4 12B, 헤르메스 64K 문맥 하한)
-  { id: 'chief-of-staff', displayName: '비서실장', role: 'chief-of-staff', department: 'CEO실', brain: { provider: 'ollama', model: 'gemma4:12b' }, canSearchWeb: false },
+  { id: 'chief-of-staff', displayName: '비서실장', role: 'chief-of-staff', department: 'CEO실', brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: false },
   // 기획실장: 7-1부터 Claude(기획 몫 = 리서치 몫). 로컬 PM은 규칙 위반·관문 반려가 잦았다 (2-0, 2026-10-19)
   { id: 'pm', displayName: '기획실장', role: 'pm', department: '기획실', brain: { provider: 'claude-code', budget: 'research' }, canSearchWeb: false },
   { id: 'developer', displayName: '개발자', role: 'developer', department: '개발팀', brain: { provider: 'claude-code', budget: 'dev' }, canSearchWeb: true },
   { id: 'reviewer', displayName: '리뷰어 · 감사관', role: 'reviewer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false },
-  { id: 'marketing', displayName: '마케팅', role: 'marketing', department: '마케팅 · 경영', brain: { provider: 'ollama', model: 'qwen3:14b' }, canSearchWeb: true },
+  // 마케팅: 7-2부터 로컬 Gemma(예전 Qwen). 7-4에서 GPT 카피라이터로 옮긴다
+  { id: 'marketing', displayName: '마케팅', role: 'marketing', department: '마케팅 · 경영', brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: true },
   { id: 'strategy', displayName: '경영전략 · 리서치', role: 'strategy', department: '마케팅 · 경영', brain: { provider: 'claude-code', budget: 'research' }, canSearchWeb: true },
-  { id: 'qa-local', displayName: '검토 담당', role: 'qa-local', department: '기획 · 검토', brain: { provider: 'ollama', model: 'gemma4:12b' }, canSearchWeb: true },
+  { id: 'qa-local', displayName: '검토 담당', role: 'qa-local', department: '기획 · 검토', brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: true },
   { id: 'git-cat', displayName: 'Git 고양이', role: 'git-cat', department: 'Git 코너', brain: { provider: 'none' }, canSearchWeb: false },
 ];
 
@@ -36,8 +37,8 @@ export function seedStaff(c: Ctx): void {
         .onConflictDoNothing()
         .run();
     }
-    // 이미 만든 DB의 두뇌도 설계에 맞춘다: 비서실장(예전 qwen3:14b), 기획실장(예전 qwen3:14b, 7-1)
-    for (const id of ['chief-of-staff', 'pm']) {
+    // 이미 만든 DB의 두뇌도 설계에 맞춘다: 비서실장(예전 qwen3:14b), 기획실장(7-1 Claude), 로컬 직원(7-2 Gemma 64K)
+    for (const id of ['chief-of-staff', 'pm', 'marketing', 'qa-local']) {
       const s = STANDING_STAFF.find((x) => x.id === id)!;
       t.db.update(employees).set({ brain: s.brain, displayName: s.displayName, department: s.department }).where(eq(employees.id, id)).run();
     }

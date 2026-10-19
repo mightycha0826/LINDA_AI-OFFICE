@@ -112,13 +112,14 @@ describe('리뷰어 입력에서 자기 점검 빼기 (2단계 결정 B)', () =>
 });
 
 describe('비서실장 두뇌 표시 (헤르메스 64K 문맥 하한으로 Gemma 4 12B)', () => {
-  it('예전 DB에 qwen3:14b로 남은 비서실장도 다시 켤 때 gemma4:12b로 맞춘다', async () => {
+  it('예전 DB에 qwen3:14b로 남은 비서실장·마케팅·검토 담당도 다시 켤 때 gemma4:12b-64k로 맞춘다 (7-2)', async () => {
     const s = setup();
-    s.ctx.db.update(employees).set({ brain: { provider: 'ollama', model: 'qwen3:14b' } }).where(eq(employees.id, 'chief-of-staff')).run();
+    for (const id of ['chief-of-staff', 'marketing', 'qa-local']) s.ctx.db.update(employees).set({ brain: { provider: 'ollama', model: 'qwen3:14b' } }).where(eq(employees.id, id)).run();
     const { seedStaff } = await import('../src/seed.ts');
     seedStaff(s.ctx);
     const chief = s.ctx.db.select().from(employees).where(eq(employees.id, 'chief-of-staff')).get()!;
-    expect(chief.brain).toEqual({ provider: 'ollama', model: 'gemma4:12b' });
+    expect(chief.brain).toEqual({ provider: 'ollama', model: 'gemma4:12b-64k' });
+    for (const id of ['marketing', 'qa-local']) expect(s.ctx.db.select().from(employees).where(eq(employees.id, id)).get()!.brain).toEqual({ provider: 'ollama', model: 'gemma4:12b-64k' });
     const { brainLabel } = await import('../src/screen/snapshot.ts');
     expect(brainLabel('chief-of-staff', chief.brain)).toBe('헤르메스 · Gemma 4 12B');
   });

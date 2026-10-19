@@ -82,10 +82,12 @@ describe('계획서 코드 규칙', () => {
     expect(checkPlanRules(s.ctx, sameModel)).toEqual([expect.stringContaining('같은 모델(claude)')]);
   });
 
-  it('Qwen 작성 → Gemma 검토는 허용된다 (2장 교차 검증 짝)', () => {
+  it('로컬 작성 → GPT 검토는 허용되고, 로컬끼리는 같은 모델이라 안 된다 (7-2부터 로컬은 Gemma 하나)', () => {
     const s = setup();
-    const out = planOutput({ tickets: [{ ...planOutput().tickets[0]!, type: 'marketing', assignee: 'marketing', reviewer: 'qa-local' }] });
-    expect(checkPlanRules(s.ctx, out)).toEqual([]);
+    const ok = planOutput({ tickets: [{ ...planOutput().tickets[0]!, type: 'marketing', assignee: 'marketing', reviewer: 'reviewer' }] });
+    expect(checkPlanRules(s.ctx, ok)).toEqual([]);
+    const local = planOutput({ tickets: [{ ...planOutput().tickets[0]!, type: 'marketing', assignee: 'marketing', reviewer: 'qa-local' }] });
+    expect(checkPlanRules(s.ctx, local)).toEqual([expect.stringContaining('같은 모델(gemma4:12b-64k)')]);
   });
 
   it('Git 고양이는 담당자·검토자가 될 수 없고, 없는 직원도 안 된다', () => {

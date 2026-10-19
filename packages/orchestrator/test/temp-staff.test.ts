@@ -15,7 +15,7 @@ const base = planOutput().tickets[0]!;
 const writerPlan = (over: Partial<PmPlanOutput> = {}) =>
   planOutput({
     tempStaff: [{ key: 'writer-1', kind: 'writer', reason: '긴 안내문이 필요함' }],
-    tickets: [{ ...base, title: '안내문', type: 'writing', assignee: 'temp:writer-1', reviewer: 'qa-local', acceptanceCriteria: ['요금 항목 포함'] }],
+    tickets: [{ ...base, title: '안내문', type: 'writing', assignee: 'temp:writer-1', reviewer: 'reviewer', acceptanceCriteria: ['요금 항목 포함'] }],
     ...over,
   });
 
@@ -35,7 +35,7 @@ describe('고용과 내보내기', () => {
       orderId: order.id,
       spriteSet: 'temp-1',
       canSearchWeb: true,
-      brain: { provider: 'ollama', model: 'qwen3:14b' },
+      brain: { provider: 'ollama', model: 'gemma4:12b-64k' },
       leftAt: null,
     });
     expect(tk!.assigneeId).toBe('tmp-o1-writer-1');
@@ -128,14 +128,14 @@ describe('계획서 규칙', () => {
   });
 
   it('임시 직원과 검토자도 다른 모델이어야 한다', () => {
-    expect(problems(writerPlan({ tickets: [{ ...base, type: 'writing', assignee: 'temp:writer-1', reviewer: 'marketing' }] }))).toEqual([expect.stringContaining('같은 모델(qwen3:14b)')]);
+    expect(problems(writerPlan({ tickets: [{ ...base, type: 'writing', assignee: 'temp:writer-1', reviewer: 'marketing' }] }))).toEqual([expect.stringContaining('같은 모델(gemma4:12b-64k)')]);
     expect(problems(writerPlan())).toEqual([]);
   });
 
   it('디자인 시스템 담당은 티켓을 맡지 않는다', () => {
     const p = writerPlan({
       tempStaff: [{ key: 'ds', kind: 'design-system', reason: '화면 프로젝트' }],
-      tickets: [{ ...base, type: 'writing', assignee: 'temp:ds', reviewer: 'qa-local' }],
+      tickets: [{ ...base, type: 'writing', assignee: 'temp:ds', reviewer: 'reviewer' }],
     });
     expect(problems(p)).toEqual([expect.stringContaining('디자인 시스템 담당은(는) writing 티켓을 맡지 않음')]);
   });
@@ -155,8 +155,8 @@ describe('디자인 시스템 담당 (6장, 17장, 결정 D)', () => {
 
     const design = s.mock.callsFor('design');
     expect(design).toHaveLength(1);
-    // Claude를 요청해도 로컬 Qwen으로 고른다
-    expect(design[0]!.employee.brain).toEqual({ provider: 'ollama', model: 'qwen3:14b' });
+    // Claude를 요청해도 로컬(7-2부터 Gemma 64K)로 고른다
+    expect(design[0]!.employee.brain).toEqual({ provider: 'ollama', model: 'gemma4:12b-64k' });
     expect(design[0]!.prompt.user).toContain('코발트와 주황'); // 저장소의 조합 표를 넘긴다
     // 관문(GPT)은 조합을 고른 뒤에 봤다
     const order = s.mock.calls.map((c) => c.task);

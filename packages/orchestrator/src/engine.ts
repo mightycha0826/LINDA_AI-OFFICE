@@ -5,6 +5,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   brainModel,
+  LOCAL_MODEL,
   DevOutputSchema,
   DocOutputSchema,
   GateOutputSchema,
@@ -166,7 +167,7 @@ export class Engine {
    */
   async draftCommit(info: CommitTicketInfo, diffStat: string): Promise<CommitDraft | null> {
     const cat = this.employee('git-cat');
-    const drafter: EmployeeRow = { ...cat, brain: { provider: 'ollama', model: 'qwen3:14b' } };
+    const drafter: EmployeeRow = { ...cat, brain: { provider: 'ollama', model: LOCAL_MODEL } };
     try {
       return await this.callStructured(drafter, 'commit', CommitDraftSchema, { ticket: { id: info.id, title: info.title, type: 'coding', acceptanceCriteria: info.acceptanceCriteria }, diffStat }, {});
     } catch {

@@ -23,7 +23,7 @@ describe('같은 모델 검토자', () => {
     const [problem] = checkPlanRules(s.ctx, sameModelPlan());
     expect(problem).toContain('같은 모델(claude)');
     expect(problem).toContain('검토자를 이 중에서 고를 것');
-    expect(problem).toContain('qa-local(gemma4:12b)');
+    expect(problem).toContain('qa-local(gemma4:12b-64k)');
     expect(problem).toContain('reviewer(gpt)');
     expect(problem).not.toMatch(/고를 것:.*\bpm\(/); // 같은 모델은 후보가 아니다
     expect(problem).not.toMatch(/고를 것:.*\bdeveloper\(/);

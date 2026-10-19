@@ -53,14 +53,22 @@ export type EmployeeRole = (typeof EMPLOYEE_ROLES)[number];
 export const TEMP_KINDS = ['writer', 'designer', 'researcher', 'design-system'] as const;
 export type TempKind = (typeof TEMP_KINDS)[number];
 
-/** 임시 직원이 쓸 수 있는 두뇌. Claude는 개발자 몫에서 깎인다 (8장). */
-export const TEMP_BRAINS = ['qwen3:14b', 'gemma4:12b', 'claude'] as const;
+/**
+ * 로컬 두뇌는 이것 하나다 (16장 7-2). num_ctx 65536을 박은 Gemma 4 12B 태그로, 헤르메스(비서실장)와 같은 모델·같은 문맥이라
+ * 번갈아 불러도 Ollama가 다시 올리지 않는다. 태그 만들기는 docs/HERMES-SETUP.md.
+ */
+export const LOCAL_MODEL = 'gemma4:12b-64k' as const;
+export const LOCAL_NUM_CTX = 65_536;
+
+/** 임시 직원이 쓸 수 있는 두뇌. Claude는 개발자 몫에서 깎인다 (8장). 7-2부터 로컬은 LOCAL_MODEL 하나 */
+export const TEMP_BRAINS = [LOCAL_MODEL, 'claude'] as const;
 export type TempBrain = (typeof TEMP_BRAINS)[number];
 
 export const EMPLOYEE_STATUSES = ['idle', 'working', 'meeting', 'blocked', 'paused'] as const;
 export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
 
-export const OLLAMA_MODELS = ['qwen3:14b', 'gemma4:12b'] as const;
+/** 앞의 것이 지금 쓰는 모델. qwen3:14b·gemma4:12b는 7-2 전에 저장된 기록을 읽기 위해서만 남긴다 */
+export const OLLAMA_MODELS = [LOCAL_MODEL, 'qwen3:14b', 'gemma4:12b'] as const;
 export type OllamaModel = (typeof OLLAMA_MODELS)[number];
 
 export type Brain =
