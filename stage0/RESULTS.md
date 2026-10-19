@@ -43,10 +43,13 @@
 
 | 확인할 것 | 읽은 날 | 요점 | 허용? |
 | --- | --- | --- | --- |
-| `claude -p` 자동 실행과 Pro 한도 | | | |
-| Claude 구독 로그인의 제3자 도구 사용 | | | |
-| Codex `exec`와 ChatGPT Plus | | | |
-| 계정 공유 해당 여부 | | | |
+| `claude -p` 자동 실행과 Pro 한도 | 2026-10-19 (Claude Code 조사) | 2026-06-15에 예고됐던 Agent SDK·`claude -p` 별도 과금 변경은 **보류**됐고, 지금도 구독 한도(5시간·주간)에서 차감. 10-07부터 Max·Team에 월 API 크레딧이 생겼지만 Pro는 해당 없음 | 허용으로 보임 (주인 확인) |
+| Claude 구독 로그인의 제3자 도구 사용 | 2026-10-19 | 구독 로그인은 "개인의 일반 사용" 용도. 다른 사람에게 제공하는 제품·서비스는 API 키를 쓰라는 안내. 이 회사는 주인 혼자 쓰는 개인 도구라 해당 없음으로 보임 | 주인 확인 |
+| Codex `exec`와 ChatGPT Plus | 2026-10-19 | Plus에 Codex CLI 포함, 플랜 사용 한도 적용. ChatGPT 이용약관이 적용되고 자동 실행을 따로 금지하는 문구는 못 찾음. 여러 사람이 쓰는 CI 같은 곳은 API 키를 권장 | 허용으로 보임 (주인 확인) |
+| 계정 공유 해당 여부 | 2026-10-19 | 두 계정 모두 주인 한 사람이 자기 PC에서만 씀. 다른 사람에게 로그인을 넘기거나 서비스로 열지 않음 | 해당 없음 |
+
+- 출처: [Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan), [Monthly API credits for Max and Team plans](https://support.claude.com/en/articles/17154008-monthly-api-credits-for-max-and-team-plans), [Codex Pricing](https://developers.openai.com/codex/pricing), [Codex 도움말](https://help.openai.com/articles/11369540)
+- 공식 문서와 블로그 요약을 함께 본 것이라, 최종 판단은 주인이 원문을 읽고 "허용?" 칸을 확정한다.
 
 ## #2 모델 교체 속도 (model-swap.mjs)
 
