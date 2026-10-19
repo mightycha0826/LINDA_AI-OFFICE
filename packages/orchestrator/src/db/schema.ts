@@ -67,6 +67,9 @@ export const projects = sqliteTable('projects', {
   localPath: text('local_path').notNull(),
   defaultBranch: text('default_branch').notNull().default('main'),
   testCommand: text('test_command').notNull(),
+  // /새프로젝트가 만든 Discord 카테고리와 #작업 채널 (9장). 여기서 쓴 /지시는 이 프로젝트 일이 된다
+  discordCategoryId: text('discord_category_id'),
+  discordChannelId: text('discord_channel_id').unique(),
 });
 
 export const orders = sqliteTable(

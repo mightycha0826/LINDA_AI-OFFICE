@@ -34,12 +34,22 @@ export interface MirrorPort {
   post(threadId: string, m: { username: string; content: string }): Promise<void>;
 }
 
+/** /새프로젝트의 Discord 작업 공간: 카테고리 <프로젝트> › #작업 (9장). 시스템 봇에 채널 관리 권한이 필요하다 */
+export interface ProjectChannelPort {
+  /** 같은 이름의 카테고리·#작업이 이미 있으면 그것을 돌려준다(다시 시도해도 두 개 생기지 않음) */
+  createProjectChannels(projectId: string): Promise<{ categoryId: string; channelId: string }>;
+  sendToChannel(channelId: string, content: string): Promise<void>;
+}
+
 /** 봇이 받은 상호작용. 클릭한 사람의 Discord ID가 항상 함께 온다 */
 export type Interaction =
   | { type: 'button'; userId: string; customId: string }
   | { type: 'modal'; userId: string; customId: string; fields: Record<string, string> }
-  /** id: Discord 상호작용 ID(스노플레이크). /지시는 이 값을 지시 번호의 중복 방지 키로 쓴다 */
-  | { type: 'command'; userId: string; name: string; options: Record<string, string | number | undefined>; id?: string };
+  /**
+   * id: Discord 상호작용 ID(스노플레이크). /지시는 이 값을 지시 번호의 중복 방지 키로 쓴다.
+   * channelId: 명령을 쓴 채널. 프로젝트 #작업 채널이면 /지시가 그 프로젝트 일이 된다
+   */
+  | { type: 'command'; userId: string; name: string; options: Record<string, string | number | undefined>; id?: string; channelId?: string };
 
 export interface ModalField {
   id: string;

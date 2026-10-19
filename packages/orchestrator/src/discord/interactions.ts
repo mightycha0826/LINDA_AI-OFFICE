@@ -11,6 +11,8 @@ import type { Engine } from '../engine.ts';
 import { AlreadyDecidedError, OfficeError, StaleApprovalError } from '../errors.ts';
 import { buildReportData, formatReportData } from '../reports.ts';
 import { applySetting, SETTINGS } from '../settings.ts';
+import type { NewProjectService } from '../workspace/new-project.ts';
+import { projectByChannel } from '../workspace/projects.ts';
 import { approvalMessageFor, decidedMessage, mainMergeConfirm } from './messages.ts';
 import { markCeoActive } from './presence.ts';
 import type { Interaction, InteractionReply } from './types.ts';
@@ -28,12 +30,14 @@ export class InteractionHandler {
   private readonly engine: Engine;
   private readonly log: (s: string) => void;
   private readonly gitcat: GitCatPort | null;
+  private readonly projects: NewProjectService | null;
 
-  constructor(c: Ctx, engine: Engine, log: (s: string) => void = () => {}, gitcat: GitCatPort | null = null) {
+  constructor(c: Ctx, engine: Engine, log: (s: string) => void = () => {}, gitcat: GitCatPort | null = null, projects: NewProjectService | null = null) {
     this.c = c;
     this.engine = engine;
     this.log = log;
     this.gitcat = gitcat;
+    this.projects = projects;
   }
 
   async handle(i: Interaction): Promise<InteractionReply> {
@@ -45,7 +49,7 @@ export class InteractionHandler {
     try {
       if (i.type === 'button') return await this.button(i.customId);
       if (i.type === 'modal') return await this.modal(i.customId, i.fields);
-      return await this.command(i.name, i.options, i.id);
+      return await this.command(i.name, i.options, i.id, i.channelId);
     } catch (err) {
       if (err instanceof StaleApprovalError || err instanceof AlreadyDecidedError || err instanceof OfficeError) return { kind: 'reply', content: err.message, ephemeral: true };
       throw err;
@@ -120,7 +124,7 @@ export class InteractionHandler {
 
   // --- 슬래시 명령 -------------------------------------------------------------
 
-  private async command(name: string, o: Record<string, string | number | undefined>, interactionId?: string): Promise<InteractionReply> {
+  private async command(name: string, o: Record<string, string | number | undefined>, interactionId?: string, channelId?: string): Promise<InteractionReply> {
     const c = this.c;
     const ticketArg = () => {
       const id = String(o['티켓'] ?? '').toUpperCase().trim();
@@ -136,9 +140,11 @@ export class InteractionHandler {
         const text = String(o['내용'] ?? '').trim();
         if (text.length < 4) throw new OfficeError('arg', '지시 내용을 조금 더 자세히 적어 주세요');
         if (!interactionId || !/^\d{17,20}$/.test(interactionId)) throw new OfficeError('arg', '지시 번호를 만들 수 없어요. 다시 시도해 주세요');
-        const { order, created } = this.engine.submitOrder({ discordMessageId: interactionId, rawText: text });
+        // 프로젝트 #작업 채널에서 쓴 지시는 그 프로젝트 일로 고정된다 (9장, 6장 PM)
+        const project = projectByChannel(c, channelId);
+        const { order, created } = this.engine.submitOrder({ discordMessageId: interactionId, rawText: text, ...(project ? { projectId: project.id } : {}) });
         if (!created) return { kind: 'reply', content: `이미 받은 지시예요 (${order.id})`, ephemeral: true };
-        return { kind: 'reply', content: `지시를 받았어요 (**${order.id}**). PM이 계획서를 만들면 결재함에 올라와요.
+        return { kind: 'reply', content: `지시를 받았어요 (**${order.id}**${project ? ` · ${project.id} 프로젝트` : ''}). PM이 계획서를 만들면 결재함에 올라와요.
 > ${text.slice(0, 300)}`, ephemeral: false };
       }
       case '보고': {
@@ -204,6 +210,13 @@ export class InteractionHandler {
           .catch((err: Error) => this.log(`프로젝트 등록 실패: ${err.message}`));
         return { kind: 'reply', content: `${p.id} 저장소를 받아 등록하는 중이에요`, ephemeral: false };
       }
+      case '새프로젝트': {
+        // GitHub 비공개 저장소 + Discord 카테고리 <아이디> › #작업 (11장). 오래 걸려 먼저 답하고 뒤에서 돌린다. 실패는 #막힘에
+        if (!this.projects) return { kind: 'reply', content: 'Git 고양이나 Discord가 연결되지 않았어요', ephemeral: true };
+        const id = String(o['아이디'] ?? '').trim();
+        void this.projects.run({ id, ...(o['테스트'] ? { testCommand: String(o['테스트']) } : {}), ...(o['설명'] ? { description: String(o['설명']) } : {}) });
+        return { kind: 'reply', content: `**${id}** 저장소와 작업 채널을 만드는 중이에요. 끝나면 새 #작업 채널에 안내가 올라와요`, ephemeral: false };
+      }
       case '설정': {
         const key = String(o['항목'] ?? '');
         const value = o['값'];
@@ -232,6 +245,15 @@ export const SLASH_COMMANDS: { name: string; description: string; options: { nam
       { name: '주소', description: 'https://github.com/주인/저장소', required: true },
       { name: '테스트', description: '테스트 명령 (예: npm test)', required: true },
       { name: '브랜치', description: '기본 브랜치 (비우면 main)', required: false },
+    ],
+  },
+  {
+    name: '새프로젝트',
+    description: 'GitHub 비공개 저장소와 Discord 작업 채널을 함께 만들어요',
+    options: [
+      { name: '아이디', description: '영문 소문자·숫자·- (저장소·카테고리 이름이 돼요. 예: todo-app)', required: true },
+      { name: '테스트', description: '테스트 명령 (비우면 npm test)', required: false },
+      { name: '설명', description: 'GitHub 저장소 설명', required: false },
     ],
   },
   { name: '정지', description: '모든 직원을 즉시 멈춰요', options: [] },

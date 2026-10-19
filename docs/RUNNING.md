@@ -51,7 +51,9 @@ http://127.0.0.1:8780 을 연다. 메모리 DB와 MockLLM으로 직원들이 천
   - `discord.guildId`, `discord.channels`(#비서실, #결재함, #보고, #막힘, #사무실-대화의 채널 ID)
   - 폰에서 화면을 보려면 `screen.hosts`와 `screen.allowedHostnames`에 Tailscale 주소·이름
   - `hermes.homeDir`: 헤르메스 데이터 폴더 (비우면 백업하지 않는다)
-- `secrets.json`: `discordToken`, `mirrorWebhookUrl`, `githubToken`(등록 저장소에만 쓰기 권한이 있는 세분화된 토큰). `internalApiToken`은 처음 켤 때 자동으로 만든다.
+- `secrets.json`: `discordToken`, `mirrorWebhookUrl`, `githubToken`, `internalApiToken`(처음 켤 때 자동으로 만든다).
+  - `githubToken`: 세분화된 토큰(fine-grained). `/새프로젝트`로 저장소를 자동으로 만들려면 **Repository access: All repositories**, 권한 **Administration: Read and write**, **Contents: Read and write**(Metadata는 자동). 회사는 DB에 등록된 저장소에만 푸시한다(DESIGN 11장, 2026-10-19 변경).
+  - 시스템 봇(LINDA)은 `/새프로젝트`가 카테고리와 `#작업`을 만들 수 있게 서버에서 **채널 관리(Manage Channels)** 권한이 있어야 한다.
   - 값은 손으로 붙여 넣지 말고 `powershell -ExecutionPolicy Bypass -File scripts\set-secrets.ps1`로 넣는다(입력이 화면에 안 보이고, 형식을 검사하고, BOM 없는 UTF-8로 저장). GitHub 토큰까지 넣으려면 `-WithGithub`.
 
 설정 검사에 실패하면 무엇이 틀렸는지 알려 주고 켜지지 않는다.
@@ -85,4 +87,4 @@ npx pm2 save
 | `npm run hermes:restore -- 2026-10-15` | 그날 백업으로 되돌리기 (헤르메스를 끄고) |
 | `npm run smoke` | 실제 CLI(claude, codex, ollama) 연결 한 번씩 확인 (비용 조금) |
 
-Discord에서: `/지시`(헤르메스 없이 직접 지시), `/정지`, `/재개`, `/보고`, `/설정`, `/push`, `/되돌리기`, `/프로젝트` 등 (9장).
+Discord에서: `/새프로젝트 아이디`(GitHub 비공개 저장소 + 카테고리 `아이디` › `#작업`을 함께 만든다. `#작업`에서 쓴 `/지시`는 그 저장소 일이 된다), `/지시`(헤르메스 없이 직접 지시), `/정지`, `/재개`, `/보고`, `/설정`, `/push`, `/되돌리기`, `/프로젝트` 등 (9장).

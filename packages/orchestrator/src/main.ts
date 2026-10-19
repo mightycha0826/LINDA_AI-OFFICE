@@ -27,6 +27,7 @@ import { createWeb } from './web/research.ts';
 import { ProjectTestRunner } from './workspace/test-runner.ts';
 import { GitWorkspace } from './workspace/worktrees.ts';
 import { GitCat } from './gitcat/git-cat.ts';
+import { NewProjectService } from './workspace/new-project.ts';
 
 const log = (s: string) => console.log(`${new Date().toISOString()} ${s}`);
 
@@ -54,8 +55,10 @@ let bot: DiscordBot | null = null;
 let notifier: Notifier | null = null;
 let mirror: Mirror | null = null;
 let reports: ReportService | null = null;
+// /새프로젝트 (11장): 봇은 명령 처리기가 있어야 뜨므로, 채널 포트는 봇이 뜬 뒤에 꺼내 쓴다
+const newProjects = new NewProjectService({ c: ctx, gitcat, channels: () => bot?.projectChannels ?? null, discord: () => bot?.port ?? null, log });
 if (secrets.discordToken && config.discord.guildId) {
-  bot = await startDiscordBot({ c: ctx, handler: new InteractionHandler(ctx, engine, log, gitcat), token: secrets.discordToken, ...(secrets.mirrorWebhookUrl ? { webhookUrl: secrets.mirrorWebhookUrl } : {}), log });
+  bot = await startDiscordBot({ c: ctx, handler: new InteractionHandler(ctx, engine, log, gitcat, newProjects), token: secrets.discordToken, ...(secrets.mirrorWebhookUrl ? { webhookUrl: secrets.mirrorWebhookUrl } : {}), log });
   notifier = new Notifier(ctx, bot.port, log);
   mirror = bot.mirror ? new Mirror(ctx, bot.mirror, { log }) : null;
   reports = new ReportService(ctx, engine, bot.port);

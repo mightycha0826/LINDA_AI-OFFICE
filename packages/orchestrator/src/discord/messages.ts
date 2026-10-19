@@ -13,7 +13,7 @@ export const approvalButtonId = (id: string, decision: 'approved' | 'revision' |
 export function planApprovalMessage(plan: PlanRow, a: ApprovalRow): { content: string; buttons: Button[][] } {
   const g = plan.gateResult;
   const lines = [
-    `**계획서 #${plan.id} · v${plan.version} — ${plan.goal}**`,
+    `**${plan.projectId ? `[${plan.projectId}] ` : ''}계획서 #${plan.id} · v${plan.version} — ${plan.goal}**`,
     '',
     '**티켓과 담당자**',
     ...plan.tickets.map((t, i) => `${i + 1}. ${t.title} (${t.type}) · 담당 ${t.assignee} · 검토 ${t.reviewer}${t.needsCeoApproval ? ' · CEO 결재 필요' : ''}\n   완료 조건: ${t.acceptanceCriteria.join(' / ')}`),

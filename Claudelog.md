@@ -1,6 +1,6 @@
 # Claudelog: AI 사무실 인수인계
 
-다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-19 20:15 KST**.
+다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-19 20:40 KST**.
 저장소는 **공개**다(https://github.com/mightycha0826/LINDA_AI-OFFICE). 토큰, 비밀번호, Discord ID는 여기 적지 않는다(`C:\ai-office\data`에 있다).
 
 ## 0. 먼저 읽을 것
@@ -52,7 +52,7 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5, qwen3:14b·gemma4:12b. C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 420개 통과, typecheck·lint:ds 깨끗하다.
+- **테스트**: `npm test` 433개 통과, typecheck·lint:ds 깨끗하다.
 - **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 그 뒤 커밋(64K 원인, 0단계 결과, 메시지 ID 기록)은 로컬에만 있다.
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
@@ -66,6 +66,7 @@
 | --- | --- | --- |
 | 비서실장 두뇌 Qwen3-14B → **Gemma 4 12B** (CEO 승인) | 헤르메스는 문맥 64K 미만을 거부한다. Qwen은 40,960이 한계이고 CPU로 35% 밀린다. Gemma는 64K에서 100% GPU, 66 tok/s | DESIGN 2·6·16·18장, `seed.ts` |
 | 헤르메스 모델을 `gemma4:12b-64k` 태그로, `SOUL.md` 한국어화 | 비서실장이 영어로 답하고 skills_list만 반복했다. Ollama `/v1`이 `ollama_num_ctx`를 무시해 4096으로 떠서 입력이 2,051토큰에서 잘렸다(`ollama ps`로 확인). `SOUL.md`도 기본 영어 문구였다 | DESIGN 6장, HERMES-SETUP |
+| `/새프로젝트`: GitHub 비공개 저장소 + Discord 카테고리 `아이디` › `#작업` (CEO 요청, 선택은 모두 추천안) | 저장소를 따로 만들고 `/프로젝트`로 등록하는 게 번거로움. 토큰을 모든 저장소(Administration·Contents 쓰기)로 넓히고 고양이는 DB 등록 저장소에만 푸시. `#작업`의 `/지시`는 그 프로젝트로 고정, PM은 그 프로젝트만 보고 비우면 코드가 채움. 비서실장은 #비서실에만 | DESIGN 6·9·11장, `workspace/new-project.ts`, `gitcat/github-repo.ts`, 마이그레이션 0006 |
 | `create_order` 메시지 ID를 코드가 채움 (CEO 선택 A) | 헤르메스가 모델에게 ID를 안 보여 줘서 모델이 `current_message_id`를 지어냈다. LINDA가 #비서실 주인 마지막 메시지 ID·시각만 기록(내용 안 받음), 10분 넘으면 거부, 같은 ID는 지시 하나 | DESIGN 6·9장, `chief/order-message.ts` |
 | `/지시` 슬래시 명령 추가 (CEO 요청) | 헤르메스 없이도 지시할 수 있게. 상호작용 ID로 중복을 막는다 | DESIGN 9장 |
 | 남은 worktree 폴더 재사용 금지 | 시험(`smoke --flow`)이 남긴 `wt\T-1`을 진짜 첫 티켓이 쓸 뻔했다. 같은 저장소·브랜치가 아니면 `stale-worktree`로 멈춘다 | `workspace/worktrees.ts` |
@@ -108,7 +109,7 @@ Discord 명령: `/지시`, `/보고`, `/상태 T-n`, `/push T-n`, `/되돌리기
    - 과제 4는 실제 지시(소개 문구)가 등록된다. PM 계획서가 #결재함에 오는지까지 본다.
 2. **재부팅 대비**: pm2 로그온 작업은 등록 완료(`AI_Office_pm2`). 헤르메스도 자체 작업(`Hermes_Gateway`)이 있다. 주인 몫: 자동 로그인, 업데이트 자동 재시작 막기(지금 사용 시간이 16~23시뿐이다).
 3. 이 문서 갱신 커밋을 푸시한다(주인 승인 후). `2ba8847`까지는 끝났다.
-4. `/프로젝트`로 GitHub 저장소를 등록한다(코딩 지시 전 필수).
+4. 주인: GitHub 토큰을 모든 저장소(Administration·Contents 쓰기)로 다시 만들어 `set-secrets.ps1 -WithGithub`로 넣고, LINDA에 채널 관리 권한을 준다. 그다음 `/새프로젝트 아이디`로 첫 프로젝트를 만든다(이미 있는 저장소는 `/프로젝트`). O-1은 프로젝트가 없어 계획이 멈춰 있다(취소하거나 다시 시도).
 5. 버튼 결재를 실제로 시험한다: 두 번 클릭, 다른 계정, 오래된 버전.
 6. WSL → Docker → SearXNG(#10). 주인이 `wsl --install`과 재부팅을 한다.
 7. 주인 결정 대기:

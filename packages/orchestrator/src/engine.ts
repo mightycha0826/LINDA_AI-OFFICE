@@ -96,7 +96,7 @@ export class Engine {
 
   // --- 바깥(결재 봇, 비서실장)에서 들어오는 요청 ----------------------------
 
-  submitOrder(input: { discordMessageId: string; rawText: string }) {
+  submitOrder(input: { discordMessageId: string; rawText: string; projectId?: string }) {
     return registerOrder(this.c, input);
   }
 
@@ -272,16 +272,20 @@ export class Engine {
       if (this.spendMode(pm) !== 'ok') return false;
       const order = c.db.select().from(orders).where(eq(orders.id, orderId)).get()!;
       const staff = c.db.select().from(employees).all().filter((e) => e.brain.provider !== 'none').map((e) => ({ id: e.id, role: e.role, brain: e.brain }));
-      const projects = listProjects(c).map((p) => ({ id: p.id, repoUrl: p.repoUrl, testCommand: p.testCommand }));
+      // 프로젝트 채널에서 온 지시면 그 프로젝트 하나만 보여 준다 (6장 PM)
+      const projects = listProjects(c)
+        .filter((p) => !order.projectId || p.id === order.projectId)
+        .map((p) => ({ id: p.id, repoUrl: p.repoUrl, testCommand: p.testCommand }));
       const afterGateRejection = !!plan && plan.ceoNote === null;
       const input = {
         order: { id: order.id, rawText: order.rawText },
         staff,
         projects,
+        ...(order.projectId ? { fixedProjectId: order.projectId } : {}),
         ...(plan && !afterGateRejection ? { ceoNote: plan.ceoNote ?? '' } : {}),
         ...(plan && afterGateRejection ? { gateIssues: plan.gateResult?.issues ?? [] } : {}),
       };
-      const out = await this.callStructured(pm, 'plan', PmPlanOutputSchema, input, { orderId }, { check: (o: z.infer<typeof PmPlanOutputSchema>) => checkPlanRules(c, o) });
+      const out = await this.callStructured(pm, 'plan', PmPlanOutputSchema, input, { orderId }, { check: (o: z.infer<typeof PmPlanOutputSchema>) => checkPlanRules(c, o, order.projectId) });
       const created = createPlanVersion(c, orderId, out, { afterGateRejection });
       if (!needsDesignCombo(created.tempStaff)) startGateReview(c, created.id);
       this.log(`${created.id} v${created.version} 작성`);

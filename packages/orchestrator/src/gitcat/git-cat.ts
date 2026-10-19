@@ -19,6 +19,7 @@ import { assertInside } from '../workspace/paths.ts';
 import type { TicketRow } from '../core/tickets.ts';
 import { largeFiles, secretScan, summarizeChecks, type CheckResult, type Runner } from './checks.ts';
 import { formatCommitMessage, TRAILER, type CommitDraft, type CommitTicketInfo } from './commit-message.ts';
+import { createGithubRepo, type CreatedRepo } from './github-repo.ts';
 
 export interface GitCatDeps {
   c: Ctx;
@@ -31,6 +32,8 @@ export interface GitCatDeps {
   githubToken?: () => string | undefined;
   /** 테스트에서만: 등록 주소 대신 로컬 bare 저장소 */
   remoteUrlFor?: (p: ProjectRow) => string;
+  /** 테스트에서만: GitHub API 대신 가짜 응답 */
+  fetchImpl?: typeof fetch;
   run?: Runner;
   log?: (s: string) => void;
 }
@@ -381,11 +384,18 @@ export class GitCat {
         mkdirSync(this.c.config.paths.repos, { recursive: true });
         // 등록 규칙(주소·경로·중복)을 먼저 검사하고 받는다
         validateProject(this.c, project);
-        await this.remoteGit(this.c.config.paths.repos, ['clone', '--no-tags', this.d.remoteUrlFor ? this.d.remoteUrlFor({ ...project, defaultBranch: p.defaultBranch ?? 'main' }) : p.repoUrl, localPath]);
+        await this.remoteGit(this.c.config.paths.repos, ['clone', '--no-tags', this.d.remoteUrlFor ? this.d.remoteUrlFor({ ...project, defaultBranch: p.defaultBranch ?? 'main', discordCategoryId: null, discordChannelId: null }) : p.repoUrl, localPath]);
       }
       registerProject(this.c, project);
       writeFileSync(join(localPath, '.git', 'info', 'exclude'), '.claude/\n', { flag: 'a' });
       return `${p.id} 프로젝트를 등록했어요 (${localPath})`;
     });
+  }
+
+  /** /새프로젝트: GitHub에 비공개 저장소를 만든다(11장). 등록은 registerAndClone이 한다. 토큰은 이 요청에만 넣는다 */
+  async createRepo(name: string, description?: string): Promise<CreatedRepo> {
+    const token = this.d.githubToken?.();
+    if (!token) throw new OfficeError('repo-auth', 'GitHub 토큰이 없어요. scripts\\set-secrets.ps1 -WithGithub로 넣어 주세요');
+    return createGithubRepo({ token, name, ...(description ? { description } : {}), ...(this.d.fetchImpl ? { fetchImpl: this.d.fetchImpl } : {}) });
   }
 }

@@ -38,8 +38,9 @@ export function isLatestPlanVersion(c: Ctx, plan: PlanRow): boolean {
 /**
  * 계획서가 코드 규칙을 지키는지 검사한다 (6장 PM 제약 + 4장 불변 조건).
  * PM이 정한 배정이라도 규칙에 어긋나면 받지 않는다.
+ * boundProjectId: 프로젝트 #작업 채널에서 온 지시의 프로젝트. 비우면 코드가 채우고, 다른 프로젝트는 받지 않는다 (6장 PM)
  */
-export function checkPlanRules(c: Ctx, out: PmPlanOutput): string[] {
+export function checkPlanRules(c: Ctx, out: PmPlanOutput, boundProjectId?: string | null): string[] {
   const problems: string[] = [];
   // 다른 지시의 임시 직원은 배정할 수 없다. 임시 직원은 tempStaff와 "temp:<key>"로만 부른다.
   const staff = new Map(
@@ -50,9 +51,13 @@ export function checkPlanRules(c: Ctx, out: PmPlanOutput): string[] {
       .filter((e) => !e.isTemporary)
       .map((e) => [e.id, e]),
   );
+  if (boundProjectId && out.projectId && out.projectId !== boundProjectId) {
+    problems.push(`이 지시는 ${boundProjectId} 프로젝트 채널에서 왔으므로 projectId는 ${boundProjectId}여야 함 (비워도 됨)`);
+  }
+  const projectId = out.projectId ?? boundProjectId ?? null;
   if (out.tickets.some((t) => t.type === 'coding')) {
-    if (!out.projectId) problems.push('코딩 티켓이 있으면 projectId(등록된 프로젝트)가 필요함');
-    else if (!c.db.select().from(projects).where(eq(projects.id, out.projectId)).get()) problems.push(`등록되지 않은 프로젝트: ${out.projectId}`);
+    if (!projectId) problems.push('코딩 티켓이 있으면 projectId(등록된 프로젝트)가 필요함');
+    else if (!c.db.select().from(projects).where(eq(projects.id, projectId)).get()) problems.push(`등록되지 않은 프로젝트: ${projectId}`);
   }
   problems.push(
     ...checkTempRules(out.tempStaff, out.tickets, (id) => {
@@ -87,10 +92,10 @@ export function checkPlanRules(c: Ctx, out: PmPlanOutput): string[] {
 /** 새 계획서 버전을 만든다. 살아 있는 이전 버전은 superseded로, 그 결재는 expired로. */
 export function createPlanVersion(c: Ctx, orderId: string, out: PmPlanOutput, opts: { afterGateRejection: boolean }): PlanRow {
   return inTx(c, (t) => {
-    const problems = checkPlanRules(t, out);
-    if (problems.length) throw new PlanRuleError(problems);
     const order = t.db.select().from(orders).where(eq(orders.id, orderId)).get();
     if (!order) throw new NotFoundError(`지시 ${orderId}`);
+    const problems = checkPlanRules(t, out, order.projectId);
+    if (problems.length) throw new PlanRuleError(problems);
     if (!['planning', 'awaiting-plan-approval'].includes(order.status)) {
       throw new OfficeError('order-closed', `지시 ${orderId}는 계획을 받을 수 없는 상태예요(${order.status})`);
     }
@@ -113,7 +118,8 @@ export function createPlanVersion(c: Ctx, orderId: string, out: PmPlanOutput, op
         questions: out.questions,
         tickets: out.tickets,
         tempStaff: out.tempStaff,
-        projectId: out.projectId ?? null,
+        // 프로젝트 채널에서 온 지시는 PM이 비워도 그 프로젝트 (6장 PM)
+        projectId: out.projectId ?? order.projectId ?? null,
         estimate: out.estimate,
         // 관문 반려 뒤 고친 버전은 반려 횟수를 이어 간다. CEO 수정 요청 뒤에는 새로 센다.
         gateAttempts: opts.afterGateRejection && prev ? prev.gateAttempts : 0,
@@ -249,7 +255,8 @@ export function applyCeoPlanDecision(c: Ctx, planId: string, decision: ApprovalD
   }
 
   c.db.update(plans).set({ status: 'approved', ceoNote: note }).where(eq(plans.id, planId)).run();
-  c.db.update(orders).set({ status: 'in-progress', projectId: plan.projectId }).where(eq(orders.id, plan.orderId)).run();
+  // 계획에 프로젝트가 없으면 지시의 프로젝트(프로젝트 채널에서 정해진 것)를 지우지 않는다
+  c.db.update(orders).set({ status: 'in-progress', ...(plan.projectId ? { projectId: plan.projectId } : {}) }).where(eq(orders.id, plan.orderId)).run();
   emit(c, 'plan.status', { planId, orderId: plan.orderId, version: plan.version, status: 'approved' });
 
   // 임시 직원을 들인다 (디자인 시스템 담당은 계획 단계에서 이미 다녀갔다)

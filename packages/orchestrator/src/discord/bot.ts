@@ -7,6 +7,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelType,
   Client,
   Events,
   GatewayIntentBits,
@@ -26,7 +27,7 @@ import {
 import type { Ctx } from '../context.ts';
 import { SLASH_COMMANDS, type InteractionHandler } from './interactions.ts';
 import { onDiscordMessage } from '../chief/order-message.ts';
-import type { Button, ChannelKey, DiscordPort, InteractionReply, MirrorPort, OutgoingMessage } from './types.ts';
+import type { Button, ChannelKey, DiscordPort, InteractionReply, MirrorPort, OutgoingMessage, ProjectChannelPort } from './types.ts';
 
 const STYLE: Record<Button['style'], ButtonStyle> = {
   primary: ButtonStyle.Primary,
@@ -74,6 +75,7 @@ async function respond(it: ButtonInteraction | ModalSubmitInteraction | ChatInpu
 export interface DiscordBot {
   port: DiscordPort;
   mirror: MirrorPort | null;
+  projectChannels: ProjectChannelPort;
   stop(): Promise<void>;
 }
 
@@ -90,7 +92,7 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
         await respond(it, await o.handler.handle({ type: 'modal', userId: it.user.id, customId: it.customId, fields }));
       } else if (it.isChatInputCommand()) {
         const options = Object.fromEntries(it.options.data.map((x) => [x.name, x.value as string | number | undefined]));
-        await respond(it, await o.handler.handle({ type: 'command', userId: it.user.id, name: it.commandName, options, id: it.id }));
+        await respond(it, await o.handler.handle({ type: 'command', userId: it.user.id, name: it.commandName, options, id: it.id, channelId: it.channelId }));
       }
     } catch (err) {
       o.log(`Discord 상호작용 처리 실패: ${(err as Error).stack ?? err}`);
@@ -152,9 +154,29 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
       }
     : null;
 
+  // /새프로젝트 작업 공간 (9장). 이미 같은 이름이 있으면 그것을 쓴다(다시 시도해도 하나만)
+  const projectChannels: ProjectChannelPort = {
+    async createProjectChannels(projectId) {
+      const guild = await client.guilds.fetch(c.config.discord.guildId);
+      const all = await guild.channels.fetch();
+      const category =
+        all.find((ch) => ch?.type === ChannelType.GuildCategory && ch.name === projectId) ??
+        (await guild.channels.create({ name: projectId, type: ChannelType.GuildCategory }));
+      const work =
+        all.find((ch) => ch?.type === ChannelType.GuildText && ch.parentId === category.id && ch.name === '작업') ??
+        (await guild.channels.create({ name: '작업', type: ChannelType.GuildText, parent: category.id, topic: `${projectId} 저장소 일. 여기서 쓴 /지시는 이 프로젝트 일이 돼요` }));
+      return { categoryId: category.id, channelId: work.id };
+    },
+    async sendToChannel(channelId, content) {
+      const ch = (await client.channels.fetch(channelId)) as TextChannel;
+      await ch.send({ content: fit(content), allowedMentions: { users: [c.config.ceoDiscordId] } });
+    },
+  };
+
   return {
     port,
     mirror,
+    projectChannels,
     async stop() {
       webhook?.destroy();
       await client.destroy();
