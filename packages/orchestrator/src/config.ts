@@ -179,8 +179,10 @@ export type Config = z.infer<typeof ConfigSchema>;
 export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
   limits: {
     // 회사 전체 5시간 70% = 개발 55 + 리서치 15, 주간 50% = 79:21 비율 (8장)
+    // 7-1부터 리서치 몫은 기획실장(PM)이 쓰는 "기획 몫"이다 (2-0)
     claude: { fiveHour: { dev: 55, research: 15 }, weekly: { dev: 39.5, research: 10.5 } },
-    gpt: { fiveHour: { review: 70 }, weekly: { review: 50 } },
+    // GPT는 한도 전부를 회사가 쓴다 (2026-10-19 CEO 지시, 8장)
+    gpt: { fiveHour: { review: 100 }, weekly: { review: 100 } },
   },
   ticketCaps: { tokenMultiplier: 2, minTokens: 20_000, maxTurns: 40 },
   pingpongLimit: 3,

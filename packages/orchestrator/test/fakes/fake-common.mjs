@@ -39,6 +39,17 @@ export function outputFor(schema, prompt) {
     return { verdict: 'pass', criteria: criteriaFrom(prompt).map((criterion) => ({ criterion, pass: true })), fixRequests: [] };
   }
   if (props.includes('passed')) return { passed: true, issues: [], objection: null };
+  // 계획서 (7-1부터 PM은 Claude)
+  if (props.includes('goal') && props.includes('tickets')) {
+    return {
+      goal: '기능 파일 추가',
+      questions: [],
+      tickets: [{ title: 'feature file', type: 'coding', assignee: 'developer', reviewer: 'reviewer', acceptanceCriteria: ['check.js 테스트 통과'], needsCeoApproval: false, estimatedTokens: 50000 }],
+      tempStaff: [],
+      estimate: { claudeDevPct: 5, claudeResearchPct: 1, gptPct: 3, hours: 1 },
+      projectId: 'demo',
+    };
+  }
   if (props.includes('agree')) return { claim: '완료 조건대로 하면 된다', agree: true, nextActions: [] };
   if (props.includes('changedFiles')) {
     return { summary: '기능 구현', changedFiles: ['feature.txt'], criteriaSelfCheck: criteriaFrom(prompt).map((criterion) => ({ criterion, claimed: true })) };

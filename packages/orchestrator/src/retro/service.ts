@@ -1,7 +1,8 @@
 // 회고와 학습 (14장). 오케스트레이터가 주기적으로 tick()을 부른다.
-// 1. 티켓 회고: 반려가 한 번이라도 있었던 티켓이 끝나면 PM이 쓰고 검토 담당(Gemma)이 확인한다.
-// 2. 자동 트리거: 같은 분류 반려가 3번 쌓이면 PM이 규칙 후보를 쓴다.
-// 3. 주간 회고: 일요일 22:00. 반려 통계와 규칙 효과를 코드가 집계하고 PM이 요약과 후보를 쓴다.
+// 1. 티켓 회고: 반려가 한 번이라도 있었던 티켓이 끝나면 회고 작성자(로컬 Gemma)가 쓰고 확인자(GPT 리뷰어)가 확인한다.
+// 2. 자동 트리거: 같은 분류 반려가 3번 쌓이면 회고 작성자가 규칙 후보를 쓴다.
+// 3. 주간 회고: 일요일 22:00. 반려 통계와 규칙 효과를 코드가 집계하고 회고 작성자가 요약과 후보를 쓴다.
+//    (7-1: PM이 Claude가 되어 회고 초안은 Claude 한도를 쓰지 않게 로컬로 옮겼다. 회고 서기(7-5)가 생기면 그쪽으로)
 //    효과 없는 규칙과 역할당 10개 초과는 코드가 삭제 제안을 올린다.
 // 4. 후보는 코드 사전 검사 → GPT 관문 → #결재함 "규칙 추가 제안". 승인돼야 적용된다.
 import { and, desc, eq, gt, gte, inArray, sql } from 'drizzle-orm';
@@ -22,6 +23,10 @@ import { localTime } from '../discord/schedule.ts';
 import type { Engine } from '../engine.ts';
 import { OfficeError } from '../errors.ts';
 import { cleanupCandidates, countRecurrences, isIneffective, proposeRetire, proposeRule, ruleViolations } from './rules.ts';
+
+/** 회고 초안을 쓰는 직원과 확인하는 직원: 서로 다른 모델 (14장, 7-1) */
+export const RETRO_WRITER = 'qa-local';
+export const RETRO_CHECKER = 'reviewer';
 
 const CURSOR = 'retro.cursor';
 const QUEUE = 'retro.queue';
@@ -114,9 +119,9 @@ export class RetroService {
     for (const tk of this.pendingTicketRetros()) {
       const ticket = { id: tk.id, title: tk.title, type: tk.type, acceptanceCriteria: tk.acceptanceCriteria };
       const reviews = this.reviewsOf(tk.id);
-      const retro = await this.engine.callAs('pm', 'retro', TicketRetroSchema, { mode: 'ticket', ticket, reviews }, { workdir: 'retro' });
+      const retro = await this.engine.callAs(RETRO_WRITER, 'retro', TicketRetroSchema, { mode: 'ticket', ticket, reviews }, { workdir: 'retro' });
       if (!retro) break; // PM을 부를 수 없음: 다음 바퀴에
-      const check = await this.engine.callAs('qa-local', 'retro', RetroCheckSchema, { mode: 'check', ticket, reviews, retro }, { workdir: 'retro' });
+      const check = await this.engine.callAs(RETRO_CHECKER, 'retro', RetroCheckSchema, { mode: 'check', ticket, reviews, retro }, { workdir: 'retro' });
       inTx(this.c, (t) => {
         t.db
           .insert(retros)
@@ -125,9 +130,9 @@ export class RetroService {
           .run();
         recordMessage(t, {
           ticketId: tk.id,
-          fromId: 'pm',
+          fromId: RETRO_WRITER,
           kind: 'system',
-          content: `티켓 회고: ${retro.whatWrong} / 원인: ${retro.why} / 막을 단계: ${retro.preventAt}${check ? (check.confirmed ? ' (검토 담당 확인)' : ` (검토 담당 이견: ${check.note})`) : ''}`,
+          content: `티켓 회고: ${retro.whatWrong} / 원인: ${retro.why} / 막을 단계: ${retro.preventAt}${check ? (check.confirmed ? ' (리뷰어 확인)' : ` (리뷰어 이견: ${check.note})`) : ''}`,
           countsForPingpong: false,
         });
       });
@@ -174,7 +179,7 @@ export class RetroService {
       if (fails.length < this.c.config.retro.autoTriggerCount) continue;
       const ids = [...new Set(fails.map((f) => f.ticketId).filter((x): x is string => !!x))].slice(-5);
       const evidence = this.evidenceFor(ids);
-      const cand = await this.engine.callAs('pm', 'retro', RuleCandidateSchema, { mode: 'rule', reasonCategory: cat, evidence }, { workdir: 'retro' });
+      const cand = await this.engine.callAs(RETRO_WRITER, 'retro', RuleCandidateSchema, { mode: 'rule', reasonCategory: cat, evidence }, { workdir: 'retro' });
       if (!cand) break;
       setState(this.c, triggerKey(cat), fails.at(-1)!.createdAt);
       this.enqueue({ candidate: { ...cand, reasonCategory: cat }, source: 'auto' });
@@ -195,7 +200,7 @@ export class RetroService {
     let n = 0;
     for (const r of todo) {
       const cand = await this.engine.callAs(
-        'pm',
+        RETRO_WRITER,
         'retro',
         RuleCandidateSchema,
         { mode: 'rule', reasonCategory: r.reasonCategory, evidence: this.evidenceFor(r.evidence), ceoNote: r.retiredReason!.slice('수정 요청:'.length).trim(), previous: { scope: r.scope, rule: r.text } },
@@ -265,7 +270,7 @@ export class RetroService {
       .where(and(eq(retros.kind, 'ticket'), gte(retros.createdAt, slot.since)))
       .all()
       .map((r) => ({ ticketId: r.ticketId, whatWrong: r.whatWrong, why: r.why, preventAt: r.preventAt }));
-    const out = await this.engine.callAs('pm', 'retro', WeeklyRetroSchema, { mode: 'weekly', stats, retros: weekRetros }, { workdir: 'retro' });
+    const out = await this.engine.callAs(RETRO_WRITER, 'retro', WeeklyRetroSchema, { mode: 'weekly', stats, retros: weekRetros }, { workdir: 'retro' });
     if (!out && slot.minutesSince < WEEKLY_GRACE_MIN) return 0; // 잠시 뒤 다시
     const summary = out?.summary ?? `(PM 회고 없이 통계만) 반려 ${stats.rejections}건, 완료 ${stats.doneTickets}건`;
     inTx(this.c, (t) => {

@@ -108,7 +108,7 @@ describe('규칙 문장 사전 검사 (14장 4)', () => {
 });
 
 describe('티켓 회고', () => {
-  it('반려가 있었던 티켓이 끝나면 PM이 쓰고 검토 담당이 확인한다', async () => {
+  it('반려가 있었던 티켓이 끝나면 로컬(검토 담당)이 쓰고 GPT 리뷰어가 확인한다 (7-1: Claude PM 한도를 쓰지 않음)', async () => {
     const s = rejectOnce();
     await finishOrders(s, 1);
     const retro = new RetroService(s.ctx, s.engine);
@@ -118,7 +118,7 @@ describe('티켓 회고', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ kind: 'ticket', preventAt: 'plan', confirmed: true });
     expect(s.mock.callsFor('retro').map((c) => (c.input as { mode: string }).mode)).toEqual(['ticket', 'check']);
-    expect(s.mock.callsFor('retro').map((c) => c.employee.id)).toEqual(['pm', 'qa-local']);
+    expect(s.mock.callsFor('retro').map((c) => c.employee.id)).toEqual(['qa-local', 'reviewer']);
     await retro.tick();
     expect(s.db.select().from(retros).all()).toHaveLength(1); // 한 번만
   });

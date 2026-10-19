@@ -16,7 +16,8 @@ interface Seed {
 export const STANDING_STAFF: readonly Seed[] = [
   // 비서실장 두뇌는 헤르메스 설정이 정한다. 여기 값은 화면 표시용 (2026-10-19 Qwen3-14B → Gemma 4 12B, 헤르메스 64K 문맥 하한)
   { id: 'chief-of-staff', displayName: '비서실장', role: 'chief-of-staff', department: 'CEO실', brain: { provider: 'ollama', model: 'gemma4:12b' }, canSearchWeb: false },
-  { id: 'pm', displayName: 'PM', role: 'pm', department: '기획', brain: { provider: 'ollama', model: 'qwen3:14b' }, canSearchWeb: false },
+  // 기획실장: 7-1부터 Claude(기획 몫 = 리서치 몫). 로컬 PM은 규칙 위반·관문 반려가 잦았다 (2-0, 2026-10-19)
+  { id: 'pm', displayName: '기획실장', role: 'pm', department: '기획실', brain: { provider: 'claude-code', budget: 'research' }, canSearchWeb: false },
   { id: 'developer', displayName: '개발자', role: 'developer', department: '개발팀', brain: { provider: 'claude-code', budget: 'dev' }, canSearchWeb: true },
   { id: 'reviewer', displayName: '리뷰어 · 감사관', role: 'reviewer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false },
   { id: 'marketing', displayName: '마케팅', role: 'marketing', department: '마케팅 · 경영', brain: { provider: 'ollama', model: 'qwen3:14b' }, canSearchWeb: true },
@@ -35,8 +36,10 @@ export function seedStaff(c: Ctx): void {
         .onConflictDoNothing()
         .run();
     }
-    // 이미 만든 DB의 비서실장 두뇌 표시도 맞춘다 (예전 값 qwen3:14b)
-    const chief = STANDING_STAFF.find((s) => s.id === 'chief-of-staff')!;
-    t.db.update(employees).set({ brain: chief.brain }).where(eq(employees.id, 'chief-of-staff')).run();
+    // 이미 만든 DB의 두뇌도 설계에 맞춘다: 비서실장(예전 qwen3:14b), 기획실장(예전 qwen3:14b, 7-1)
+    for (const id of ['chief-of-staff', 'pm']) {
+      const s = STANDING_STAFF.find((x) => x.id === id)!;
+      t.db.update(employees).set({ brain: s.brain, displayName: s.displayName, department: s.department }).where(eq(employees.id, id)).run();
+    }
   });
 }

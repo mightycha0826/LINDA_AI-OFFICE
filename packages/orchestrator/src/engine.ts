@@ -4,6 +4,7 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  brainModel,
   DevOutputSchema,
   DocOutputSchema,
   GateOutputSchema,
@@ -276,7 +277,8 @@ export class Engine {
       if (plan?.status === 'gate-review') {
         const gate = this.employee(GATE_REVIEWER_ID);
         if (this.spendMode(gate) !== 'ok') return false; // GPT 소진이나 인터넷 끊김: 관문 검사는 기다린다
-        const out = await this.callStructured(gate, 'gate', GateOutputSchema, { plan }, { orderId }, { workdir: this.workspace.sandbox(`gate-${orderId}`) });
+        // 직원별 모델 표를 함께 넘긴다: 관문이 "담당·검토 모델을 알 수 없다"며 반려하던 문제 (7-1)
+        const out = await this.callStructured(gate, 'gate', GateOutputSchema, { plan, staffModels: this.staffModels() }, { orderId }, { workdir: this.workspace.sandbox(`gate-${orderId}`) });
         const outcome = recordGateResult(c, plan.id, out);
         this.log(`${plan.id} v${plan.version} 관문: ${outcome}`);
         return true;
@@ -300,7 +302,11 @@ export class Engine {
         ...(plan && !afterGateRejection ? { ceoNote: plan.ceoNote ?? '' } : {}),
         ...(plan && afterGateRejection ? { gateIssues: plan.gateResult?.issues ?? [] } : {}),
       };
-      const out = await this.callStructured(pm, 'plan', PmPlanOutputSchema, input, { orderId }, { check: (o: z.infer<typeof PmPlanOutputSchema>) => checkPlanRules(c, fixReviewers(c, o).out, order.projectId) });
+      const out = await this.callStructured(pm, 'plan', PmPlanOutputSchema, input, { orderId }, {
+        check: (o: z.infer<typeof PmPlanOutputSchema>) => checkPlanRules(c, fixReviewers(c, o).out, order.projectId),
+        // 클라우드 PM(7-1부터 Claude)은 빈 샌드박스에서 읽기 전용으로 쓴다
+        ...(isCloud(pm) ? { workdir: this.workspace.sandbox(`plan-${orderId}`) } : {}),
+      });
       const created = createPlanVersion(c, orderId, out, { afterGateRejection });
       if (!needsDesignCombo(created.tempStaff)) startGateReview(c, created.id);
       this.log(`${created.id} v${created.version} 작성`);
@@ -368,7 +374,8 @@ export class Engine {
     // 인터넷이 끊기면 클라우드 직원(개발자·리뷰어·경영전략)은 멈춘다 (3장)
     if (isCloud(e) && !this.connectivity.isOnline()) return 'offline';
     if (!b || b === 'local' || !isExhausted(this.c, b)) return 'ok';
-    return b === 'research' ? 'low-precision' : 'wait';
+    // 리서치 몫 소진 때 로컬로 바꾸는 것은 리서치 직원뿐. 기획실장(PM)은 기다린다(로컬 계획은 뒤에서 더 비싸다, 2-0)
+    return b === 'research' && e.role !== 'pm' ? 'low-precision' : 'wait';
   }
 
   /** 인터넷이 끊겨 클라우드 직원이 일할 수 없으면 티켓을 멈춘다(연결되면 이어감). */
@@ -579,6 +586,16 @@ export class Engine {
   }
 
   // --- 공통 -------------------------------------------------------------------
+
+  /** GPT 관문용: 상근 AI 직원의 모델 (담당·검토가 다른 모델인지 관문이 확인할 수 있게) */
+  private staffModels(): { id: string; role: string; model: string }[] {
+    return this.c.db
+      .select()
+      .from(employees)
+      .all()
+      .filter((e) => !e.isTemporary && e.brain.provider !== 'none')
+      .map((e) => ({ id: e.id, role: e.role, model: brainModel(e.brain) }));
+  }
 
   private employee(id: string): EmployeeRow {
     const e = this.c.db.select().from(employees).where(eq(employees.id, id)).get();

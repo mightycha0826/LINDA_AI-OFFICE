@@ -15,11 +15,11 @@ const plan = (tickets: Partial<PmPlanOutput['tickets'][number]>[], over: Partial
   planOutput({ tickets: tickets.map((t, i) => ({ ...base, title: `일${i + 1}`, ...t })), ...over });
 
 describe('fixReviewers', () => {
-  it('문서 티켓: 같은 모델(qwen) 검토자는 qa-local로', () => {
+  it('문서 티켓: 같은 모델(claude) 검토자는 qa-local로', () => {
     const s = setup();
-    const { out, changes } = fixReviewers(s.ctx, plan([{ type: 'writing', assignee: 'marketing', reviewer: 'pm' }]));
+    const { out, changes } = fixReviewers(s.ctx, plan([{ type: 'writing', assignee: 'strategy', reviewer: 'pm' }]));
     expect(out.tickets[0]!.reviewer).toBe('qa-local');
-    expect(changes).toEqual(['티켓 1(일1): 검토자 pm → qa-local (같은 모델 qwen3:14b)']);
+    expect(changes).toEqual(['티켓 1(일1): 검토자 pm → qa-local (같은 모델 claude)']);
     expect(checkPlanRules(s.ctx, out)).toEqual([]);
   });
 
@@ -71,12 +71,12 @@ describe('fixReviewers', () => {
 
 describe('계획서에 반영', () => {
   it('PM이 같은 모델 검토자를 골라도 다시 시키지 않고 고쳐서 결재에 올린다. 결재 메시지에 보인다', async () => {
-    const s = setup({ handlers: { plan: () => plan([{ type: 'writing', assignee: 'marketing', reviewer: 'pm', acceptanceCriteria: ['자기소개 항목 포함'] }], { projectId: undefined }) } });
+    const s = setup({ handlers: { plan: () => plan([{ type: 'writing', assignee: 'strategy', reviewer: 'pm', acceptanceCriteria: ['자기소개 항목 포함'] }], { projectId: undefined }) } });
     const { order, approval } = await orderUntilPlanApproval(s);
     expect(s.mock.callsFor('plan')).toHaveLength(1);
     const p = s.db.select().from(plans).where(eq(plans.orderId, order.id)).get()!;
     expect(p.tickets[0]!.reviewer).toBe('qa-local');
-    expect(p.reviewerChanges).toEqual(['티켓 1(일1): 검토자 pm → qa-local (같은 모델 qwen3:14b)']);
+    expect(p.reviewerChanges).toEqual(['티켓 1(일1): 검토자 pm → qa-local (같은 모델 claude)']);
     const a = s.db.select().from(approvals).where(eq(approvals.id, approval!.id)).get()!;
     const msg = approvalMessageFor(a, p, null).content;
     expect(msg).toContain('검토자 자동 변경');

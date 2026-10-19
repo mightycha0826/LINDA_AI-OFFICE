@@ -56,7 +56,7 @@ describe('몫 칸막이', () => {
     const s = setup();
     const { tickets: [tk] } = await approvedTickets(s);
     await s.engine.step(); // 작업 → in_review
-    spend(s, 'review', 70);
+    spend(s, 'review', 100); // GPT 몫은 100% (2026-10-19)
     await s.engine.runUntilIdle();
     expect(ticket(s, tk!.id).status).toBe('in_review');
     expect(s.mock.callsFor('review')).toHaveLength(0);

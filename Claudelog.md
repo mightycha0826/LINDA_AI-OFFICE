@@ -1,6 +1,6 @@
 # Claudelog: AI 사무실 인수인계
 
-다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-19 22:00 KST**.
+다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-19 22:30 KST**.
 저장소는 **공개**다(https://github.com/mightycha0826/LINDA_AI-OFFICE). 토큰, 비밀번호, Discord ID는 여기 적지 않는다(`C:\ai-office\data`에 있다).
 
 ## 0. 먼저 읽을 것
@@ -52,7 +52,7 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5, qwen3:14b·gemma4:12b. C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 449개 통과, typecheck·lint:ds 깨끗하다.
+- **테스트**: `npm test` 453개 통과, typecheck·lint:ds 깨끗하다.
 - **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 그 뒤 커밋(64K 원인, 0단계 결과, 메시지 ID 기록)은 로컬에만 있다.
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
@@ -66,7 +66,9 @@
 | --- | --- | --- |
 | 비서실장 두뇌 Qwen3-14B → **Gemma 4 12B** (CEO 승인) | 헤르메스는 문맥 64K 미만을 거부한다. Qwen은 40,960이 한계이고 CPU로 35% 밀린다. Gemma는 64K에서 100% GPU, 66 tok/s | DESIGN 2·6·16·18장, `seed.ts` |
 | 헤르메스 모델을 `gemma4:12b-64k` 태그로, `SOUL.md` 한국어화 | 비서실장이 영어로 답하고 skills_list만 반복했다. Ollama `/v1`이 `ollama_num_ctx`를 무시해 4096으로 떠서 입력이 2,051토큰에서 잘렸다(`ollama ps`로 확인). `SOUL.md`도 기본 영어 문구였다 | DESIGN 6장, HERMES-SETUP |
-| PM 두뇌 비교 실험 (결정 대기) | 같은 지시(O-2)로 Qwen(운영 기록)과 Claude(`sim/plan-compare.ts`, 메모리 DB) 비교. Qwen: PM 8번 중 5번 규칙 위반, CEO 다시 시도 2번, 관문 3번 모두 반려 → 반대 의견, 13분. Claude: 위반 0, 관문 2번째 통과(1번째 반려는 관문이 직원 모델을 몰라서), 67초, Claude 리서치 몫 약 1.1%·GPT 4.7만 토큰. 결과 `C:ai-officewt_experimentclaude-20261019125153eport.md` | 주인 결정: PM을 Claude로 바꿀지, 관문에 직원 모델 표를 넘길지 |
+| **조직 개편 7단계** (CEO 지시) | GPT 한도를 회사가 전부 쓰기로(100%/100%), Claude는 그대로. Claude=판단(기획실장·개발팀장), GPT=양(개발자 A·B, 리뷰어·감사관, 전략가, 카피라이터), Gemma=보조 10명. 부서·팀장 구조 | DESIGN 2-0 조직도, 16장 7-1~7-5 |
+| 7-1 완료: GPT 100%, 기획실장(PM)=Claude(기획 몫=리서치 몫), 기획 몫 소진 시 대기, 관문에 직원 모델 표, 회고 초안=Gemma·확인=GPT | 다음은 7-2(로컬 두뇌 gemma4:12b-64k 통일) | `seed.ts`, `engine.ts`, `retro/service.ts`, `test/org-7-1.test.ts` |
+| PM 두뇌 비교 실험 (→ 7-1에서 Claude로 결정) | 같은 지시(O-2)로 Qwen(운영 기록)과 Claude(`sim/plan-compare.ts`, 메모리 DB) 비교. Qwen: PM 8번 중 5번 규칙 위반, CEO 다시 시도 2번, 관문 3번 모두 반려 → 반대 의견, 13분. Claude: 위반 0, 관문 2번째 통과(1번째 반려는 관문이 직원 모델을 몰라서), 67초, Claude 리서치 몫 약 1.1%·GPT 4.7만 토큰. 결과 `C:ai-officewt_experimentclaude-20261019125153eport.md` | 주인 결정: PM을 Claude로 바꿀지, 관문에 직원 모델 표를 넘길지 |
 | 검토자 짝은 코드가 고침 (CEO 승인) | 표·후보 안내를 줘도 PM(Qwen)이 계획서 6번 중 4번 같은 모델 검토자를 골랐다. 같은 모델·본인·비서실장이면 코딩→reviewer, 그 밖→qa-local로 바꾸고 `plans.reviewer_changes`에 남겨 결재 메시지에 표시. 비서실장은 검토자 후보에서 뺌. 실제 첫 GPT 관문(21:25)은 정상 동작, "확인할 수 없는 완료 조건·불필요한 백엔드"를 정확히 지적 | DESIGN 6·9장, `core/plans.ts` fixReviewers, 마이그레이션 0007 |
 | 계획 작성 멈춤을 #막힘에 [다시 시도][취소]로 알림, PM 검토자 표 | O-2(포트폴리오)가 PM의 같은 모델 검토자 실수로 멈췄는데 **알림도 다시 시도할 길도 없었다**(retryPlanning을 부르는 곳이 없었음). 멈춘 시각으로 구분해 한 번씩 알리고, PM 역할 카드에 담당자별 검토 가능 직원 표, 위반 안내에 후보를 적음 | DESIGN 6·9장 ④-2, `discord/notifier.ts`, `staff/role-cards.ts` |
 | `/새프로젝트`: GitHub 비공개 저장소 + Discord 카테고리 `아이디` › `#작업` (CEO 요청, 선택은 모두 추천안) | 저장소를 따로 만들고 `/프로젝트`로 등록하는 게 번거로움. 토큰을 모든 저장소(Administration·Contents 쓰기)로 넓히고 고양이는 DB 등록 저장소에만 푸시. `#작업`의 `/지시`는 그 프로젝트로 고정, PM은 그 프로젝트만 보고 비우면 코드가 채움. 비서실장은 #비서실에만 | DESIGN 6·9·11장, `workspace/new-project.ts`, `gitcat/github-repo.ts`, 마이그레이션 0006 |

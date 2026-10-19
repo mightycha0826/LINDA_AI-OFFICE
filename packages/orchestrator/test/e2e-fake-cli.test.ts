@@ -26,7 +26,7 @@ const FAKES = fileURLToPath(new URL('./fakes/', import.meta.url));
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
 describe('가짜 CLI로 끝까지', () => {
-  it('지시 → PM(Ollama) → 관문(Codex) → CEO 승인 → 개발자(Claude, worktree) → 테스트 → 리뷰(Codex) → 완료', async () => {
+  it('지시 → 기획실장(Claude, 샌드박스) → 관문(Codex) → CEO 승인 → 개발자(Claude, worktree) → 테스트 → 리뷰(Codex) → 완료', async () => {
     const root = tempRoot();
     const repo = join(root, 'repos', 'demo');
     mkdirSync(repo, { recursive: true });
@@ -75,7 +75,11 @@ describe('가짜 CLI로 끝까지', () => {
       expect(existsSync(join(wt, 'feature.txt'))).toBe(true);
 
       const runs = readFileSync(logFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { bin: string; argv: string[]; cwd: string });
-      const claudeRun = runs.find((r) => r.bin === 'claude')!;
+      const claudeRuns = runs.filter((r) => r.bin === 'claude');
+      expect(claudeRuns).toHaveLength(2); // 계획 1 + 구현 1
+      expect(claudeRuns[0]!.cwd.toLowerCase()).toContain('_sandbox'); // 계획은 빈 샌드박스에서 읽기 전용
+      expect(claudeRuns[0]!.argv).toContain('Read,Glob,Grep');
+      const claudeRun = claudeRuns[1]!;
       const codexRuns = runs.filter((r) => r.bin === 'codex');
       expect(claudeRun.cwd.toLowerCase()).toBe(wt.toLowerCase());
       expect(codexRuns).toHaveLength(2); // 관문 1 + 리뷰 1
@@ -88,7 +92,8 @@ describe('가짜 CLI로 끝까지', () => {
       expect(rows.find((r) => r.budget === 'dev')!.estimatedPct).toBeGreaterThan(0);
       expect(rows.find((r) => r.budget === 'review')!.estimatedPct).toBeGreaterThan(0);
       expect(rows.filter((r) => r.budget === 'local').every((r) => r.estimatedPct === 0)).toBe(true);
-      expect(queue.history).toEqual(['qwen3:14b']); // PM 한 번
+      expect(rows.find((r) => r.budget === 'research')!.estimatedPct).toBeGreaterThan(0); // 기획 몫
+      expect(queue.history).toEqual([]); // 로컬 모델은 이 흐름에서 쓰지 않는다
     } finally {
       await fakeOllama.close();
     }

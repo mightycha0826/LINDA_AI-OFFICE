@@ -224,7 +224,7 @@ describe('Ollama 어댑터', () => {
     const fake = await startFakeOllama({ reply: () => '결과는 이렇습니다\n```json\n{"passed": true, "issues": [], "objection": null}\n```' });
     try {
       const brain = new OllamaBrain({ host: fake.host, numCtx: 8192, timeoutMs: 5000, keepAlive: '30m', queue: new GpuQueue({ maxWaitMs: 60_000 }) });
-      const res = await brain.call(request(s, { employee: emp(s, 'pm'), task: 'gate', schema: GateOutputSchema }));
+      const res = await brain.call(request(s, { employee: emp(s, 'marketing'), task: 'gate', schema: GateOutputSchema }));
       expect(res.output).toEqual({ passed: true, issues: [], objection: null });
     } finally {
       await fake.close();
@@ -234,7 +234,7 @@ describe('Ollama 어댑터', () => {
   it('Ollama가 꺼져 있으면 인터넷 끊김이 아니라 비정상(crash)으로 본다', async () => {
     const s = setup();
     const brain = new OllamaBrain({ host: 'http://127.0.0.1:1', numCtx: 8192, timeoutMs: 3000, keepAlive: '30m', queue: new GpuQueue({ maxWaitMs: 60_000 }) });
-    await expect(brain.call(request(s, { employee: emp(s, 'pm'), task: 'gate', schema: GateOutputSchema }))).rejects.toMatchObject({ failure: 'crash' });
+    await expect(brain.call(request(s, { employee: emp(s, 'marketing'), task: 'gate', schema: GateOutputSchema }))).rejects.toMatchObject({ failure: 'crash' });
   });
 
   it('응답이 늦으면 시간 초과', async () => {
@@ -242,7 +242,7 @@ describe('Ollama 어댑터', () => {
     const fake = await startFakeOllama({ delayMs: 2000 });
     try {
       const brain = new OllamaBrain({ host: fake.host, numCtx: 8192, timeoutMs: 300, keepAlive: '30m', queue: new GpuQueue({ maxWaitMs: 60_000 }) });
-      await expect(brain.call(request(s, { employee: emp(s, 'pm'), task: 'gate', schema: GateOutputSchema }))).rejects.toMatchObject({ failure: 'timeout' });
+      await expect(brain.call(request(s, { employee: emp(s, 'marketing'), task: 'gate', schema: GateOutputSchema }))).rejects.toMatchObject({ failure: 'timeout' });
     } finally {
       await fake.close();
     }

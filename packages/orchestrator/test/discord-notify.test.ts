@@ -201,7 +201,7 @@ describe('정기 보고 (⑥)', () => {
   it('GPT 한도가 떨어졌으면 "관문 미통과"를 달고 올린다', async () => {
     const s = setup();
     toEvening(s);
-    recordUsage(s.ctx, { budget: 'review', inputTokens: 1, outputTokens: 1, estimatedPct: 70, estimatedWeeklyPct: 10, source: 'estimated' });
+    recordUsage(s.ctx, { budget: 'review', inputTokens: 1, outputTokens: 1, estimatedPct: 100, estimatedWeeklyPct: 10, source: 'estimated' });
     const discord = new FakeDiscord();
     const r = await new ReportService(s.ctx, s.engine, discord).submit('보고');
     expect(r).toMatchObject({ posted: true, gate: null });

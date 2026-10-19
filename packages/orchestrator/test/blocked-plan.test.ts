@@ -13,19 +13,21 @@ import { roleCard } from '../src/staff/role-cards.ts';
 import { FakeDiscord } from './fakes/fake-discord.ts';
 import { CEO, setup, STRANGER } from './helpers.ts';
 
-/** 마케팅(qwen) 담당을 PM(qwen)이 검토하는, 늘 규칙에 걸리는 계획서 */
+/** 경영전략(claude) 담당을 기획실장(claude)이 검토하는, 늘 규칙에 걸리는 계획서 */
 const sameModelPlan = () =>
-  planOutput({ tickets: [{ title: '콘텐츠 정리', type: 'writing', assignee: 'marketing', reviewer: 'pm', acceptanceCriteria: ['자기소개 항목 포함'], needsCeoApproval: false, estimatedTokens: 5_000 }] });
+  planOutput({ tickets: [{ title: '콘텐츠 정리', type: 'strategy', assignee: 'strategy', reviewer: 'pm', acceptanceCriteria: ['자기소개 항목 포함'], needsCeoApproval: false, estimatedTokens: 5_000 }] });
 
 describe('같은 모델 검토자', () => {
   it('규칙 위반 안내에 고를 수 있는 검토자를 적어 준다 (PM이 다시 쓸 때 바로 고치게)', () => {
     const s = setup();
     const [problem] = checkPlanRules(s.ctx, sameModelPlan());
-    expect(problem).toContain('같은 모델(qwen3:14b)');
+    expect(problem).toContain('같은 모델(claude)');
     expect(problem).toContain('검토자를 이 중에서 고를 것');
     expect(problem).toContain('qa-local(gemma4:12b)');
+    expect(problem).toContain('reviewer(gpt)');
     expect(problem).not.toMatch(/고를 것:.*\bpm\(/); // 같은 모델은 후보가 아니다
-    expect(problem).not.toMatch(/고를 것:.*\bmarketing\(/);
+    expect(problem).not.toMatch(/고를 것:.*\bdeveloper\(/);
+    expect(problem).not.toMatch(/고를 것:.*chief-of-staff/); // 비서실장은 검토하지 않는다
   });
 
   it('PM 계획서 역할 카드에 담당자별 검토 가능 직원 표가 붙는다. 다른 직원·다른 일에는 없다', () => {
@@ -33,9 +35,10 @@ describe('같은 모델 검토자', () => {
     const staff = (id: string) => s.db.select().from(employees).where(eq(employees.id, id)).get()!;
     const card = roleCard(s.ctx, staff('pm'), 'plan', PmPlanOutputSchema);
     expect(card).toContain('## 6. 검토자 고르기');
-    const line = card.split('\n').find((l) => l.startsWith('- marketing(qwen3:14b) 담당'))!;
+    const line = card.split('\n').find((l) => l.startsWith('- strategy(claude) 담당'))!;
     expect(line).toContain('qa-local');
     expect(line).not.toMatch(/검토:.*\bpm\b/);
+    expect(line).not.toMatch(/검토:.*\bdeveloper\b/);
     expect(roleCard(s.ctx, staff('pm'), 'retro', PmPlanOutputSchema)).not.toContain('## 6.');
     expect(roleCard(s.ctx, staff('developer'), 'work', PmPlanOutputSchema)).not.toContain('## 6.');
   });
