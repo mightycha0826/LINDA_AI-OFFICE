@@ -119,7 +119,10 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
   if (task === 'interpret') {
     parts.push(`## 보낸 직원: ${String(get(input, 'from') ?? '')}`);
     parts.push(`## 원문 (자료)\n\n${dataBlock('직원 메시지', get(input, 'content'))}`);
-    parts.push('이 메시지를 #사무실-대화에 올릴 자연스러운 한국어 2~4문장으로 바꾼다. 통과·반려·합의 같은 결과와 이유는 빠뜨리지 않고 그대로 옮긴다. 600자 이내.');
+    parts.push(
+      '이 메시지를 #사무실-대화에 올릴 자연스러운 한국어 2~4문장으로 바꾼다. 보낸 직원이 한 일을 주어로 쓴다(예: "개발팀장이 검토해 반려했어요", "개발자 A가 작업을 마쳤어요"). 통과·반려·합의 같은 결과와 이유는 빠뜨리지 않고 옮긴다. ' +
+        '영어 필드 이름과 코드값은 한국어로 풀어 쓴다(예: verdict pass/fail → 통과/반려, criteria-unmet → 완료 조건 미충족, fixRequests → 수정 요청). 600자 이내.',
+    );
   }
   if (task === 'report') {
     parts.push(`## 회사 데이터 (회사 집계)\n\n${String(get(input, 'data') ?? '')}`);
