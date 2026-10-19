@@ -218,3 +218,10 @@ modelUsage: claude-opus-5-5
 | `curl https://example.com` | 막힘 ("Failed to connect … Could not connect to server") |
 
 - 호출 1번에 약 14~33초, 입력 약 2.9만 토큰(GPT).
+
+## 7단계 개편 뒤 진짜 두뇌 전체 흐름 (2026-10-20 08:17, `npm run smoke -- --flow`, 메모리 DB)
+
+- 연결: Gemma 64K 두 직원(교정 담당, 막힘 해설가) 모델 교체 없이 각각 0.8초·1.0초 / Claude 3.8초 / Codex 3.8초.
+- 계획: 기획실장(Claude) v1 → GPT 관문 revise → v2 → 관문 통과(to-ceo). 계획서가 스스로 **개발자 A(GPT) 구현, 개발팀장(Claude) 검토**로 배정했다. 시험이라 스크립트가 CEO 대신 승인.
+- 작업: T-1 `math.js` `add(a, b)`와 `node --test` 테스트 3개 → 오케스트레이터 테스트 통과 → 개발팀장 검토 통과 → **done, 반려 0, 토큰 상한에 걸리지 않음**(10-19에는 Claude 개발자 첫 호출에 `paused(cap)`였다). worktree에서 다시 돌려 3개 통과 확인.
+- 사용량(추정): 기획 몫(Claude) 약 1.1%, GPT 약 5.5%(관문 2번 + 개발자 A 7.9만 토큰), 개발 몫(Claude 검토) 0.9%.
