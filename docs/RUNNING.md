@@ -52,6 +52,7 @@ http://127.0.0.1:8780 을 연다. 메모리 DB와 MockLLM으로 직원들이 천
   - 폰에서 화면을 보려면 `screen.hosts`와 `screen.allowedHostnames`에 Tailscale 주소·이름
   - `hermes.homeDir`: 헤르메스 데이터 폴더 (비우면 백업하지 않는다)
 - `secrets.json`: `discordToken`, `mirrorWebhookUrl`, `githubToken`(등록 저장소에만 쓰기 권한이 있는 세분화된 토큰). `internalApiToken`은 처음 켤 때 자동으로 만든다.
+  - 값은 손으로 붙여 넣지 말고 `powershell -ExecutionPolicy Bypass -File scripts\set-secrets.ps1`로 넣는다(입력이 화면에 안 보이고, 형식을 검사하고, BOM 없는 UTF-8로 저장). GitHub 토큰까지 넣으려면 `-WithGithub`.
 
 설정 검사에 실패하면 무엇이 틀렸는지 알려 주고 켜지지 않는다.
 
