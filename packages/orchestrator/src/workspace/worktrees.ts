@@ -122,7 +122,7 @@ export class GitWorkspace implements Workspace {
 
     // 권한 설정은 커밋되지 않게 공통 exclude에 넣는다
     mkdirSync(join(path, '.claude'), { recursive: true });
-    writeFileSync(join(path, '.claude', 'settings.json'), JSON.stringify(devSettings(), null, 2), 'utf8');
+    writeFileSync(join(path, '.claude', 'settings.json'), JSON.stringify(devSettings(c.config.paths.data), null, 2), 'utf8');
     const common = resolve(path, await git(path, ['rev-parse', '--git-common-dir']));
     const exclude = join(common, 'info', 'exclude');
     mkdirSync(join(common, 'info'), { recursive: true });

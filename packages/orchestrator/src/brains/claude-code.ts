@@ -30,7 +30,7 @@ export interface ClaudeCodeOptions {
 export type ClaudeProfile = 'dev-work' | 'research' | 'readonly';
 
 /** 직원과 작업에 따라 쓸 수 있는 도구가 정해진다. AI 출력으로 바뀌지 않는다. */
-export const CLAUDE_PROFILES: Record<ClaudeProfile, { tools: string; permissionMode: string; settings: () => object }> = {
+export const CLAUDE_PROFILES: Record<ClaudeProfile, { tools: string; permissionMode: string; settings: (dataDir: string) => object }> = {
   'dev-work': { tools: 'Bash,Read,Edit,Write,Glob,Grep', permissionMode: 'acceptEdits', settings: devSettings },
   research: { tools: 'WebSearch,WebFetch', permissionMode: 'default', settings: readonlySettings },
   readonly: { tools: 'Read,Glob,Grep', permissionMode: 'default', settings: readonlySettings },
@@ -127,7 +127,7 @@ export class ClaudeCodeBrain implements Brain {
 
     return withRunDir(this.o.dataDir, 'claude', async (runDir) => {
       const files = { settings: join(runDir, 'settings.json'), systemPrompt: join(runDir, 'role-card.md') };
-      writeFileSync(files.settings, JSON.stringify(CLAUDE_PROFILES[profile].settings(), null, 2), 'utf8');
+      writeFileSync(files.settings, JSON.stringify(CLAUDE_PROFILES[profile].settings(this.o.dataDir), null, 2), 'utf8');
       writeFileSync(files.systemPrompt, req.prompt.system, 'utf8');
 
       const r = await runProcess({

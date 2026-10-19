@@ -771,7 +771,25 @@ Codex는 원래 읽기 전용만 썼다. 개발자 A·B에게만 쓰기를 열�
 7. 네트워크가 없으니 GPT 개발자는 패키지를 설치할 수 없다. 외부 패키지가 필요한 티켓은 기획실장이 개발팀장(Claude)에게 맡긴다(역할 카드).
 
 - **실제 확인 (2026-10-19, `sim/codex-write-check.ts`, 진짜 Codex, 운영과 같은 터미널)**: worktree 안 파일 쓰기 성공 / worktree 밖 쓰기 "액세스가 거부되었습니다" / `curl https://example.com` 연결 실패. 판정은 Codex의 말이 아니라 실제 파일이 생겼는지로 했다.
-- **남은 위험 (기존과 같음)**: Codex(읽기·쓰기 모두)와 Claude 개발자(Bash)는 디스크의 다른 파일을 *읽을* 수 있다. 예: `C:ai-officedatasecrets.json`. 밖으로 보낼 길(네트워크·푸시)은 막혀 있고 푸시 전 gitleaks가 비밀 값을 막지만, 읽기 자체를 막으려면 비밀 파일의 Windows 권한을 주인 계정만으로 좁혀야 한다(후속 작업 후보).
+- **남은 위험**: Codex(읽기·쓰기 모두)와 Claude 개발자(Bash)는 디스크의 다른 파일을 *읽을* 수 있다. 예: `C:\ai-office\data\secrets.json`. 밖으로 보낼 길(네트워크·푸시)은 막혀 있고 푸시 전 gitleaks가 비밀 값을 막는다. 읽기 자체는 아래 "비밀 파일 읽기"로 막는다.
+
+**비밀 파일 읽기 (2026-10-20)**
+
+`C:\ai-office`는 C:\ 기본 권한을 물려받아 `Users` 읽기, `Authenticated Users` 수정이 열려 있다. 그래서 `secrets.json`(봇 토큰, GitHub 토큰, 내부 API 토큰)과 `codex-home\auth.json`(Codex 로그인)을 다른 로컬 계정도 읽을 수 있다. 주인 프로필(`C:\Users\<주인>`)은 원래 주인 계정만 읽는다.
+
+- **Codex**: Windows 샌드박스(`[windows] sandbox = "elevated"`, codex-cli 0.163.0)는 명령을 별도 로컬 계정 `CodexSandboxOffline`(네트워크 없음) / `CodexSandboxOnline`으로 돌린다. 둘 다 그룹 `CodexSandboxUsers`에 든다. Codex 앱(`codex.exe`, 모델 호출·로그인)은 주인 계정이다.
+  - 결정: 비밀 파일만 **주인 계정·SYSTEM·Administrators만 남기고(물려받기 끊음) `CodexSandboxUsers`에 거부(DENY)**를 건다. Codex가 자기 비밀 폴더(`codex-home\.sandbox-secrets`)를 지키는 방식과 같다. 거부는 Codex가 위 폴더에 읽기를 더해도 이긴다. 오케스트레이터(pm2, 주인 계정)는 그대로 읽고 다시 시작할 필요가 없다.
+  - 주인이 실행한다: `scripts\protect-secrets.ps1`(되돌리기 `unprotect-secrets.ps1`, 물려받는 권한으로 reset). `-IncludeCodexAuth`면 `codex-home\auth.json`도 막는다.
+  - 폴더 전체(`data`)는 막지 않는다: `codex-home`(샌드박스 실행 파일 `.sandbox-bin` 등)이 그 안에 있어 샌드박스 계정이 읽어야 한다.
+  - 파일을 지우고 새로 만들거나(편집기의 임시 파일+이름 바꾸기 저장 포함) Codex가 `auth.json`을 그렇게 바꾸면 막기가 풀린다. `set-secrets.ps1`과 오케스트레이터는 같은 파일에 덮어써서 권한이 남는다. 의심되면 확인 스크립트를 다시 돌리고, 풀렸으면 막기 스크립트를 다시 실행한다.
+- **Claude Code**: 주인 계정으로 돌아 Windows 권한으로는 막을 수 없다(Windows에는 Claude Code 샌드박스도 없다). 대신 모든 Claude 실행의 거부 규칙에 데이터 폴더를 넣는다(`claudeDataDenyRules`, `--settings`와 worktree `.claude/settings.json` 둘 다).
+  - `Read/Edit/Write(//c/ai-office/data/**)`: 파일 도구(Read·Grep·Glob·Edit·Write)는 확실히 막힌다.
+  - `Bash(*\ai-office\data*)`, `Bash(*/ai-office/data*)`, `Bash(*secrets.json*)`: 명령에 경로·이름이 그대로 보일 때만 막는다. **문자열 맞추기라 우회할 수 있다**(와일드카드 `dat?`, 변수, 다른 폴더로 옮긴 뒤 상대 경로 등. 시험하지는 않음). 그리고 Claude 개발자의 Bash는 네트워크가 열려 있다. 그래서 Claude 쪽은 "실수로 읽기"를 막는 수준이고, 프롬프트 주입에 대한 진짜 방어는 웹을 읽는 직원에게 실행 권한을 주지 않는 것(아래 "외부 입력")이다. 더 막으려면 Claude 개발자를 다른 Windows 계정으로 돌려야 한다(로그인·설치를 따로 해야 해서 지금은 하지 않음).
+- **확인 방법** (`sim/secrets-read-check.ts [--claude] [--data <폴더>]`): 진짜 `secrets.json` 대신 같은 폴더의 가짜 `secrets.canary.json`(매번 무작위 표식)으로 시험한다. 두 파일의 권한이 같은지 먼저 본다. Codex가 표식을 말하면 읽은 것이다.
+  - **실제 확인 (2026-10-20)** — 막기 전 운영 데이터 폴더: Codex 리뷰어(읽기 전용)와 개발자 A(쓰기 모드) 모두 계정 `codexsandboxoffline`으로 canary를 **읽음**. Claude 개발팀장(주인 계정): Read 도구 "denied by your permission settings", `cat /c/ai-office/data/...` 거부.
+  - 막기 스크립트를 가짜 폴더(`wt\_experiment\acl-test\data`)에 돌린 뒤: Codex 리뷰어·개발자 A 모두 "액세스가 거부되었습니다". 되돌리기 뒤 물려받는 권한으로 돌아감. **운영 `secrets.json`에는 아직 적용하지 않았다**(주인이 실행).
+- 7-4부터 GPT 직원(전략가·카피라이터)도 Codex 읽기 전용이라 같은 범위에 들고, 같은 막기로 함께 막힌다.
+- 참고: Codex는 주인의 `%TEMP%`에 `CodexSandboxUsers` 허용을 걸어 둔다. 비밀을 임시 폴더에 두지 않는다.
 
 **권한 분리 요약**
 

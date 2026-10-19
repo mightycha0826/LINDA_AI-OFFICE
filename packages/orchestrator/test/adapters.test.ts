@@ -11,7 +11,7 @@ import { CODEX_SANDBOX, CodexBrain } from '../src/brains/codex.ts';
 import { GpuQueue } from '../src/brains/gpu-queue.ts';
 import { OllamaBrain } from '../src/brains/ollama.ts';
 import { safeEnv } from '../src/brains/process.ts';
-import { CLAUDE_DENY } from '../src/workspace/claude-settings.ts';
+import { claudeDeny } from '../src/workspace/claude-settings.ts';
 import { employees } from '../src/db/schema.ts';
 import { OfficeError } from '../src/errors.ts';
 import { startFakeOllama } from './fakes/fake-ollama.ts';
@@ -81,7 +81,10 @@ describe('Claude Code 어댑터', () => {
     expect(run!.argv).toEqual(expect.arrayContaining(['-p', '--output-format', 'stream-json', '--verbose', '--permission-prompts', 'none', '--no-session-persistence']));
     expect(run!.argv[run!.argv.indexOf('--tools') + 1]).toBe('Bash,Read,Edit,Write,Glob,Grep');
     expect(run!.settings.permissions.deny).toEqual(expect.arrayContaining(['Bash(git push)', 'Bash(git push *)', 'Bash(gh *)', 'Edit(.claude/**)']));
-    expect(run!.settings.permissions.deny).toEqual([...CLAUDE_DENY]);
+    expect(run!.settings.permissions.deny).toEqual(claudeDeny(s.config.paths.data));
+    // 데이터 폴더(secrets.json 등) 읽기도 거부한다 (7장 비밀 파일 읽기)
+    expect(run!.settings.permissions.deny).toEqual(expect.arrayContaining(['Bash(*secrets.json*)']));
+    expect(run!.settings.permissions.deny.some((r) => r.startsWith('Read(//') && r.endsWith('/**)'))).toBe(true);
     // 설정 파일과 역할 카드는 worktree 밖(data)에 있다
     const settingsPath = run!.argv[run!.argv.indexOf('--settings') + 1]!;
     expect(settingsPath.startsWith(s.config.paths.data)).toBe(true);

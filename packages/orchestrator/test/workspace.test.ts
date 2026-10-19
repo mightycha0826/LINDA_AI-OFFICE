@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { claudeDeny } from '../src/workspace/claude-settings.ts';
 import { runProcess } from '../src/brains/process.ts';
 import { OfficeError } from '../src/errors.ts';
 import { assertInside, isInside, worktreePathFor } from '../src/workspace/paths.ts';
@@ -64,7 +65,10 @@ describe('티켓 worktree', () => {
     expect(git(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('feature/T1-work');
     expect(ticket(s, tk!.id)).toMatchObject({ worktreePath: path, branch });
     // 권한 설정은 있고, git status에는 안 보인다
-    expect(JSON.parse(readFileSync(join(path, '.claude', 'settings.json'), 'utf8')).permissions.deny).toContain('Bash(git push *)');
+    const deny = JSON.parse(readFileSync(join(path, '.claude', 'settings.json'), 'utf8')).permissions.deny as string[];
+    expect(deny).toContain('Bash(git push *)');
+    // 데이터 폴더(비밀 파일) 읽기 거부도 worktree 설정에 들어간다 (7장 비밀 파일 읽기)
+    expect(deny).toEqual(claudeDeny(s.config.paths.data));
     expect(git(path, 'status', '--porcelain')).toBe('');
     // 등록 저장소의 push 주소가 막혀 있어 worktree에서 git push가 나가지 않는다
     expect(git(repo, 'config', 'remote.origin.pushurl')).toBe(PUSH_BLOCKED_URL);
