@@ -26,7 +26,9 @@ if (-not $env:CODEX_HOME) { $env:CODEX_HOME = 'C:\ai-office\data\codex-home' }
 New-Item -ItemType Directory -Force -Path $env:CODEX_HOME | Out-Null
 $codexCfg = Join-Path $env:CODEX_HOME 'config.toml'
 if (-not (Test-Path $codexCfg)) {
-  Set-Content -Path $codexCfg -Encoding UTF8 -Value @('# AI 사무실 전용 Codex 설정 (플러그인·MCP 서버·모델 지정 없음)', '[windows]', 'sandbox = "elevated"')
+  Set-Content -Path $codexCfg -Encoding UTF8 -Value @('# AI 사무실 전용 Codex 설정 (플러그인·MCP 서버·모델 지정 없음)', '[windows]', 'sandbox = "elevated"',
+    '[features]', 'plugins = false', 'remote_plugin = false', 'apps = false', 'tool_suggest = false',
+    '[skills]', 'include_instructions = false', '[skills.bundled]', 'enabled = false')
 }
 Write-Host "CODEX_HOME: $env:CODEX_HOME, 모델: $(if ($Model) { $Model } else { '계정 기본' })"
 Write-Host "Codex: $("$(& codex --version 2>&1 | Select-Object -First 1)".Trim())"

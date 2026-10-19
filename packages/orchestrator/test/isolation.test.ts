@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ClaudeCodeBrain } from '../src/brains/claude-code.ts';
-import { CodexBrain, codexWorkdirNote, ensureCodexHome } from '../src/brains/codex.ts';
+import { CODEX_HOME_CONFIG, CODEX_ISOLATION_OVERRIDES, CodexBrain, codexWorkdirNote, ensureCodexHome } from '../src/brains/codex.ts';
 import { safeEnv } from '../src/brains/process.ts';
 import { makeConfig } from '../src/config.ts';
 import { CEO, tempRoot } from './helpers.ts';
@@ -49,6 +49,31 @@ describe('Codex: 회사 전용 CODEX_HOME', () => {
     ensureCodexHome(home);
     expect(readFileSync(join(home, 'config.toml'), 'utf8')).toBe('# 주인이 고친 설정\n');
     expect(existsSync(join(home, 'auth.json'))).toBe(false); // 로그인 파일은 만들지 않는다
+  });
+
+  it('기본 스킬·원격 플러그인을 끄고, 오케스트레이터가 만든 예전 설정은 새로 바꾼다', () => {
+    const home = join(tempRoot(), 'codex-home');
+    ensureCodexHome(home);
+    const cfg = readFileSync(join(home, 'config.toml'), 'utf8');
+    expect(cfg).toMatch(/^\[skills\.bundled\]\nenabled = false$/m);
+    expect(cfg).toMatch(/^\[skills\]\ninclude_instructions = false$/m);
+    for (const f of ['plugins', 'remote_plugin', 'apps', 'tool_suggest']) expect(cfg).toMatch(new RegExp(`^${f} = false$`, 'm'));
+
+    // 0단계 #6 때 만든 설정(스킬·플러그인 끄기 없음)
+    const old = `${CODEX_HOME_CONFIG.split('\n').slice(0, 3).join('\r\n')}\r\n[windows]\r\nsandbox = "elevated"\r\n`;
+    writeFileSync(join(home, 'config.toml'), old);
+    ensureCodexHome(home);
+    expect(readFileSync(join(home, 'config.toml'), 'utf8')).toBe(CODEX_HOME_CONFIG);
+    ensureCodexHome(home); // 두 번 불러도 같다
+    expect(readFileSync(join(home, 'config.toml'), 'utf8')).toBe(CODEX_HOME_CONFIG);
+  });
+
+  it('설정 파일과 상관없이 실행할 때도 -c로 스킬·플러그인을 끈다', () => {
+    const args = new CodexBrain({ bin: 'codex', binArgs: [], timeoutMs: 1000, promptVia: 'stdin', wtRoot: 'C:/wt', dataDir: 'C:/data' })
+      .buildArgs('C:/wt/T-1', { schema: 's.json', lastMessage: 'l.json' }, 'p');
+    const overrides = args.flatMap((a, i) => (args[i - 1] === '-c' ? [a] : []));
+    expect(overrides).toEqual([...CODEX_ISOLATION_OVERRIDES]);
+    expect(overrides).toEqual(expect.arrayContaining(['skills.bundled.enabled=false', 'features.plugins=false', 'features.remote_plugin=false']));
   });
 
   it('모델을 정하면 -m으로 넘기고, 읽기 전용 샌드박스는 그대로', () => {

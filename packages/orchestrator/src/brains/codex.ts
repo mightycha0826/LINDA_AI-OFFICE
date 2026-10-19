@@ -25,12 +25,42 @@ export interface CodexOptions {
   extraEnv?: Record<string, string>;
 }
 
-/** 회사 전용 Codex 설정. 플러그인·MCP 서버·모델 지정 없이 시작한다. 이미 있으면 건드리지 않는다 */
-export const CODEX_HOME_CONFIG = `# AI 사무실 전용 Codex 설정 (오케스트레이터가 만듦).
+/**
+ * 기본 스킬·플러그인 끄기 (0단계 #6, codex-cli 0.163.0).
+ * 로그인하면 Codex가 skills\.system과 원격 플러그인 캐시를 스스로 깔고 프롬프트에
+ * <skills_instructions>, <recommended_plugins>를 붙인다. `codex debug prompt-input`으로 이 키들이 둘 다 없앰을 확인했다.
+ * 설정 파일과 상관없이 지키려고 실행할 때 -c로도 넘긴다.
+ */
+export const CODEX_ISOLATION_OVERRIDES: readonly string[] = [
+  'skills.bundled.enabled=false',
+  'skills.include_instructions=false',
+  'features.plugins=false',
+  'features.remote_plugin=false',
+  'features.apps=false',
+  'features.tool_suggest=false',
+];
+
+const CODEX_HOME_HEADER = '# AI 사무실 전용 Codex 설정 (오케스트레이터가 만듦).';
+
+/** 회사 전용 Codex 설정. 플러그인·MCP 서버·기본 스킬·모델 지정 없이 시작한다 */
+export const CODEX_HOME_CONFIG = `${CODEX_HOME_HEADER}
 # 주인의 Codex 앱 설정(~/.codex)과 섞이지 않게 따로 둔다. 플러그인과 MCP 서버를 넣지 않는다.
 # 로그인: PowerShell에서 \$env:CODEX_HOME = '<이 폴더>'; codex login
 [windows]
 sandbox = "elevated"
+
+# Codex가 스스로 까는 기본 스킬과 원격(추천) 플러그인을 프롬프트에 넣지 않는다
+[features]
+plugins = false
+remote_plugin = false
+apps = false
+tool_suggest = false
+
+[skills]
+include_instructions = false
+
+[skills.bundled]
+enabled = false
 `;
 
 /** 작업 폴더 안내. 명령의 현재 폴더를 믿지 말고 이 절대 경로로 파일을 읽게 한다 */
@@ -38,10 +68,16 @@ export function codexWorkdirNote(cwd: string): string {
   return `## 작업 폴더\n\n${cwd}\n\n파일은 반드시 이 절대 경로를 붙여서 읽는다(예: ${cwd}\\src\\app.ts). 명령이 도는 현재 폴더는 이 폴더가 아닐 수 있다.`;
 }
 
+/** 없으면 만들고, 오케스트레이터가 만든 예전 설정이면 새 내용으로 바꾼다. 주인이 직접 쓴 설정(머리줄 없음)은 건드리지 않는다 */
 export function ensureCodexHome(home: string): void {
   mkdirSync(home, { recursive: true });
   const cfg = join(home, 'config.toml');
-  if (!existsSync(cfg)) writeFileSync(cfg, CODEX_HOME_CONFIG, 'utf8');
+  if (!existsSync(cfg)) {
+    writeFileSync(cfg, CODEX_HOME_CONFIG, 'utf8');
+    return;
+  }
+  const cur = readFileSync(cfg, 'utf8').replace(/\r\n/g, '\n');
+  if (cur.startsWith(CODEX_HOME_HEADER) && cur !== CODEX_HOME_CONFIG) writeFileSync(cfg, CODEX_HOME_CONFIG, 'utf8');
 }
 
 /** --json 이벤트 줄에서 토큰 사용량을 찾는다. 형식이 문서에 없어 알려진 자리를 넓게 본다. */
@@ -86,6 +122,7 @@ export class CodexBrain implements Brain {
       '--json',
       '--ephemeral',
       '--skip-git-repo-check',
+      ...CODEX_ISOLATION_OVERRIDES.flatMap((kv) => ['-c', kv]),
       ...(this.o.model ? ['-m', this.o.model] : []),
       '-C', workdir,
       '--output-schema', files.schema,

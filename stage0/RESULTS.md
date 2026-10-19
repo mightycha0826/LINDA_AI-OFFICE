@@ -107,6 +107,12 @@ modelUsage: claude-opus-5-5
 - 판정: **#6 통과** (Windows에서 그대로, WSL2 필요 없음)
 - 2026-10-19 10:02 **회사 전용 CODEX_HOME 로그인으로 다시 확인: 통과** (모델 지정 없음 = 계정 기본, 37초, `stage0\out\codex-events-20261019-100244.jsonl`). 읽기 전용 지킴, JSON 보고, 사용량 이벤트 있음.
   - 주의: 입력 토큰 75,764(캐시 59,392). Codex가 회사 폴더에도 기본 스킬(`skills\.system`: imagegen, openai-docs, review-agent, skill-creator 등)과 원격 플러그인 캐시(`plugins\cache\openai-curated-remote`)를 스스로 깔았다. 리뷰어 프롬프트에 섞이는지, 설정으로 끌 수 있는지 따로 확인할 것.
+  - 확인함(10:07): `codex debug prompt-input`(토큰 안 씀)으로 보니 섞인다. 개발자 메시지에 `<skills_instructions>`(스킬 목록, 약 2,000자)와 `<recommended_plugins>`(Gmail·Slack·GitHub 등 16개)가 붙었다. 끄는 설정(`codex features list`와 0.163.0 실행 파일에서 찾음):
+    - `[skills] include_instructions = false`, `[skills.bundled] enabled = false` → 스킬 목록 없어짐 (둘 다 각각으로도 없어짐)
+    - `[features] plugins = false`, `remote_plugin = false`, `apps = false`, `tool_suggest = false` → 추천 플러그인 없어짐 (넷 다 각각으로도 없어짐)
+    - 오케스트레이터의 `CODEX_HOME_CONFIG`에 넣고, 예전에 만든 설정은 `ensureCodexHome`이 새로 바꾼다. 실행할 때 `-c`로도 넘겨 설정 파일이 바뀌어도 꺼져 있다.
+    - 다시 돌린 결과 **입력 토큰 75,764 → 42,290** (캐시 59,392 → 27,264, 출력 363, 16초, `stage0\out\codex-events-20261019-100717.jsonl`). 두 번 다 명령 4번·메시지 2개로 같은 모양이라 비교할 만하다. 읽기 전용·JSON 보고 그대로 통과.
+    - `skills\.system`, `plugins\cache` 폴더 자체는 그대로 남아 있지만 프롬프트에는 안 들어간다.
 - `codex exec --help`에 웹 검색 옵션: 없음 (search/web이 들어간 줄 0개). 다만 모델 정보에 `supports_search_tool: true`가 있어 설정으로 켤 수는 있다. 회사 전용 CODEX_HOME 설정에는 넣지 않았다.
 - 메모 (실패와 고친 것 순서대로):
   1. 16:35 저장된 로그인 토큰을 새로 고치지 못함(401) → 주인이 다시 로그인.
