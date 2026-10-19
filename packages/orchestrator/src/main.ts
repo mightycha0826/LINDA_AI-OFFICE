@@ -28,6 +28,7 @@ import { ProjectTestRunner } from './workspace/test-runner.ts';
 import { GitWorkspace } from './workspace/worktrees.ts';
 import { GitCat } from './gitcat/git-cat.ts';
 import { NewProjectService } from './workspace/new-project.ts';
+import { DiffSummarySchema, ExplainOutputSchema, InterpretOutputSchema } from '@ai-office/shared';
 
 const log = (s: string) => console.log(`${new Date().toISOString()} ${s}`);
 
@@ -46,6 +47,8 @@ const gitcat = new GitCat({
   tests: new ProjectTestRunner(ctx),
   removeWorktree: (t) => workspace.removeWorktree(t),
   drafter: (info, diffStat) => engine.draftCommit(info, diffStat),
+  // 변경 요약가 (16장 7-5): 푸시 결재 메시지에 붙일 요약
+  summarizeDiff: async (ticket, diff) => (await engine.callAs('diff-summarizer', 'summarize', DiffSummarySchema, { ticket, diff }, { workdir: `summarize-${ticket.id}` }))?.lines ?? null,
   // 토큰은 푸시하는 순간에만 파일에서 꺼낸다
   githubToken: () => loadSecrets(dataDir).githubToken,
   log,
@@ -59,8 +62,11 @@ let reports: ReportService | null = null;
 const newProjects = new NewProjectService({ c: ctx, gitcat, channels: () => bot?.projectChannels ?? null, discord: () => bot?.port ?? null, log });
 if (secrets.discordToken && config.discord.guildId) {
   bot = await startDiscordBot({ c: ctx, handler: new InteractionHandler(ctx, engine, log, gitcat, newProjects), token: secrets.discordToken, ...(secrets.mirrorWebhookUrl ? { webhookUrl: secrets.mirrorWebhookUrl } : {}), log });
-  notifier = new Notifier(ctx, bot.port, log);
-  mirror = bot.mirror ? new Mirror(ctx, bot.mirror, { log }) : null;
+  // 막힘 해설가·거울 통역사 (16장 7-5). 실패하면 해설·통역 없이 원래대로
+  notifier = new Notifier(ctx, bot.port, log, async (notice) => (await engine.callAs('explainer', 'explain', ExplainOutputSchema, { notice }, { workdir: 'explain' }))?.lines ?? null);
+  mirror = bot.mirror
+    ? new Mirror(ctx, bot.mirror, { log, interpret: async (from, content) => (await engine.callAs('interpreter', 'interpret', InterpretOutputSchema, { from, content }, { workdir: 'interpret' }))?.text ?? null })
+    : null;
   reports = new ReportService(ctx, engine, bot.port);
 } else {
   log('Discord 설정(봇 토큰, 서버 ID)이 없어 Discord 없이 시작해요');

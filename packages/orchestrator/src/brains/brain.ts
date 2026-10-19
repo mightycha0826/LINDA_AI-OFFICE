@@ -5,7 +5,7 @@ import type { EmployeeRow } from '../core/budget.ts';
 import { OfficeError } from '../errors.ts';
 
 /** search: 로컬 직원의 검색어 정하기, design: 디자인 시스템 담당의 조합 고르기, commit: Git 고양이 커밋 메시지 초안 */
-export type BrainTask = 'plan' | 'gate' | 'work' | 'review' | 'meeting' | 'search' | 'design' | 'commit' | 'retro' | 'proofread';
+export type BrainTask = 'plan' | 'gate' | 'work' | 'review' | 'meeting' | 'search' | 'design' | 'commit' | 'retro' | 'proofread' | 'explain' | 'summarize' | 'interpret' | 'report';
 
 export interface BrainRequest {
   employee: EmployeeRow;
@@ -31,6 +31,8 @@ export interface BrainRequest {
   lowPrecision?: boolean;
   /** /정지가 진행 중인 호출을 끊는다 */
   signal: AbortSignal;
+  /** 로컬 GPU 줄 순위 (16장 7-5). 작을수록 먼저. 비우면 보통 */
+  priority?: number;
 }
 
 export interface BrainUsage {

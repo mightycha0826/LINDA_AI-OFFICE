@@ -208,7 +208,7 @@ describe('정기 보고 (⑥)', () => {
     expect(discord.in('reports')[0]!.content).toContain('관문 미통과');
   });
 
-  it('비서실장 보고가 유예 시간 안에 없으면 시스템 봇이 데이터만으로 대신 보고한다', async () => {
+  it('비서실장 보고가 유예 시간 안에 없으면 보고 초안가가 데이터로 쓰고 GPT 관문을 거쳐 올린다 (7-5)', async () => {
     const s = setup();
     s.clock.advanceHours(9); // 18:00
     const discord = new FakeDiscord();
@@ -216,7 +216,20 @@ describe('정기 보고 (⑥)', () => {
     expect(await reports.fallbackIfMissing()).toBe(false); // 아직 유예 시간 안
     s.clock.advance(11 * 60_000); // 18:11
     expect(await reports.fallbackIfMissing()).toBe(true);
-    expect(discord.in('reports')[0]!.content).toContain('비서실장 보고가 없어 회사 데이터만 올려요');
+    const post = discord.in('reports')[0]!.content;
+    expect(post).toContain('보고 초안가가 대신 씀');
+    expect(post).toContain('회사 데이터');
+    expect(s.mock.callsFor('report')[0]!.employee.id).toBe('briefer');
+    expect(s.mock.callsFor('gate')).toHaveLength(1);
     expect(await reports.fallbackIfMissing()).toBe(false);
+  });
+
+  it('보고 초안이 관문을 통과하지 못하면 지금처럼 데이터만 올린다', async () => {
+    const s = setup({ handlers: { gate: () => ({ passed: false, issues: ['데이터와 다른 숫자'], objection: null }) } });
+    s.clock.advanceHours(9);
+    s.clock.advance(11 * 60_000);
+    const discord = new FakeDiscord();
+    expect(await new ReportService(s.ctx, s.engine, discord).fallbackIfMissing()).toBe(true);
+    expect(discord.in('reports')[0]!.content).toContain('비서실장 보고가 없어 회사 데이터만 올려요');
   });
 });

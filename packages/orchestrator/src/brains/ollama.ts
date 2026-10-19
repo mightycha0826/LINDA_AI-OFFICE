@@ -1,6 +1,7 @@
 // Ollama 어댑터 (로컬 Qwen3-14B, Gemma 4 12B). 요청에 JSON 스키마를 함께 넘겨 구조화 출력을 강제한다 (6장).
 // GPU는 한 번에 한 요청만 처리하므로 모든 요청은 GpuQueue를 거친다 (8장).
 import { LOCAL_MODEL, type OllamaModel } from '@ai-office/shared';
+import { QUEUE_PRIORITY } from './gpu-queue.ts';
 import { BrainError, type Brain, type BrainRequest, type BrainResult } from './brain.ts';
 import type { GpuQueue } from './gpu-queue.ts';
 import { extractJson, toJsonSchema } from './json-schema.ts';
@@ -75,6 +76,7 @@ export class OllamaBrain implements Brain {
         return json;
       },
       req.signal,
+      req.priority ?? QUEUE_PRIORITY.normal,
     );
     return {
       output: extractJson(res.message?.content ?? ''),

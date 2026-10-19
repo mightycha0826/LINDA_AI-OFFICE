@@ -106,6 +106,25 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
     parts.push(ticketSection(input));
     parts.push('이 티켓에 필요한 웹 검색어를 1~3개 정한다. 검색은 회사가 대신 하고, 결과를 다음 작업에 자료로 넘긴다.');
   }
+  // --- 로컬 보조 직원 (16장 7-5) ---
+  if (task === 'explain') {
+    parts.push(`## #막힘 알림 (자료)\n\n${dataBlock('막힘 알림', get(input, 'notice'))}`);
+    parts.push('주인이 이 알림을 바로 이해하도록 2~3줄로 해설한다. 1줄: 무엇이 멈췄나. 2줄: 왜(알림의 이유를 쉬운 말로). 3줄: 다음에 할 일(알림에 있는 버튼 이름 그대로). 알림에 없는 사실은 쓰지 않는다.');
+  }
+  if (task === 'summarize') {
+    parts.push(ticketSection(input));
+    parts.push(`## 바뀐 코드 (자료)\n\n${dataBlock('git diff', get(input, 'diff') ?? '')}`);
+    parts.push('주인이 푸시를 결재하기 전에 볼 변경 요약을 한국어 5줄 이내로 쓴다. 사용자에게 보이는 차이를 먼저, 그다음 추가·변경·삭제된 파일의 역할. 코드를 그대로 옮기지 않는다.');
+  }
+  if (task === 'interpret') {
+    parts.push(`## 보낸 직원: ${String(get(input, 'from') ?? '')}`);
+    parts.push(`## 원문 (자료)\n\n${dataBlock('직원 메시지', get(input, 'content'))}`);
+    parts.push('이 메시지를 #사무실-대화에 올릴 자연스러운 한국어 2~4문장으로 바꾼다. 통과·반려·합의 같은 결과와 이유는 빠뜨리지 않고 그대로 옮긴다. 600자 이내.');
+  }
+  if (task === 'report') {
+    parts.push(`## 회사 데이터 (회사 집계)\n\n${String(get(input, 'data') ?? '')}`);
+    parts.push('비서실장 대신 정기 보고문을 쓴다. 진행 중·완료·막힘·결재 대기를 짧게 정리하고, 주인이 지금 할 일을 맨 앞에 쓴다. 숫자와 티켓 번호는 위 데이터에 있는 것만 쓴다. 1500자 이내.');
+  }
   if (task === 'commit') {
     parts.push(ticketSection(input));
     parts.push(`## 바뀐 파일 (자료)\n\n${dataBlock('git diff --stat', get(input, 'diffStat') ?? '')}`);

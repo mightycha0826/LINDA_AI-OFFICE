@@ -1,9 +1,14 @@
 // GPU 대기열 (8장 로컬). RTX 3060 12GB에는 14B 모델이 하나만 올라가므로 요청을 한 줄로 세운다.
 // 지금 올라가 있는 모델의 요청을 먼저 처리해 모델 교체를 줄이고,
 // maxWaitMs보다 오래 기다린 요청은 모델이 달라도 먼저 처리해 한쪽이 굶지 않게 한다.
+// 7-5부터 순위가 있다: 급함(결재 직전 해설·요약) > 보통(티켓 작업) > 뒤(거울 통역·회고). 오래 기다린 요청은 순위보다 먼저.
+
+/** 작을수록 먼저 (16장 7-5) */
+export const QUEUE_PRIORITY = { urgent: 0, normal: 1, background: 2 } as const;
 
 interface Job {
   model: string;
+  priority: number;
   enqueuedAt: number;
   run: () => Promise<unknown>;
   resolve: (v: unknown) => void;
@@ -43,13 +48,13 @@ export class GpuQueue {
     return this.jobs.length;
   }
 
-  enqueue<T>(model: string, run: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  enqueue<T>(model: string, run: () => Promise<T>, signal?: AbortSignal, priority: number = QUEUE_PRIORITY.normal): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       if (signal?.aborted) {
         reject(new DOMException('정지됨', 'AbortError'));
         return;
       }
-      const job: Job = { model, enqueuedAt: this.now(), run, resolve: resolve as (v: unknown) => void, reject, signal };
+      const job: Job = { model, priority, enqueuedAt: this.now(), run, resolve: resolve as (v: unknown) => void, reject, signal };
       if (signal) {
         job.onAbort = () => {
           const i = this.jobs.indexOf(job);
@@ -68,8 +73,11 @@ export class GpuQueue {
   private pick(): Job {
     const now = this.now();
     const starving = this.jobs.find((j) => now - j.enqueuedAt >= this.maxWaitMs);
-    const sameModel = this.jobs.find((j) => j.model === this.loaded);
-    const job = starving ?? sameModel ?? this.jobs[0]!;
+    // 가장 급한 순위의 요청들 안에서, 올라가 있는 모델을 먼저(교체 줄이기), 그다음 먼저 온 순서
+    const top = Math.min(...this.jobs.map((j) => j.priority));
+    const urgent = this.jobs.filter((j) => j.priority === top);
+    const sameModel = urgent.find((j) => j.model === this.loaded);
+    const job = starving ?? sameModel ?? urgent[0]!;
     this.jobs.splice(this.jobs.indexOf(job), 1);
     return job;
   }

@@ -46,6 +46,8 @@ export const EMPLOYEE_ROLES = [
   'qa-local',
   'git-cat',
   'temp',
+  // 로컬 보조 직원 (16장 7-5): 막힘 해설가, 변경 요약가, 거울 통역사, 커밋 서기, 회고 서기, 보고 초안가, 초안 작가
+  'assistant',
 ] as const;
 export type EmployeeRole = (typeof EMPLOYEE_ROLES)[number];
 

@@ -19,9 +19,15 @@ const MIGRATIONS = fileURLToPath(new URL('../../drizzle', import.meta.url));
 export function openDb(path: string): Db {
   const sqlite = new Database(path);
   if (path !== ':memory:') sqlite.pragma('journal_mode = WAL');
-  sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('busy_timeout = 5000');
   const db = drizzle(sqlite, { schema });
+  // 표를 다시 만드는 마이그레이션(CHECK 바꾸기, 예: 0008)은 외래 키를 잠시 꺼야 한다.
+  // 마이그레이션은 트랜잭션 안에서 돌아 그 안의 PRAGMA foreign_keys는 효과가 없으므로 밖에서 끄고 켠다.
+  // 켠 뒤 외래 키 검사로 깨진 참조가 하나라도 있으면 시작하지 않는다.
+  sqlite.pragma('foreign_keys = OFF');
   migrate(db, { migrationsFolder: MIGRATIONS });
+  sqlite.pragma('foreign_keys = ON');
+  const broken = sqlite.pragma('foreign_key_check') as unknown[];
+  if (broken.length) throw new Error(`마이그레이션 뒤 외래 키 참조가 깨졌어요: ${JSON.stringify(broken.slice(0, 5))}`);
   return db;
 }

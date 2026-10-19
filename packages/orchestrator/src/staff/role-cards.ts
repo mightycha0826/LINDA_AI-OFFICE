@@ -10,6 +10,7 @@ import { activeRuleRows } from '../retro/rules.ts';
 import { toJsonSchema } from '../brains/json-schema.ts';
 import type { BrainTask } from '../brains/brain.ts';
 import { TEMP_KIND_SPECS } from './temp-staff.ts';
+import { ASSIGNABLE_ASSISTANTS, assistantSpec } from './assistants.ts';
 
 // retro/rules.ts의 MAX_RULES_PER_ROLE과 같은 값 (모듈 순환 때문에 숫자로 둔다)
 export const MAX_RULES_PER_CARD = 10;
@@ -85,6 +86,11 @@ const DUTIES: Record<EmployeeRole, Duties> = {
     does: ['커밋 메시지 초안(종류·범위·요약)만 쓴다. 형식은 회사 코드가 맞춘다'],
     never: ['git 명령을 실행하지 않는다', '요약에 티켓 번호나 줄바꿈을 넣지 않는다'],
   },
+  // 보조 직원(7-5)은 직원마다 하는 일이 달라 staff/assistants.ts의 명세를 쓴다. 이 칸은 명세가 없을 때만
+  assistant: {
+    does: ['맡은 보조 일을 정해진 형식으로 한다'],
+    never: ['상태 변경·결재·판정을 하지 않는다', '파일 수정이나 명령 실행을 하지 않는다'],
+  },
   temp: {
     does: ['PM이 맡긴 티켓의 완료 조건을 채운다'],
     never: ['맡은 티켓 밖의 일을 하지 않는다', '파일 수정이나 명령 실행을 하지 않는다'],
@@ -116,18 +122,27 @@ const TASK_NAME: Record<BrainTask, string> = {
   commit: '커밋 메시지 초안',
   retro: '회고',
   proofread: '교정 1차 점검',
+  explain: '막힘 해설',
+  summarize: '변경 요약',
+  interpret: '대화 통역',
+  report: '정기 보고 초안',
 };
 
 export function roleCard(c: Ctx, e: EmployeeRow, task: BrainTask, schema: z.ZodType, ticketType?: TicketType): string {
   // 임시 직원은 종류별 할 일을 쓴다. 공통 금지 사항(파일 수정·명령 실행 없음)은 그대로 붙는다.
   const kind = e.isTemporary && e.tempKind ? TEMP_KIND_SPECS[e.tempKind] : null;
-  const d = kind ? { does: [...kind.does, ...DUTIES.temp.does], never: [...kind.never, ...DUTIES.temp.never] } : DUTIES[e.role];
+  const helper = e.role === 'assistant' ? assistantSpec(e.id) : undefined;
+  const d = kind
+    ? { does: [...kind.does, ...DUTIES.temp.does], never: [...kind.never, ...DUTIES.temp.never] }
+    : helper
+      ? { does: helper.does, never: helper.never }
+      : DUTIES[e.role];
   const retro = activeRulesFor(c, e.role, ticketType);
   const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`).join('\n') : '- (없음)');
   return [
     '# 역할 카드',
     '## 1. 정체성',
-    `- 이름: ${e.displayName}\n- 역할: ${kind ? `임시 직원(${kind.title}, 방문증)` : e.role}\n- 부서: ${e.department}\n- 지금 할 일: ${TASK_NAME[task]}`,
+    `- 이름: ${e.displayName}\n- 역할: ${kind ? `임시 직원(${kind.title}, 방문증)` : helper ? `보조 직원(${helper.displayName})` : e.role}\n- 부서: ${e.department}\n- 지금 할 일: ${TASK_NAME[task]}`,
     '## 2. 하는 일',
     list(d.does),
     '## 2. 하면 안 되는 일',
@@ -146,6 +161,10 @@ export function roleCard(c: Ctx, e: EmployeeRow, task: BrainTask, schema: z.ZodT
 
 /** PM 계획서용: 담당자마다 검토할 수 있는 직원. 같은 모델끼리는 서로 검토할 수 없다 (6장 PM) */
 function reviewerTable(c: Ctx): string[] {
-  const staff = c.db.select().from(employees).all().filter((x) => !x.isTemporary && x.brain.provider !== 'none');
+  const staff = c.db
+    .select()
+    .from(employees)
+    .all()
+    .filter((x) => !x.isTemporary && x.brain.provider !== 'none' && (x.role !== 'assistant' || ASSIGNABLE_ASSISTANTS.includes(x.id)));
   return staff.map((a) => `${a.id}(${brainModel(a.brain)}) 담당 → 검토: ${reviewerCandidates(staff, a).map((r) => r.id).join(', ') || '없음'}`);
 }

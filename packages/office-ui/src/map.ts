@@ -22,11 +22,12 @@ export interface Room {
 
 export const ROOMS: Room[] = [
   { id: 'dev', name: '개발팀', x: 0.5, y: 0.5, w: 7.75, h: 7, door: { x: 4.375, y: 7.5 } },
-  { id: 'plan', name: '기획 · 검토', x: 8.75, y: 0.5, w: 6.5, h: 7, door: { x: 12, y: 7.5 } },
+  // 방 이름은 2-0 개편 부서를 따른다 (16장 7-5)
+  { id: 'plan', name: '기획실 · 품질보증', x: 8.75, y: 0.5, w: 6.5, h: 7, door: { x: 12, y: 7.5 } },
   { id: 'ceo', name: 'CEO실', x: 15.75, y: 0.5, w: 7.75, h: 5.75, door: { x: 19.5, y: 6.25 } },
-  { id: 'mkt', name: '마케팅 · 경영', x: 0.5, y: 9, w: 7.75, h: 6.5, door: { x: 4.375, y: 9 } },
+  { id: 'mkt', name: '마케팅 · 리서치', x: 0.5, y: 9, w: 7.75, h: 6.5, door: { x: 4.375, y: 9 } },
   { id: 'meeting', name: '회의실', x: 8.75, y: 9, w: 6.5, h: 6.5, door: { x: 12, y: 9 } },
-  { id: 'git', name: 'Git 코너', x: 15.75, y: 9, w: 4, h: 6.5, door: { x: 17.75, y: 9 } },
+  { id: 'git', name: 'Git · 운영지원', x: 15.75, y: 9, w: 4, h: 6.5, door: { x: 17.75, y: 9 } },
   { id: 'server', name: '서버실', x: 20.25, y: 9, w: 3.25, h: 6.5, door: { x: 21.875, y: 9 } },
 ];
 
@@ -47,6 +48,14 @@ export const DESKS: Record<string, Point> = {
   marketing: { x: 2.6, y: 13.2 },
   strategy: { x: 6.0, y: 13.2 },
   'git-cat': { x: 17.0, y: 12.8 },
+  // 로컬 보조 직원 (16장 7-5): 각 부서 방
+  'diff-summarizer': { x: 7.3, y: 6.4 },
+  'retro-scribe': { x: 10.4, y: 2.0 },
+  explainer: { x: 20.0, y: 2.2 },
+  briefer: { x: 22.2, y: 4.6 },
+  drafter: { x: 1.5, y: 11.0 },
+  'commit-scribe': { x: 18.6, y: 14.4 },
+  interpreter: { x: 21.9, y: 14.4 },
 };
 
 /** 임시 직원 자리 (스프라이트 세트 temp-1 … temp-4 순서) */

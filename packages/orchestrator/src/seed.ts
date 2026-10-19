@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { LOCAL_MODEL, type Brain, type EmployeeRole } from '@ai-office/shared';
 import { inTx, type Ctx } from './context.ts';
 import { employees } from './db/schema.ts';
+import { ASSISTANTS } from './staff/assistants.ts';
 
 interface Seed {
   id: string;
@@ -32,6 +33,10 @@ export const STANDING_STAFF: readonly Seed[] = [
   // 교정 담당(예전 검토 담당): 문서 1차 점검, 문서 검토, 회고 초안 (7-1, 7-4)
   { id: 'qa-local', displayName: '교정 담당', role: 'qa-local', department: '품질보증팀', brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: true },
   { id: 'git-cat', displayName: 'Git 고양이', role: 'git-cat', department: 'Git 코너', brain: { provider: 'none' }, canSearchWeb: false },
+  // 로컬 보조 직원 7명 (16장 7-5). 명단·하는 일은 staff/assistants.ts
+  ...ASSISTANTS.map(
+    (a): Seed => ({ id: a.id, displayName: a.displayName, role: 'assistant', department: a.department, brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: false, spriteSet: a.spriteSet }),
+  ),
 ];
 
 /** 없는 직원만 넣는다. 이미 있는 직원은 건드리지 않는다. */

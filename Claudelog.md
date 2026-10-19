@@ -1,6 +1,6 @@
 # Claudelog: AI 사무실 인수인계
 
-다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-20 00:40 KST**.
+다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-20 (주인 부재 중 7-5)**.
 저장소는 **공개**다(https://github.com/mightycha0826/LINDA_AI-OFFICE). 토큰, 비밀번호, Discord ID는 여기 적지 않는다(`C:\ai-office\data`에 있다).
 
 ## 0. 먼저 읽을 것
@@ -52,7 +52,7 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5. 7-2부터 로컬 두뇌는 `gemma4:12b-64k` 하나(헤르메스·오케스트레이터 공용, num_ctx 65536). qwen3:14b·gemma4:12b 파일은 아직 디스크에 있음(지울지는 주인 결정). C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 479개 통과, typecheck·lint:ds 깨끗하다.
+- **테스트**: `npm test` 493개 통과, typecheck·lint:ds 깨끗하다.
 - **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 그 뒤 커밋(64K 원인, 0단계 결과, 메시지 ID 기록)은 로컬에만 있다.
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
@@ -67,6 +67,7 @@
 | 비서실장 두뇌 Qwen3-14B → **Gemma 4 12B** (CEO 승인) | 헤르메스는 문맥 64K 미만을 거부한다. Qwen은 40,960이 한계이고 CPU로 35% 밀린다. Gemma는 64K에서 100% GPU, 66 tok/s | DESIGN 2·6·16·18장, `seed.ts` |
 | 헤르메스 모델을 `gemma4:12b-64k` 태그로, `SOUL.md` 한국어화 | 비서실장이 영어로 답하고 skills_list만 반복했다. Ollama `/v1`이 `ollama_num_ctx`를 무시해 4096으로 떠서 입력이 2,051토큰에서 잘렸다(`ollama ps`로 확인). `SOUL.md`도 기본 영어 문구였다 | DESIGN 6장, HERMES-SETUP |
 | **조직 개편 7단계** (CEO 지시) | GPT 한도를 회사가 전부 쓰기로(100%/100%), Claude는 그대로. Claude=판단(기획실장·개발팀장), GPT=양(개발자 A·B, 리뷰어·감사관, 전략가, 카피라이터), Gemma=보조 10명. 부서·팀장 구조 | DESIGN 2-0 조직도, 16장 7-1~7-5 |
+| 7-5: 로컬 보조 직원 7명 (주인 부재 중, AUTONOMOUS-LOG 75-A~H) | 막힘 해설가·변경 요약가·거울 통역사·커밋 서기·회고 서기·보고 초안가·초안 작가, 역할 `assistant`(직원 표 다시 만들기 0008, 마이그레이션 동안만 외래 키 끔), GPU 순위(급함·보통·뒤), 화면 부서 배치. 보조 직원은 검토 불가, 초안 작가만 writing·marketing 티켓 | DESIGN 16장 7-5, `staff/assistants.ts`, `test/org-7-5.test.ts` |
 | 비밀 파일 읽기 막기 (별도 세션, b3295f3) | Codex 샌드박스 계정(CodexSandboxOffline, 그룹 CodexSandboxUsers)이 secrets.json·codex-homeauth.json을 읽을 수 있음을 canary로 확인. 막기·되돌리기 스크립트 준비, Claude 데이터 폴더 거부 규칙. **주인이 `scriptsprotect-secrets.ps1 -IncludeCodexAuth` 실행 필요**(아직 안 함) | DESIGN 7장 비밀 파일 읽기 |
 | 7-4: 전략가·카피라이터를 GPT로, 교정 1차 점검 | GPT 직원도 웹 도구 없이 오케스트레이터가 SearXNG로 대신 검색(Codex --search는 읽기 명령+검색어로 비밀이 샐 길이 있어 안 씀). 문서 티켓은 검토 전에 교정 담당(Gemma)이 지적 목록(판정 아님), 실패해도 안 멈춤. 리서치 몫은 기획실장만. 10-20 00:37 pm2 재시작으로 운영 반영(비밀 파일 세션의 Claude 거부 규칙 b3295f3도 함께) | DESIGN 15·16장, `engine.ts` proofread, `test/org-7-4.test.ts` |
 | 7-3 완료: GPT 개발자 A·B(Codex) | Codex 쓰기는 개발자의 티켓 작업이 정확히 그 티켓 worktree일 때만(`codexSandboxFor`), 네트워크 끔, `--add-dir`·샌드박스 끄기 옵션 없음. GPT 코드는 개발팀장(Claude), 개발팀장 코드는 리뷰어(GPT), 로컬은 코드 판정 안 함. Codex 동시 2. 진짜 Codex로 안 쓰기 성공·밖 쓰기 거부·인터넷 차단 확인 | DESIGN 7장 7-3, `brains/codex.ts`, `test/org-7-3.test.ts`, RESULTS 7-3 |

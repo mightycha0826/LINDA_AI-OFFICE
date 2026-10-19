@@ -17,12 +17,15 @@ export class Mirror {
   private readonly port: MirrorPort;
   private readonly maxPerFlush: number;
   private readonly log: (s: string) => void;
+  private readonly interpret: ((from: string, content: string) => Promise<string | null>) | undefined;
 
-  constructor(c: Ctx, port: MirrorPort, opts: { maxPerFlush?: number; log?: (s: string) => void } = {}) {
+  /** interpret: 거울 통역사 (16장 7-5). JSON 메시지를 문장으로. 없거나 실패하면 원문(앞부분)을 그대로 */
+  constructor(c: Ctx, port: MirrorPort, opts: { maxPerFlush?: number; log?: (s: string) => void; interpret?: (from: string, content: string) => Promise<string | null> } = {}) {
     this.c = c;
     this.port = port;
     this.maxPerFlush = opts.maxPerFlush ?? 8;
     this.log = opts.log ?? (() => {});
+    this.interpret = opts.interpret;
   }
 
   private async thread(ticketId: string): Promise<string | null> {
@@ -41,6 +44,18 @@ export class Mirror {
     return e ? `${e.displayName}${e.isTemporary ? ' (방문)' : ''}` : id;
   }
 
+  /** JSON(앞에 한 줄 표시가 붙은 것 포함)이면 거울 통역사가 문장으로 바꾼다. 아니면 null(원문 그대로) */
+  private async readable(fromId: string, content: string): Promise<string | null> {
+    if (!this.interpret || !/(^|\n)\s*[{[]/.test(content)) return null;
+    try {
+      const text = await this.interpret(this.name(fromId), content.slice(0, 6000));
+      return text?.trim() ? text.trim() : null;
+    } catch (err) {
+      this.log(`거울 통역 실패(원문으로): ${(err as Error).message}`);
+      return null;
+    }
+  }
+
   /** 한 번 묶어 보낸다. 보낸 수를 돌려준다. */
   async flush(): Promise<number> {
     const c = this.c;
@@ -55,7 +70,8 @@ export class Mirror {
           const m = c.db.select().from(messages).where(eq(messages.id, String(p.messageId))).get();
           const threadId = m && (await this.thread(p.ticketId));
           if (m && threadId) {
-            await this.port.post(threadId, { username: this.name(m.fromId), content: clip(m.content, c.config.mirror.maxChars, c.config.screenUrl, p.ticketId) });
+            const content = (await this.readable(m.fromId, m.content)) ?? m.content;
+            await this.port.post(threadId, { username: this.name(m.fromId), content: clip(content, c.config.mirror.maxChars, c.config.screenUrl, p.ticketId) });
             sent++;
           }
         } else if (ev.type === 'meeting.minutes' && typeof p.ticketId === 'string') {

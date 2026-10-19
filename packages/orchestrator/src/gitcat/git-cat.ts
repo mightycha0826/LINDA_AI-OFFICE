@@ -26,8 +26,10 @@ export interface GitCatDeps {
   tests: TestRunner;
   /** 푸시가 끝난 worktree 정리 (GitWorkspace.removeWorktree) */
   removeWorktree?: (t: TicketRow) => Promise<void>;
-  /** Qwen 커밋 메시지 초안 (Engine.draftCommit). 없거나 실패하면 기본 형식 */
+  /** 커밋 메시지 초안 (Engine.draftCommit, 7-5부터 커밋 서기). 없거나 실패하면 기본 형식 */
   drafter?: (info: CommitTicketInfo, diffStat: string) => Promise<CommitDraft | null>;
+  /** 변경 요약가 (16장 7-5): 푸시 결재 메시지에 붙일 diff 요약 5줄 이내. 없거나 실패하면 요약 없이 */
+  summarizeDiff?: (ticket: { id: string; title: string; type: string; acceptanceCriteria: string[] }, diff: string) => Promise<string[] | null>;
   /** 푸시하는 순간에만 꺼낸다 */
   githubToken?: () => string | undefined;
   /** 테스트에서만: 등록 주소 대신 로컬 bare 저장소 */
@@ -238,11 +240,17 @@ export class GitCat {
           this.fail(t.id, 'checks', summary.lines.join('\n'));
           return { ok: false, message: `푸시하지 않아요\n${summary.lines.join('\n')}` };
         }
+        const changes = await this.diffSummary(t, base);
         requestApproval(this.c, {
           kind: 'push',
           targetId: t.id,
           reversible: 'partial',
-          summary: [`${t.id} ${t.title} 푸시 (${t.branch}) · 요청: ${origin}`, `커밋 ${ahead}개${dirty ? ' + 커밋하지 않은 변경' : ''} · 바뀐 파일 ${files.split('\n').filter(Boolean).length}개`, ...summary.lines].join('\n'),
+          summary: [
+            `${t.id} ${t.title} 푸시 (${t.branch}) · 요청: ${origin}`,
+            `커밋 ${ahead}개${dirty ? ' + 커밋하지 않은 변경' : ''} · 바뀐 파일 ${files.split('\n').filter(Boolean).length}개`,
+            ...(changes.length ? ['변경 요약 (변경 요약가):', ...changes.map((l) => `· ${l}`)] : []),
+            ...summary.lines,
+          ].join('\n'),
         });
         return { ok: true, message: '검사를 마치고 결재함에 확인 버튼을 올렸어요' };
       } catch (err) {
@@ -251,6 +259,20 @@ export class GitCat {
         return { ok: false, message: msg };
       }
     });
+  }
+
+  /** 변경 요약가에게 diff를 넘겨 요약을 받는다(16장 7-5). 참고용이라 어떤 실패도 결재를 막지 않는다 */
+  private async diffSummary(t: TicketRow, base: string): Promise<string[]> {
+    if (!this.d.summarizeDiff || !t.worktreePath) return [];
+    try {
+      const r = await this.git(t.worktreePath, ['diff', base]);
+      if (r.code !== 0 || !r.stdout.trim()) return [];
+      const lines = await this.d.summarizeDiff({ id: t.id, title: t.title, type: t.type, acceptanceCriteria: t.acceptanceCriteria }, r.stdout.slice(0, 20_000));
+      return (lines ?? []).slice(0, 5);
+    } catch (err) {
+      this.d.log?.(`${t.id} 변경 요약 실패(건너뜀): ${(err as Error).message}`);
+      return [];
+    }
   }
 
   private async findTicketCommit(p: ProjectRow, url: string, ticketId: string): Promise<string | null> {

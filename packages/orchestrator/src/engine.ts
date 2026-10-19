@@ -42,6 +42,7 @@ import { clearState, emit, getState, inTx, isStopped, setState, type Ctx } from 
 import { employees, messages, orders, tickets } from './db/schema.ts';
 import { FormatError, NotCeoError, NotFoundError, OfficeError } from './errors.ts';
 import { renderTask } from './staff/prompts.ts';
+import { ASSIGNABLE_ASSISTANTS, queuePriorityOf } from './staff/assistants.ts';
 import { roleCard } from './staff/role-cards.ts';
 import { activeRuleRows, recordRuleApplications } from './retro/rules.ts';
 import { listProjects } from './workspace/projects.ts';
@@ -167,12 +168,12 @@ export class Engine {
   }
 
   /**
-   * Git 고양이의 커밋 메시지 초안 (11장: Qwen은 초안만, 형식은 코드). 실패하면 null(기본 형식을 쓴다).
-   * Git 고양이는 AI가 아니므로 이 호출만 로컬 Qwen으로 한다. Claude·GPT 한도를 쓰지 않는다.
+   * Git 고양이의 커밋 메시지 초안 (11장: 로컬은 초안만, 형식은 코드). 실패하면 null(기본 형식을 쓴다).
+   * 7-5부터 커밋 서기(로컬 보조 직원)가 쓴다. 커밋 서기가 없는 예전 DB면 Git 고양이 이름으로 로컬 두뇌를 빌린다.
    */
   async draftCommit(info: CommitTicketInfo, diffStat: string): Promise<CommitDraft | null> {
-    const cat = this.employee('git-cat');
-    const drafter: EmployeeRow = { ...cat, brain: { provider: 'ollama', model: LOCAL_MODEL } };
+    const scribe = this.c.db.select().from(employees).where(eq(employees.id, 'commit-scribe')).get();
+    const drafter: EmployeeRow = scribe ?? { ...this.employee('git-cat'), brain: { provider: 'ollama', model: LOCAL_MODEL } };
     try {
       return await this.callStructured(drafter, 'commit', CommitDraftSchema, { ticket: { id: info.id, title: info.title, type: 'coding', acceptanceCriteria: info.acceptanceCriteria }, diffStat }, {});
     } catch {
@@ -294,7 +295,13 @@ export class Engine {
       const pm = this.employee('pm');
       if (this.spendMode(pm) !== 'ok') return false;
       const order = c.db.select().from(orders).where(eq(orders.id, orderId)).get()!;
-      const staff = c.db.select().from(employees).all().filter((e) => e.brain.provider !== 'none').map((e) => ({ id: e.id, role: e.role, brain: e.brain }));
+      // 기획실장에게는 티켓을 맡을 수 있는 직원만 보여 준다 (보조 직원은 초안 작가만, 16장 7-5)
+      const staff = c.db
+        .select()
+        .from(employees)
+        .all()
+        .filter((e) => e.brain.provider !== 'none' && (e.role !== 'assistant' || ASSIGNABLE_ASSISTANTS.includes(e.id)))
+        .map((e) => ({ id: e.id, role: e.role, brain: e.brain }));
       // 프로젝트 채널에서 온 지시면 그 프로젝트 하나만 보여 준다 (6장 PM)
       const projects = listProjects(c)
         .filter((p) => !order.projectId || p.id === order.projectId)
@@ -430,7 +437,8 @@ export class Engine {
     const input = { ticket: this.ticketInput(tk), feedback: this.feedbackFor(tk), ...(worktree ? { worktree } : {}), ...(searchResults ? { searchResults } : {}) };
     const out = await this.ticketCall(tk, assignee, 'work', schema, input, { lowPrecision, ...this.dir(this.workdirFor(tk, assignee, lowPrecision)) });
     if (!out || getTicket(c, tk.id).status !== 'in_progress') return true; // 그사이 멈췄으면 결과는 버린다
-    const note = lowPrecision ? '저정밀 모드로 작성됨\n' : '';
+    // 결과물 앞에 붙는 표시: 저정밀 모드, 초안 작가의 초안 (16장 7-5)
+    const note = (lowPrecision ? '저정밀 모드로 작성됨\n' : '') + (ASSIGNABLE_ASSISTANTS.includes(assignee.id) ? '초안 작가의 초안 (다듬기 전)\n' : '');
     recordMessage(c, { ticketId: tk.id, orderId: tk.orderId, fromId: assignee.id, toId: tk.reviewerId, kind: 'handoff', content: note + JSON.stringify(out) });
     applyTicketEvent(c, tk.id, { type: 'ticket.submitted' }, { kind: 'employee', id: assignee.id });
     return true;
@@ -744,6 +752,8 @@ export class Engine {
             attempt,
             lowPrecision,
             signal: this.controller.signal,
+            // 로컬 GPU 줄 순위: 결재 직전 해설·요약이 먼저, 거울·회고는 뒤 (16장 7-5)
+            priority: queuePriorityOf(e.id),
             ...refs,
             ...(opts.workdir ? { workdir: opts.workdir } : {}),
             ...(previousError ? { previousError } : {}),

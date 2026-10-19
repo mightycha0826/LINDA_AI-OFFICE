@@ -6,7 +6,7 @@
 import { eq, gt, like } from 'drizzle-orm';
 import { getState, inTx, setState, type Ctx } from '../context.ts';
 import { budgetStatus } from '../core/budget.ts';
-import { approvals, events, meetingMinutes, orders, plans, systemState, tickets } from '../db/schema.ts';
+import { approvals, events, meetingMinutes, messages, orders, plans, systemState, tickets } from '../db/schema.ts';
 import { approvalLink } from '../reports.ts';
 import { approvalMessageFor, blockedMessage, blockedPlanMessage, decidedMessage } from './messages.ts';
 import { isCeoPresent } from './presence.ts';
@@ -32,11 +32,28 @@ export class Notifier {
   private readonly c: Ctx;
   private readonly port: DiscordPort;
   private readonly log: (s: string) => void;
+  private readonly explain: ((notice: string) => Promise<string[] | null>) | undefined;
 
-  constructor(c: Ctx, port: DiscordPort, log: (s: string) => void = () => {}) {
+  /** explain: 막힘 해설가 (16장 7-5). 알림 원문을 받아 2~3줄 해설. 없거나 실패하면 해설 없이 */
+  constructor(c: Ctx, port: DiscordPort, log: (s: string) => void = () => {}, explain?: (notice: string) => Promise<string[] | null>) {
     this.c = c;
     this.port = port;
     this.log = log;
+    this.explain = explain;
+  }
+
+  /**
+   * 막힘 해설 (16장 7-5): 원래 알림 뒤에 따로 조용히 올린다. 원래 메시지를 고치지 않는 것은
+   * CEO가 그 메시지의 버튼을 눌러 내용이 바뀌는 것과 부딪히지 않게 하기 위해서다.
+   */
+  private async explainAfter(channel: ChannelKey, notice: string): Promise<void> {
+    if (!this.explain) return;
+    try {
+      const lines = await this.explain(notice);
+      if (lines?.length) await this.port.send({ channel, content: `**해설** (막힘 해설가)\n${lines.map((l) => `- ${l}`).join('\n')}`, silent: true });
+    } catch (err) {
+      this.log(`막힘 해설 실패(건너뜀): ${(err as Error).message}`);
+    }
   }
 
   /** 지금 멘션(휴대폰 알림)을 보내도 되는가: 점검 시간이거나 CEO 접속 중 */
@@ -123,10 +140,12 @@ export class Notifier {
       if (noticed.includes(b.mark)) continue;
       const order = c.db.select().from(orders).where(eq(orders.id, b.orderId)).get();
       if (!order || order.status !== 'planning') continue;
-      await this.sendImmediate('blocked', blockedPlanMessage(order, b.issues), { kind: 'blocked', text: `${order.id} 계획 작성 멈춤` });
+      const planMsg = blockedPlanMessage(order, b.issues);
+      await this.sendImmediate('blocked', planMsg, { kind: 'blocked', text: `${order.id} 계획 작성 멈춤` });
       noticed.push(b.mark);
       setState(c, PLAN_NOTICED, noticed); // 올릴 때마다 남긴다(중간에 실패해도 두 번 올리지 않게)
       posts++;
+      await this.explainAfter('blocked', planMsg.content);
     }
     setState(c, PLAN_NOTICED, noticed);
     return posts;
@@ -158,7 +177,9 @@ export class Notifier {
       if (!ticket || p.from === p.to) return 0;
       if (p.to === 'blocked' && p.from !== 'paused') {
         const minutes = c.db.select().from(meetingMinutes).where(eq(meetingMinutes.ticketId, ticket.id)).all().at(-1) ?? null;
-        await this.sendImmediate('blocked', blockedMessage(ticket, minutes), { kind: 'blocked', text: `${ticket.id} ${ticket.title}` });
+        const msg = blockedMessage(ticket, minutes);
+        await this.sendImmediate('blocked', msg, { kind: 'blocked', text: `${ticket.id} ${ticket.title}` });
+        await this.explainAfter('blocked', msg.content);
         return 1;
       }
       if (p.to === 'done') {
@@ -168,6 +189,9 @@ export class Notifier {
       }
       if (p.to === 'paused' && p.reason === 'system-error') {
         await this.sendImmediate('reports', { content: `시스템 이상 · ${ticket.id} ${ticket.title} 작업을 멈췄어요. 사무실 화면의 티켓 기록을 확인해 주세요` }, { kind: 'alert', text: `시스템 이상: ${ticket.id}` });
+        // 해설에는 마지막 시스템 기록(멈춘 이유)을 함께 준다
+        const last = c.db.select().from(messages).where(eq(messages.ticketId, ticket.id)).all().filter((m) => m.kind === 'system').at(-1);
+        await this.explainAfter('reports', `시스템 이상 · ${ticket.id} ${ticket.title} 작업을 멈춤${last ? `\n이유: ${last.content.slice(0, 500)}` : ''}`);
         return 1;
       }
       return 0;
@@ -192,7 +216,9 @@ export class Notifier {
         await this.port.send({ channel: 'reports', content: `Git 고양이 · ${t} → ${String(p.target)} 푸시 완료 (${String(p.sha)})${extra}`, silent: true });
         return 1;
       }
-      await this.sendImmediate('blocked', { content: `Git 고양이 · ${t} ${String(p.stage)} 실패\n${String(p.reason)}` }, { kind: 'blocked', text: `${t} 푸시 실패` });
+      const failure = `Git 고양이 · ${t} ${String(p.stage)} 실패\n${String(p.reason)}`;
+      await this.sendImmediate('blocked', { content: failure }, { kind: 'blocked', text: `${t} 푸시 실패` });
+      await this.explainAfter('blocked', failure);
       return 1;
     }
     if (type === 'usage.updated' && p.reason === 'provider-limit') {

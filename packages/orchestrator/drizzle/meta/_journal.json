@@ -57,6 +57,13 @@
       "when": 1792413054250,
       "tag": "0007_plan_reviewer_changes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792451051567,
+      "tag": "0008_assistant_role",
+      "breakpoints": true
     }
   ]
 }

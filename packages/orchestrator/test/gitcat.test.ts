@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { RunOptions } from '../src/brains/process.ts';
 import { runProcess } from '../src/brains/process.ts';
 import { formatCommitMessage } from '../src/gitcat/commit-message.ts';
-import { GitCat } from '../src/gitcat/git-cat.ts';
+import { GitCat, type GitCatDeps } from '../src/gitcat/git-cat.ts';
 import { approvals, events, projects } from '../src/db/schema.ts';
 import { GitWorkspace } from '../src/workspace/worktrees.ts';
 import { CEO, approvedTickets, setup, ticket } from './helpers.ts';
@@ -29,7 +29,7 @@ interface Rig {
 }
 
 /** GitHub 역할 bare 저장소 + repos\demo 복제 + 승인된 티켓 T-1의 worktree + wip 커밋 두 개 */
-async function rig(opts: { maxFileMB?: number; gitleaksBin?: string } = {}): Promise<Rig> {
+async function rig(opts: { maxFileMB?: number; gitleaksBin?: string; summarizeDiff?: GitCatDeps['summarizeDiff'] } = {}): Promise<Rig> {
   const s = setup({ config: { gitcat: { gitleaksBin: opts.gitleaksBin ?? process.execPath, gitleaksArgs: opts.gitleaksBin ? [] : [join(FAKES, 'fake-gitleaks.mjs')], maxFileMB: opts.maxFileMB ?? 50 } } });
   const bare = join(s.root, 'github', 'demo.git');
   const seed = join(s.root, 'seed');
@@ -65,6 +65,7 @@ async function rig(opts: { maxFileMB?: number; gitleaksBin?: string } = {}): Pro
     removeWorktree: (t) => new GitWorkspace(s.ctx).removeWorktree(t),
     drafter: async (info) => ({ type: 'feat', scope: 'demo', subject: `${info.title} 추가` }),
     githubToken: () => TOKEN,
+    ...(opts.summarizeDiff ? { summarizeDiff: opts.summarizeDiff } : {}),
     remoteUrlFor: () => bare,
     run: (o) => {
       runs.push(o);
@@ -94,6 +95,22 @@ describe('커밋 메시지 형식 (11장)', () => {
     );
     expect(formatCommitMessage(info, { type: 'yolo' as 'feat', scope: 'A B', subject: 'x' }).split('\n')[0]).toBe('chore(ticket): 로그인 기능 (T-12)');
     expect(formatCommitMessage(info, { type: 'fix', scope: 'auth', subject: '줄\n바꿈 (T-99)' }).split('\n')[0]).toBe('fix(auth): 줄 바꿈 (T-12)');
+  });
+});
+
+describe('변경 요약가 (16장 7-5)', () => {
+  it('푸시 결재 메시지에 diff 요약을 붙인다. diff에는 바뀐 파일이 들어간다', async () => {
+    const seen: string[] = [];
+    const r = await rig({ summarizeDiff: async (_t, diff) => (seen.push(diff), ['기능 파일 feature.txt를 추가했어요']) });
+    expect(await r.cat.preparePush('T-1', 'push', 'CEO /push')).toMatchObject({ ok: true });
+    expect(pushApproval(r)!.summary).toContain('변경 요약 (변경 요약가):\n· 기능 파일 feature.txt를 추가했어요');
+    expect(seen[0]).toContain('feature.txt');
+  });
+
+  it('요약이 실패해도 결재 버튼은 그대로 올라간다', async () => {
+    const r = await rig({ summarizeDiff: async () => Promise.reject(new Error('모델 문제')) });
+    expect(await r.cat.preparePush('T-1', 'push', 'CEO /push')).toMatchObject({ ok: true });
+    expect(pushApproval(r)!.summary).not.toContain('변경 요약');
   });
 });
 

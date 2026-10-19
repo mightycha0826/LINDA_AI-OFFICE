@@ -24,8 +24,8 @@ import type { Engine } from '../engine.ts';
 import { OfficeError } from '../errors.ts';
 import { cleanupCandidates, countRecurrences, isIneffective, proposeRetire, proposeRule, ruleViolations } from './rules.ts';
 
-/** 회고 초안을 쓰는 직원과 확인하는 직원: 서로 다른 모델 (14장, 7-1) */
-export const RETRO_WRITER = 'qa-local';
+/** 회고 초안을 쓰는 직원과 확인하는 직원: 서로 다른 모델 (14장). 7-1에는 교정 담당, 7-5부터 회고 서기(로컬 보조 직원) */
+export const RETRO_WRITER = 'retro-scribe';
 export const RETRO_CHECKER = 'reviewer';
 
 const CURSOR = 'retro.cursor';

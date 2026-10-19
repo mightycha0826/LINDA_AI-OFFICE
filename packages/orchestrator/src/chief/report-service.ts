@@ -1,12 +1,13 @@
 // 정기 보고 (10장). 08:00 · 18:00 · 22:00.
 // - 비서실장(헤르메스 cron)이 보고문을 submit_report로 낸다. GPT 관문을 거쳐 시스템 봇이 #보고에 올린다(3단계 결정 A).
 //   관문 반려는 최대 2회, 그다음에도 반려면 반대 의견을 붙여 올린다. GPT 한도가 떨어졌으면 "관문 미통과"를 달고 올린다.
-// - 점검 시각에서 reportGraceMin분이 지나도 보고가 없으면 시스템 봇이 데이터만으로 대신 보고한다.
+// - 점검 시각에서 reportGraceMin분이 지나도 보고가 없으면 보고 초안가(7-5)가 데이터로 대신 쓰고 GPT 관문을 거친다. 안 되면 데이터만.
 import { emit, getState, setState, type Ctx } from '../context.ts';
 import type { Engine } from '../engine.ts';
 import { buildReportData, formatReportData } from '../reports.ts';
 import { currentSlot, localTime } from '../discord/schedule.ts';
 import type { DiscordPort } from '../discord/types.ts';
+import { ReportDraftSchema } from '@ai-office/shared';
 
 const DONE = 'report.done';
 const ATTEMPTS = 'report.attempts';
@@ -90,7 +91,15 @@ export class ReportService {
     const start = Number(slot.slice(-5, -3)) * 60 + Number(slot.slice(-2));
     const into = localTime(c.clock.now(), c.config.schedule.timezone).minutes - start;
     if (into < c.config.schedule.reportGraceMin) return false;
-    await this.post(slot, `비서실장 보고가 없어 회사 데이터만 올려요.\n${formatReportData(buildReportData(c, this.since()))}`, '데이터 보고 (AI가 쓴 글이 아니라 관문을 거치지 않았어요)');
+    const data = formatReportData(buildReportData(c, this.since()));
+    // 보고 초안가(16장 7-5)가 데이터로 보고문을 쓰고 GPT 관문을 통과하면 그것을, 아니면 지금처럼 데이터만
+    const draft = await this.engine.callAs('briefer', 'report', ReportDraftSchema, { data }, { workdir: `report-${slot.replace(/\D/g, '')}` }).catch(() => null);
+    const gate = draft ? await this.engine.gateReport(draft.text) : null;
+    if (draft && gate?.passed) {
+      await this.post(slot, `${draft.text}\n\n**회사 데이터**\n${data}`, 'GPT 관문 통과 · 비서실장 보고가 없어 보고 초안가가 대신 씀');
+      return true;
+    }
+    await this.post(slot, `비서실장 보고가 없어 회사 데이터만 올려요.\n${data}`, '데이터 보고 (AI가 쓴 글이 아니라 관문을 거치지 않았어요)');
     return true;
   }
 }

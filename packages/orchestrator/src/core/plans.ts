@@ -11,6 +11,7 @@ import { expirePendingApprovals, requestApproval, type ApprovalDecision } from '
 import { saveMinutes } from './meeting.ts';
 import { applyTicketEvent } from './tickets.ts';
 import { checkTempRules, dismissAllTemps, hireTemp, isTempRef, tempBrain, tempRef } from '../staff/temp-staff.ts';
+import { ASSIGNABLE_ASSISTANTS, ASSISTANT_IDS, DRAFTER_TICKET_TYPES } from '../staff/assistants.ts';
 import type { Actor } from './transitions.ts';
 import { DS_LINT_CRITERION } from '../design/ds-lint.ts';
 
@@ -81,6 +82,10 @@ export function checkPlanRules(c: Ctx, out: PmPlanOutput, boundProjectId?: strin
     if (!r) problems.push(`${label}: 검토자 ${tk.reviewer}이(가) 없음`);
     if (!a || !r) return;
     if (a.brain.provider === 'none') problems.push(`${label}: ${a.id}은(는) AI 직원이 아니라 담당자가 될 수 없음`);
+    // 보조 직원은 초안 작가만, writing·marketing 티켓만 맡는다 (16장 7-5)
+    if (a.role === 'assistant' && !(ASSIGNABLE_ASSISTANTS.includes(a.id) && DRAFTER_TICKET_TYPES.includes(tk.type))) {
+      problems.push(`${label}: 보조 직원 ${a.id}은(는) 이 티켓을 맡지 않음 (초안 작가만 writing·marketing 티켓)`);
+    }
     if (r.brain.provider === 'none') problems.push(`${label}: ${r.id}은(는) AI 직원이 아니라 검토자가 될 수 없음`);
     if (a.id === r.id) problems.push(`${label}: 담당자와 검토자가 같음 → ${reviewerHint([...staff.values()], a)}`);
     else if (brainModel(a.brain) === brainModel(r.brain)) {
@@ -95,7 +100,7 @@ export function checkPlanRules(c: Ctx, out: PmPlanOutput, boundProjectId?: strin
 type StaffRow = typeof employees.$inferSelect;
 
 /** 티켓을 검토하지 않는 직원. 비서실장은 헤르메스 쪽 대화·보고 담당이다 (6장 PM) */
-export const NOT_REVIEWERS: readonly string[] = ['chief-of-staff'];
+export const NOT_REVIEWERS: readonly string[] = ['chief-of-staff', ...ASSISTANT_IDS];
 
 /**
  * 검토자를 코드가 바꿀 때의 순서 (6장 PM, 2026-10-19 CEO 승인).
