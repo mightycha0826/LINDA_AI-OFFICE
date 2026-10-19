@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 0단계 #2: Qwen ↔ Gemma 교체 속도. 두 모델을 번갈아 부르고 매번 모델 로드 시간을 잰다.
 //   node stage0/model-swap.mjs [--rounds 5] [--host http://127.0.0.1:11434] [--models qwen3:14b,gemma4:12b]
-// 통과 기준: 2번째 호출부터 load_duration 최댓값 30초 이내 (DESIGN.md 16장).
+// 통과 기준: 모델마다 첫 호출(디스크에서 처음 읽음)을 뺀 load_duration 최댓값 30초 이내 (DESIGN.md 16장).
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -75,7 +75,9 @@ async function main() {
     );
   }
 
-  const swaps = rows.slice(1).map((r) => r.loadSec ?? r.wallSec);
+  // 모델마다 첫 호출은 디스크에서 처음 읽는 것이라 판정에서 뺀다 (두 번째 모델의 첫 로드도 마찬가지)
+  const firstIdx = new Set(models.map((m) => rows.findIndex((r) => r.model === m)));
+  const swaps = rows.filter((_, i) => !firstIdx.has(i)).map((r) => r.loadSec ?? r.wallSec);
   const sorted = [...swaps].sort((a, b) => a - b);
   const max = sorted.at(-1);
   const median = sorted[Math.floor(sorted.length / 2)];
@@ -85,7 +87,7 @@ async function main() {
   const file = join(OUT_DIR, `model-swap-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
   writeFileSync(file, JSON.stringify({ host, version, models, rows }, null, 2), 'utf8');
 
-  console.log(`\n첫 호출(디스크에서 처음 읽음) 로드: ${fmt(rows[0].loadSec)}초 — 판정에서 뺌`);
+  console.log(`\n모델별 첫 호출(디스크에서 처음 읽음) 로드: ${[...firstIdx].map((i) => `${rows[i].model} ${fmt(rows[i].loadSec)}초`).join(', ')} — 판정에서 뺌`);
   console.log(`교체 로드 시간: 중간값 ${fmt(median)}초, 최댓값 ${fmt(max)}초`);
   if (bothLoaded) console.log('참고: 두 모델이 동시에 VRAM에 올라간 적이 있어요. 이 경우 교체가 일어나지 않아 측정값이 작게 나와요.');
   console.log(`결과 파일: ${file}`);
