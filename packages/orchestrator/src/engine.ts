@@ -27,7 +27,7 @@ import { employees, orders, tickets } from './db/schema.ts';
 import { BrainCalls, isQuiet } from './engine/brain-calls.ts';
 import { Planning, planBlockedKey } from './engine/planning.ts';
 import { TicketWork } from './engine/ticket-work.ts';
-import { FormatError, NotCeoError, NotFoundError, OfficeError } from './errors.ts';
+import { assertCeo, FormatError, NotFoundError, OfficeError } from './errors.ts';
 import { CommitDraftSchema, type CommitDraft, type CommitTicketInfo } from './gitcat/commit-message.ts';
 import { dismissAllTemps } from './staff/temp-staff.ts';
 import { createWeb, type Web } from './web/research.ts';
@@ -87,13 +87,13 @@ export class Engine {
 
   /** 형식 오류로 멈춘 계획 작성을 CEO가 다시 시도시킨다. */
   retryPlanning(orderId: string, discordUserId: string): void {
-    if (discordUserId !== this.c.config.ceoDiscordId) throw new NotCeoError();
+    assertCeo(this.c.config, discordUserId);
     clearState(this.c, planBlockedKey(orderId));
   }
 
   /** 계획 작성이 멈춘 지시를 CEO가 취소한다(#막힘 [취소]). 아직 계획 단계인 지시만. */
   cancelBlockedOrder(orderId: string, discordUserId: string): void {
-    if (discordUserId !== this.c.config.ceoDiscordId) throw new NotCeoError();
+    assertCeo(this.c.config, discordUserId);
     inTx(this.c, (t) => {
       const order = t.db.select().from(orders).where(eq(orders.id, orderId)).get();
       if (!order) throw new NotFoundError(`지시 ${orderId}`);

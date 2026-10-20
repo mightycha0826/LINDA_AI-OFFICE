@@ -20,6 +20,11 @@ export class NotCeoError extends OfficeError {
   }
 }
 
+/** 결재·정지·계획 재시도처럼 CEO만 할 수 있는 일의 입구에서 부른다. 설정에 등록된 주인 Discord ID만 통과 (9장) */
+export function assertCeo(config: { ceoDiscordId: string }, discordUserId: string): void {
+  if (discordUserId !== config.ceoDiscordId) throw new NotCeoError();
+}
+
 /** 이미 결정된 결재를 다시 누름 (두 번 클릭) */
 export class AlreadyDecidedError extends OfficeError {
   constructor() {

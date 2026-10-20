@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm';
 import type { ApprovalKind, Reversibility } from '@ai-office/shared';
 import { emit, inTx, newId, nowIso, type Ctx } from '../context.ts';
 import { approvals } from '../db/schema.ts';
-import { AlreadyDecidedError, NotCeoError, NotFoundError, OfficeError, StaleApprovalError } from '../errors.ts';
+import { AlreadyDecidedError, assertCeo, NotFoundError, OfficeError, StaleApprovalError } from '../errors.ts';
 import { applyCeoPlanDecision, getPlan, isLatestPlanVersion } from './plans.ts';
 import { applyTicketEvent } from './tickets.ts';
 import { applyRuleDecision } from '../retro/rules.ts';
@@ -61,7 +61,7 @@ export interface DecideInput {
 
 export function decideApproval(c: Ctx, input: DecideInput): ApprovalRow {
   // 계정 확인이 가장 먼저다. CEO가 아니면 아무것도 읽거나 쓰지 않는다.
-  if (input.discordUserId !== c.config.ceoDiscordId) throw new NotCeoError();
+  assertCeo(c.config, input.discordUserId);
 
   return inTx(c, (t) => {
     const a = t.db.select().from(approvals).where(eq(approvals.id, input.approvalId)).get();

@@ -2,7 +2,7 @@
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { emit, inTx, isStopped, setState, type Ctx } from '../context.ts';
 import { tickets } from '../db/schema.ts';
-import { NotCeoError } from '../errors.ts';
+import { assertCeo } from '../errors.ts';
 import { applyTicketEvent } from './tickets.ts';
 
 export { isStopped };
@@ -11,7 +11,7 @@ export { isStopped };
 export type AbortHook = () => void;
 
 export function stopAll(c: Ctx, discordUserId: string, abortInFlight?: AbortHook): string[] {
-  if (discordUserId !== c.config.ceoDiscordId) throw new NotCeoError();
+  assertCeo(c.config, discordUserId);
   abortInFlight?.();
   return inTx(c, (t) => {
     setState(t, 'stopped', true);
@@ -32,7 +32,7 @@ export function stopAll(c: Ctx, discordUserId: string, abortInFlight?: AbortHook
  * 한도 소진으로 멈춘 티켓은 그대로 둔다. 한도가 다시 차야 풀린다.
  */
 export function resumeAll(c: Ctx, discordUserId: string): string[] {
-  if (discordUserId !== c.config.ceoDiscordId) throw new NotCeoError();
+  assertCeo(c.config, discordUserId);
   return inTx(c, (t) => {
     const wasStopped = isStopped(t);
     setState(t, 'stopped', false);
