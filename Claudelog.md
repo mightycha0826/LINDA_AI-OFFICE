@@ -116,20 +116,16 @@ powershell -ExecutionPolicy Bypass -File scripts\hermes-configure.ps1  # 헤르�
 ```
 Discord 명령: `/지시`, `/보고`, `/상태 T-n`, `/push T-n`, `/되돌리기 T-n`, `/한도`, `/정지`, `/재개`, `/프로젝트`, `/설정`.
 
-## 7. 다음 할 일 (순서대로)
-1. **0단계 #1·#7 채점**: 주인이 #비서실에 `/new` 뒤 과제 5개를 보낸다. `agent.log`에서 도구 호출을 확인하고 `RESULTS.md`에 기록한다.
-   - 과제 4는 실제 지시(소개 문구)가 등록된다. PM 계획서가 #결재함에 오는지까지 본다.
-2. **재부팅 대비**: pm2 로그온 작업은 등록 완료(`AI_Office_pm2`). 헤르메스도 자체 작업(`Hermes_Gateway`)이 있다. 주인 몫: 자동 로그인, 업데이트 자동 재시작 막기(지금 사용 시간이 16~23시뿐이다).
-3. 이 문서 갱신 커밋을 푸시한다(주인 승인 후). `2ba8847`까지는 끝났다.
-4. 주인: GitHub 토큰을 모든 저장소(Administration·Contents 쓰기)로 다시 만들어 `set-secrets.ps1 -WithGithub`로 넣고, LINDA에 채널 관리 권한을 준다. 그다음 `/새프로젝트 아이디`로 첫 프로젝트를 만든다(이미 있는 저장소는 `/프로젝트`). O-1은 프로젝트가 없어 계획이 멈춰 있다(취소하거나 다시 시도).
-5. 버튼 결재를 실제로 시험한다: 두 번 클릭, 다른 계정, 오래된 버전.
-6. WSL → Docker → SearXNG(#10). 주인이 `wsl --install`과 재부팅을 한다.
-7. 주인 결정 대기:
-   - 직원별 Discord 봇(보여 주기 전용 7개)
-   - PM 토큰 예상치 현실화(한도 자체는 유지)
-   - `config.claude.model`(비우면 Opus)
-   - 사무실 화면 비서실장 이름을 "백서진"으로 할지
-8. 나머지 캐릭터 그림. 화면 임시 초안(`point.extra.css`) 결재. #8 밤 재측정. 헤르메스를 켠 상태로 #3 RAM 재측정.
+## 7. 다음 할 일 (순서대로, 2026-10-20 갱신)
+1. **주인: 비밀 파일 막기** `powershell -ExecutionPolicy Bypass -File C:i-office\office\scripts\protect-secrets.ps1 -IncludeCodexAuth` 실행. 확인은 `packages\orchestrator`에서 `node src/sim/secrets-read-check.ts`. GPT 개발자가 쓰기 권한으로 일하기 전에 해야 한다.
+2. **주인: 옛 지시 정리** O-1은 #막힘에서 [취소]. O-2는 [취소] 뒤 jhwchn 카테고리 #작업에서 새로 지시해 새 조직(Claude 기획실장 → GPT 개발자 → Claude 검토)으로 계획되게 한다.
+3. **실제 첫 지시 관찰** (Claude): 계획서 결재 → 개발자 A·B → 검토 → Git 고양이 푸시 결재까지. 버튼 시험(두 번 클릭, 다른 계정, 오래된 버전)도 같이.
+4. **주인 결정**: 토큰 상한에 걸린 그 호출의 결과를 기록할지(지금은 버림, 7장 안전 한도).
+5. **재부팅 대비** (주인): 자동 로그인, 업데이트 자동 재시작 막기. pm2(`AI_Office_pm2`)·헤르메스(`Hermes_Gateway`) 작업은 등록됨.
+6. **SearXNG(#10)**: 주인이 `wsl --install`과 재부팅 → Claude가 Docker·SearXNG 설치와 연결. 그전엔 GPT 직원 웹 근거가 비어 있다.
+7. **정리**: Qwen 모델 지우기(`ollama rm qwen3:14b`, 주인 승인), 교정 담당이 대괄호 안 공백 같은 형식 실수를 놓친 것 보완.
+8. **주인 결정 대기**: 직원별 Discord 봇(보여 주기용), `config.claude.model`(비우면 Opus), 화면 비서실장 이름 "백서진".
+9. 캐릭터 그림(개발자 A·B, 보조 직원 7명 포함), 화면 임시 초안(`point.extra.css`) 결재, #8 밤 재측정, 헤르메스를 켠 상태로 #3 RAM 재측정.
 
 ## 8. 커밋 흐름 (요약)
 10-15~16: 1~6단계(`d569abd`…`4a612ff`) → 10-16~17: 0단계 실측·개인 설정 분리(`4f0a435`…`0bbab50`) → 10-18~19: 캐릭터(`9baf7e8`…`9f74556`) → 10-19: 비밀 값 스크립트, Codex 정리, #2·#3, worktree 버그, #9, `/지시`, 헤르메스 연결, Gemma 전환(`2bd0b70`…`368bda5`), pm2 자동 시작(`6eb2ef6`), 어댑터·엔진 리팩터링(`2ba8847`). 전체는 `git log --oneline`.
