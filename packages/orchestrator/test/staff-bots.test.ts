@@ -44,7 +44,7 @@ describe('직원 봇 명단', () => {
 });
 
 describe('직원 봇 상태 글', () => {
-  it('대기 중 → 작업 중 → 검토 중, 정지 중이면 정지', async () => {
+  it('대기 중 → 작업 중 → 검토 중 → 멈춤, 정지 중이면 정지 (화면과 같은 규칙)', async () => {
     const s = setup();
     expect(staffStatus(s.ctx, 'developer')).toBe('대기 중');
     await approvedTickets(s);
@@ -53,6 +53,8 @@ describe('직원 봇 상태 글', () => {
     applyTicketEvent(s.ctx, 'T-1', { type: 'ticket.submitted' }, { kind: 'employee', id: 'developer' });
     expect(staffStatus(s.ctx, 'reviewer')).toBe('T-1 검토 중');
     expect(staffStatus(s.ctx, 'developer')).toBe('대기 중');
+    applyTicketEvent(s.ctx, 'T-1', { type: 'system.pause', reason: 'budget' }, { kind: 'orchestrator' });
+    expect(staffStatus(s.ctx, 'reviewer')).toBe('T-1 멈춤');
     stopAll(s.ctx, CEO);
     expect(staffStatus(s.ctx, 'reviewer')).toBe('정지');
   });

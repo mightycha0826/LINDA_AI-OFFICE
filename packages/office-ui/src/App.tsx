@@ -5,6 +5,7 @@ import { useOffice, type LiveEvent } from './data.ts';
 import { Director } from './director.ts';
 import { hourIn } from './format.ts';
 import { useTheme } from './theme.ts';
+import { EmployeeSheet } from './components/EmployeeSheet.tsx';
 import { LogTab } from './components/LogTab.tsx';
 import { OfficeMap } from './components/OfficeMap.tsx';
 import { ResourceTab } from './components/ResourceTab.tsx';
@@ -14,7 +15,6 @@ import { TicketDetailView } from './components/TicketDetailView.tsx';
 import { TopBar } from './components/TopBar.tsx';
 import { UsageCard } from './components/UsageCard.tsx';
 import { WorkTab } from './components/WorkTab.tsx';
-import { RANK_LABEL, STATUS_LABEL } from './format.ts';
 
 type PanelTab = 'work' | 'log' | 'staff' | 'res';
 type MobileTab = 'office' | 'work' | 'res';
@@ -157,7 +157,6 @@ export function App() {
     );
 
   const emp = employee ? snapshot.employees.find((e) => e.id === employee) : null;
-  const empTicket = emp ? director.ticketOf(emp.id) : null;
 
   return (
     <div className="ao-app">
@@ -236,36 +235,15 @@ export function App() {
         </Sheet>
       )}
       {emp && (
-        <Sheet title={emp.displayName} onClose={closeEmployee}>
-          <dl className="ao-dl">
-            <dt>부서</dt>
-            <dd>
-              {emp.department} · {RANK_LABEL[emp.rank]}
-            </dd>
-            {emp.job && (
-              <>
-                <dt>하는 일</dt>
-                <dd>{emp.job}</dd>
-              </>
-            )}
-            <dt>두뇌</dt>
-            <dd>{emp.brainLabel}</dd>
-            <dt>지금</dt>
-            <dd>{empTicket ? `${empTicket.id} ${STATUS_LABEL[empTicket.status]}` : '대기 중'}</dd>
-          </dl>
-          {empTicket && (
-            <button
-              type="button"
-              className="pt-btn pt-btn--primary"
-              onClick={() => {
-                setEmployee(null);
-                setTicket(empTicket.id);
-              }}
-            >
-              {empTicket.id} 상세 보기
-            </button>
-          )}
-        </Sheet>
+        <EmployeeSheet
+          employee={emp}
+          ticket={director.ticketOf(emp.id)}
+          onClose={closeEmployee}
+          onOpenTicket={(id) => {
+            setEmployee(null);
+            setTicket(id);
+          }}
+        />
       )}
     </div>
   );

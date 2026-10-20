@@ -2,9 +2,11 @@
 // - 하는 일: ① #사무실-대화 스레드에 자기 거울 글 ② 멤버 목록 상태 글.
 // - 아무것도 받지 않는다: 게이트웨이 권한은 Guilds만, 메시지·명령·버튼·DM 처리기를 달지 않는다.
 // - 직원 봇이 없거나 실패하면 그 글은 웹훅으로(이름을 붙여) 올린다.
-import { and, eq, inArray, or } from 'drizzle-orm';
-import { getState, type Ctx } from '../context.ts';
+import { inArray } from 'drizzle-orm';
+import { deriveEmployeeStatus, type DerivedStatus, type ScreenTicket } from '@ai-office/shared';
+import { isStopped, type Ctx } from '../context.ts';
 import { tickets } from '../db/schema.ts';
+import { toScreenTicket } from '../screen/snapshot.ts';
 import type { MirrorPort } from './types.ts';
 
 /** 자기 봇을 갖는 정규 직원 (비서실장은 헤르메스 봇, 보조 직원은 웹훅 이름) */
@@ -18,25 +20,31 @@ export interface StaffBotPort {
   stop(): Promise<void>;
 }
 
-/** 멤버 목록에 보일 상태 글. DB에서만 계산한다 */
+const STATUS_WORD: Record<Exclude<DerivedStatus, 'idle' | 'away'>, string> = { working: '작업 중', reviewing: '검토 중', meeting: '회의 중', blocked: '막힘', paused: '멈춤' };
+
+/** 그 상태를 만든 티켓 (deriveEmployeeStatus와 같은 조건) */
+const causes: Record<keyof typeof STATUS_WORD, (t: ScreenTicket, id: string) => boolean> = {
+  blocked: (t, id) => t.status === 'blocked' && t.assigneeId === id,
+  meeting: (t, id) => t.status === 'meeting' && (t.assigneeId === id || t.reviewerId === id),
+  working: (t, id) => (t.status === 'in_progress' || t.status === 'rework') && t.assigneeId === id,
+  reviewing: (t, id) => t.status === 'in_review' && t.reviewerId === id,
+  paused: (t, id) => t.status === 'paused' && (t.assigneeId === id || t.reviewerId === id),
+};
+
+/** 멤버 목록에 보일 상태 글: `T-3 작업 중`처럼. 사무실 화면과 같은 규칙(deriveEmployeeStatus)으로 DB에서 계산한다 */
 export function staffStatus(c: Ctx, employeeId: string): string {
-  if (getState<boolean>(c, 'stopped', false)) return '정지';
-  const mine = c.db
+  if (isStopped(c)) return '정지';
+  const open = c.db
     .select()
     .from(tickets)
-    .where(
-      or(
-        and(eq(tickets.assigneeId, employeeId), inArray(tickets.status, ['in_progress', 'rework', 'meeting'])),
-        and(eq(tickets.reviewerId, employeeId), inArray(tickets.status, ['in_review', 'meeting'])),
-      ),
-    )
+    .where(inArray(tickets.status, ['in_progress', 'rework', 'in_review', 'meeting', 'blocked', 'paused']))
     .all()
+    .map(toScreenTicket)
     .sort((a, b) => Number(a.id.slice(2)) - Number(b.id.slice(2)));
-  const t = mine[0];
-  if (!t) return '대기 중';
-  if (t.status === 'meeting') return `${t.id} 회의 중`;
-  if (t.status === 'in_review') return `${t.id} 검토 중`;
-  return `${t.id} 작업 중`;
+  const status = deriveEmployeeStatus(employeeId, open);
+  if (status === 'idle' || status === 'away') return '대기 중';
+  const t = open.find((x) => causes[status](x, employeeId));
+  return t ? `${t.id} ${STATUS_WORD[status]}` : STATUS_WORD[status];
 }
 
 /** 30초마다 부른다. 바뀐 상태만 보낸다(Discord 상태 변경 제한) */
