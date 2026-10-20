@@ -1,13 +1,13 @@
 # Claudelog: AI 사무실 인수인계
 
-다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-20 (주인 부재 중 7-5)**.
+다른 AI(Claude, Codex)가 바로 이어서 일할 수 있게 압축한 현황이다. 마지막 갱신: **2026-10-20 (7-5 뒤 화면 개편·엔진 리팩터링·직원 봇·Opus 5.5까지)**.
 저장소는 **공개**다(https://github.com/mightycha0826/LINDA_AI-OFFICE). 토큰, 비밀번호, Discord ID는 여기 적지 않는다(`C:\ai-office\data`에 있다).
 
 ## 0. 먼저 읽을 것
 - `CLAUDE.md`: 작업 규칙. 설계와 다르면 먼저 묻는다. 안전 규칙은 테스트와 함께 만든다. 권한은 코드로만 집행한다. `design-systems/point/`는 읽기 전용이다.
 - `docs/DESIGN.md`: 설계 기준(1~18장). 바꾼 결정은 해당 장에 날짜와 함께 메모로 남긴다.
 - `docs/RUNNING.md`: 실행법.
-- `docs/AUTONOMOUS-LOG.md`: 자율 진행 때 내린 결정 R~AS.
+- `docs/AUTONOMOUS-LOG.md`: 자율 진행 때 내린 결정. 맨 위에 최신 구간(76-A~I 화면·엔진, 75-A~H 7-5 보조 직원), 아래에 예전 결정 R~AS.
 - `stage0/RESULTS.md`: 실제 환경 검증 결과.
 - 주인 선호: **항상 한국어로 답한다.** **안전 한도(티켓 토큰 상한 = PM 예상치×2·최소 2만, 턴 40)는 설계대로 두고 바꾸자고 하지 않는다.** 푸시는 매번 주인 승인을 받는다.
 
@@ -19,11 +19,10 @@
 | 오케스트레이터 | `packages/orchestrator`. 유일한 DB 쓰기 주체. 전환표·결재·한도·가드를 코드로 집행 | 없음 |
 | LINDA (회사 시스템 봇) | 오케스트레이터 안의 discord.js. 결재 버튼, 알림, 슬래시 명령, #사무실-대화 거울(웹훅). **Message Content 인텐트 꺼 둠** | 없음 |
 | 백서진 (비서실장 봇) | 헤르메스 에이전트 게이트웨이. #비서실 대화로 지시 등록과 상태 안내. 회사 MCP 도구 8개 사용 | **Gemma 4 12B** |
-| PM, 마케팅 | 오케스트레이터가 호출 | Ollama qwen3:14b |
-| 검토 담당 | 〃 | Ollama gemma4:12b |
-| 개발자 | 〃 | Claude Code `claude -p` (주인 Pro, 개인 설정 분리) |
-| 리뷰어·감사관 | 〃 | Codex `exec` 읽기 전용 (회사 전용 CODEX_HOME) |
-| 경영전략·리서치 | 〃 | Claude |
+| 기획실장(PM), 개발팀장 | 오케스트레이터가 호출 | Claude Code `claude -p` Opus 5.5 (주인 Pro, 개인 설정 분리). 기획실장=리서치 몫, 개발팀장=개발 몫 |
+| 개발자 A·B | 〃 | Codex `exec` (쓰기는 자기 티켓 worktree만, 회사 전용 CODEX_HOME) |
+| 리뷰어·감사관, 카피라이터, 전략가 | 〃 | Codex `exec` |
+| 교정 담당, 보조 직원 7명 | 〃 | Ollama `gemma4:12b-64k` (`LOCAL_MODEL`) |
 | Git 고양이 | 오케스트레이터 모듈 | 코드 |
 | 사무실 화면 | `packages/office-ui` (React). http://127.0.0.1:8780 | — |
 
@@ -52,8 +51,8 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5. 7-2부터 로컬 두뇌는 `gemma4:12b-64k` 하나(헤르메스·오케스트레이터 공용, num_ctx 65536). qwen3:14b·gemma4:12b 파일은 아직 디스크에 있음(지울지는 주인 결정). C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 512개 통과, typecheck·lint:ds 깨끗하다.
-- **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 그 뒤 커밋(64K 원인, 0단계 결과, 메시지 ID 기록)은 로컬에만 있다.
+- **테스트**: `npm test` 512개 통과(Windows 기준. 리눅스에서는 Windows 경로 테스트 `workspace.test.ts` 1개가 실패한다), typecheck·lint:ds 깨끗하다.
+- **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 지금은 `origin/main`이 로컬 `main`과 같다(10-20 기준 모두 푸시됨).
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
 ### 0단계 결과
@@ -61,7 +60,7 @@
 **#1 통과(재시험 뒤 5개 모두), #7 통과(10-19).** 과제 4(지시 등록)는 헤르메스가 Discord 메시지 ID를 모델에게 보여 주지 않아 실패했다. → LINDA가 #비서실 주인 마지막 메시지 ID를 기록하고 `create_order`가 ID 없이 오면 그것을 쓰게 함(주인 선택 A). 20:15 재시험에서 지시 `O-1`이 실제 메시지 ID로 등록됐다. PM 계획은 프로젝트 미등록·같은 모델 검토자 규칙에 걸려 멈춤(정상, `/프로젝트` 등록 뒤 다시 시도).
 #10 SearXNG는 보류: WSL이 없어 관리자 승인과 재부팅이 필요하다.
 
-## 4. 오늘(10-19) 내린 결정과 이유
+## 4. 10-19~20 내린 결정과 이유 (위가 최신)
 | 결정 | 이유 | 기록 |
 | --- | --- | --- |
 | 비서실장 두뇌 Qwen3-14B → **Gemma 4 12B** (CEO 승인) | 헤르메스는 문맥 64K 미만을 거부한다. Qwen은 40,960이 한계이고 CPU로 35% 밀린다. Gemma는 64K에서 100% GPU, 66 tok/s | DESIGN 2·6·16·18장, `seed.ts` |
@@ -72,13 +71,12 @@
 | Claude 두뇌 Opus 5.5 · 노력 medium (CEO 결정 10-20) | `config.claude.model`=`claude-opus-5-5`, `config.claude.effort`=`medium`, `claude -p --effort`. 실제 CLI 응답 확인 | DESIGN 8장, `brains/claude-code.ts`, `test/isolation.test.ts` |
 | 직원 봇 9개 (CEO 결정 10-20, 보여 주기 전용) | 정규 직원 9명이 자기 봇으로 #사무실-대화 거울 글과 상태 글(`T-3 작업 중`). 인텐트 Guilds만, 처리기 없음, 실패하면 웹훅. 토큰은 주인이 `set-secrets.ps1 -WithStaffBots` | DESIGN 9장, `discord/staff-bots.ts`, `test/staff-bots.test.ts`, RUNNING 4장 |
 | 화면을 2-0 조직도에 맞춤 + 엔진 리팩터링 (주인 부재 중, AUTONOMOUS-LOG 76-A~I) | 지도 30×20·부서별 방·인원, 팀장 별·보조 80%, 직원 탭, 자기 색 임시 그림, 기획 몫·GPT 몫 이름. 리뷰어 → 품질보증팀, Git 고양이 → 운영지원. engine.ts를 호출 계층·계획·티켓 단계로 분리(동작 그대로). 14:47 운영 반영 | DESIGN 12장, `office-ui/src/map.ts`, `staff/org.ts`, `src/engine/`, `test/org-screen.test.ts` |
-| 비밀 파일 읽기 막기 (별도 세션, b3295f3) | Codex 샌드박스 계정(CodexSandboxOffline, 그룹 CodexSandboxUsers)이 secrets.json·codex-homeauth.json을 읽을 수 있음을 canary로 확인. 막기·되돌리기 스크립트 준비, Claude 데이터 폴더 거부 규칙. **주인이 `scriptsprotect-secrets.ps1 -IncludeCodexAuth` 실행 필요**(아직 안 함) | DESIGN 7장 비밀 파일 읽기 |
+| 비밀 파일 읽기 막기 (별도 세션, b3295f3) | Codex 샌드박스 계정(CodexSandboxOffline, 그룹 CodexSandboxUsers)이 secrets.json·`codex-home\auth.json`을 읽을 수 있음을 canary로 확인. 막기·되돌리기 스크립트 준비, Claude 데이터 폴더 거부 규칙. **주인이 `scripts\protect-secrets.ps1 -IncludeCodexAuth` 실행 필요**(아직 안 함) | DESIGN 7장 비밀 파일 읽기 |
 | 7-4: 전략가·카피라이터를 GPT로, 교정 1차 점검 | GPT 직원도 웹 도구 없이 오케스트레이터가 SearXNG로 대신 검색(Codex --search는 읽기 명령+검색어로 비밀이 샐 길이 있어 안 씀). 문서 티켓은 검토 전에 교정 담당(Gemma)이 지적 목록(판정 아님), 실패해도 안 멈춤. 리서치 몫은 기획실장만. 10-20 00:37 pm2 재시작으로 운영 반영(비밀 파일 세션의 Claude 거부 규칙 b3295f3도 함께) | DESIGN 15·16장, `engine/ticket-work.ts` proofread, `test/org-7-4.test.ts` |
 | 7-3 완료: GPT 개발자 A·B(Codex) | Codex 쓰기는 개발자의 티켓 작업이 정확히 그 티켓 worktree일 때만(`codexSandboxFor`), 네트워크 끔, `--add-dir`·샌드박스 끄기 옵션 없음. GPT 코드는 개발팀장(Claude), 개발팀장 코드는 리뷰어(GPT), 로컬은 코드 판정 안 함. Codex 동시 2. 진짜 Codex로 안 쓰기 성공·밖 쓰기 거부·인터넷 차단 확인 | DESIGN 7장 7-3, `brains/codex.ts`, `test/org-7-3.test.ts`, RESULTS 7-3 |
 | 7-2 완료: 로컬 두뇌 gemma4:12b-64k 하나로 | 비교 실험(`sim/local-compare.ts`): 둘 다 형식 16/16, Gemma가 품질 같거나 낫고 약 2배 빠름. 마케팅·검토 담당·커밋 초안·임시 직원·디자인 조합·저정밀 대체를 Gemma로. 로컬끼리는 검토 못 해서 로컬 문서는 GPT가 검토(끊기면 검토 대기) | DESIGN 16장 7-2, `LOCAL_MODEL`, `test/org-7-2.test.ts` |
 | 7-1 완료: GPT 100%, 기획실장(PM)=Claude(기획 몫=리서치 몫), 기획 몫 소진 시 대기, 관문에 직원 모델 표, 회고 초안=Gemma·확인=GPT | 다음은 7-2(로컬 두뇌 gemma4:12b-64k 통일) | `seed.ts`, `engine.ts`, `retro/service.ts`, `test/org-7-1.test.ts` |
-| PM 두뇌 비교 실험 (→ 7-1에서 Claude로 결정) | 같은 지시(O-2)로 Qwen(운영 기록)과 Claude(`sim/plan-compare.ts`, 메모리 DB) 비교. Qwen: PM 8번 중 5번 규칙 위반, CEO 다시 시도 2번, 관문 3번 모두 반려 → 반대 의견, 13분. Claude: 위반 0, 관문 2번째 통과(1번째 반려는 관문이 직원 모델을 몰라서), 67초, Claude 리서치 몫 약 1.1%·GPT 4.7만 토큰. 결과 `C:ai-officewt_experimentclaude-20261019125153
-eport.md` | 주인 결정: PM을 Claude로 바꿀지, 관문에 직원 모델 표를 넘길지 |
+| PM 두뇌 비교 실험 (→ 7-1에서 Claude로 결정) | 같은 지시(O-2)로 Qwen(운영 기록)과 Claude(`sim/plan-compare.ts`, 메모리 DB) 비교. Qwen: PM 8번 중 5번 규칙 위반, CEO 다시 시도 2번, 관문 3번 모두 반려 → 반대 의견, 13분. Claude: 위반 0, 관문 2번째 통과(1번째 반려는 관문이 직원 모델을 몰라서), 67초, Claude 리서치 몫 약 1.1%·GPT 4.7만 토큰. 결과 `C:\ai-office\wt\_experiment\claude-20261019125153\report.md` | 주인 결정: PM을 Claude로 바꿀지, 관문에 직원 모델 표를 넘길지 |
 | 검토자 짝은 코드가 고침 (CEO 승인) | 표·후보 안내를 줘도 PM(Qwen)이 계획서 6번 중 4번 같은 모델 검토자를 골랐다. 같은 모델·본인·비서실장이면 코딩→reviewer, 그 밖→qa-local로 바꾸고 `plans.reviewer_changes`에 남겨 결재 메시지에 표시. 비서실장은 검토자 후보에서 뺌. 실제 첫 GPT 관문(21:25)은 정상 동작, "확인할 수 없는 완료 조건·불필요한 백엔드"를 정확히 지적 | DESIGN 6·9장, `core/plans.ts` fixReviewers, 마이그레이션 0007 |
 | 계획 작성 멈춤을 #막힘에 [다시 시도][취소]로 알림, PM 검토자 표 | O-2(포트폴리오)가 PM의 같은 모델 검토자 실수로 멈췄는데 **알림도 다시 시도할 길도 없었다**(retryPlanning을 부르는 곳이 없었음). 멈춘 시각으로 구분해 한 번씩 알리고, PM 역할 카드에 담당자별 검토 가능 직원 표, 위반 안내에 후보를 적음 | DESIGN 6·9장 ④-2, `discord/notifier.ts`, `staff/role-cards.ts` |
 | `/새프로젝트`: GitHub 비공개 저장소 + Discord 카테고리 `아이디` › `#작업` (CEO 요청, 선택은 모두 추천안) | 저장소를 따로 만들고 `/프로젝트`로 등록하는 게 번거로움. 토큰을 모든 저장소(Administration·Contents 쓰기)로 넓히고 고양이는 DB 등록 저장소에만 푸시. `#작업`의 `/지시`는 그 프로젝트로 고정, PM은 그 프로젝트만 보고 비우면 코드가 채움. 비서실장은 #비서실에만 | DESIGN 6·9·11장, `workspace/new-project.ts`, `gitcat/github-repo.ts`, 마이그레이션 0006 |
@@ -120,14 +118,14 @@ powershell -ExecutionPolicy Bypass -File scripts\hermes-configure.ps1  # 헤르�
 Discord 명령: `/지시`, `/보고`, `/상태 T-n`, `/push T-n`, `/되돌리기 T-n`, `/한도`, `/정지`, `/재개`, `/프로젝트`, `/설정`.
 
 ## 7. 다음 할 일 (순서대로, 2026-10-20 갱신)
-1. **주인: 비밀 파일 막기** `powershell -ExecutionPolicy Bypass -File C:i-office\office\scripts\protect-secrets.ps1 -IncludeCodexAuth` 실행. 확인은 `packages\orchestrator`에서 `node src/sim/secrets-read-check.ts`. GPT 개발자가 쓰기 권한으로 일하기 전에 해야 한다.
+1. **주인: 비밀 파일 막기** `powershell -ExecutionPolicy Bypass -File C:\ai-office\office\scripts\protect-secrets.ps1 -IncludeCodexAuth` 실행. 확인은 `packages\orchestrator`에서 `node src/sim/secrets-read-check.ts`. GPT 개발자가 쓰기 권한으로 일하기 전에 해야 한다.
 2. **주인: 옛 지시 정리** O-1은 #막힘에서 [취소]. O-2는 [취소] 뒤 jhwchn 카테고리 #작업에서 새로 지시해 새 조직(Claude 기획실장 → GPT 개발자 → Claude 검토)으로 계획되게 한다.
 3. **실제 첫 지시 관찰** (Claude): 계획서 결재 → 개발자 A·B → 검토 → Git 고양이 푸시 결재까지. 버튼 시험(두 번 클릭, 다른 계정, 오래된 버전)도 같이.
 4. **주인 결정**: 토큰 상한에 걸린 그 호출의 결과를 기록할지(지금은 버림, 7장 안전 한도).
 5. **재부팅 대비** (주인): 자동 로그인, 업데이트 자동 재시작 막기. pm2(`AI_Office_pm2`)·헤르메스(`Hermes_Gateway`) 작업은 등록됨.
 6. **SearXNG(#10)**: 주인이 `wsl --install`과 재부팅 → Claude가 Docker·SearXNG 설치와 연결. 그전엔 GPT 직원 웹 근거가 비어 있다.
 7. **정리**: Qwen 모델 지우기(`ollama rm qwen3:14b`, 주인 승인), 교정 담당이 대괄호 안 공백 같은 형식 실수를 놓친 것 보완.
-8. **주인**: 직원 봇 9개 만들기(RUNNING 4장 "직원 봇 9개 만들기", 토큰은 `set-secrets.ps1 -WithStaffBots`). 결정 대기: 화면 비서실장 이름 "백서진".
+8. **주인**: 직원 봇 9개 만들기(RUNNING 4장 "직원 봇 9개 만들기", 토큰은 `set-secrets.ps1 -WithStaffBots`). 확인 필요: 화면 비서실장 이름 "백서진"이 확정인지(1·3장에서는 이미 이 이름을 쓴다).
 9. 캐릭터 그림(개발자 A·B, 보조 직원 7명 포함), 화면 임시 초안(`point.extra.css`) 결재, #8 밤 재측정, 헤르메스를 켠 상태로 #3 RAM 재측정.
 
 ## 8. 커밋 흐름 (요약)
