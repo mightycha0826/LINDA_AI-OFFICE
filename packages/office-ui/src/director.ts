@@ -5,7 +5,7 @@
 // - prefers-reduced-motion이면 걷지 않고 제자리로 바로 옮긴다.
 import { currentTicketOf, deriveEmployeeStatus, type DerivedStatus, type Snapshot } from '@ai-office/shared';
 import type { LiveEvent } from './data.ts';
-import { CEO_DESK, ENTRANCE, MAILBOX, MEETING_CHAIRS, deskOf, distance, pathBetween, type Point } from './map.ts';
+import { CEO_DESK, CORRIDOR_MID, ENTRANCE, MAILBOX, MEETING_CHAIRS, deskOf, distance, pathBetween, type Point } from './map.ts';
 
 export type Pose = 'idle' | 'typing' | 'walking' | 'carrying' | 'meeting' | 'blocked' | 'paused';
 /** front: 정면(멈춰 있을 때, 아래로 걸을 때). 정면 그림이 없는 세트는 오른쪽 그림으로 대신한다 */
@@ -104,7 +104,7 @@ export class Director {
   private home(id: string): Point {
     const s = this.snap;
     const e = s?.employees.find((x) => x.id === id);
-    if (!s || !e) return { x: 12, y: 8.25 };
+    if (!s || !e) return CORRIDOR_MID;
     const meeting = s.tickets.find((t) => t.status === 'meeting' && (t.assigneeId === id || t.reviewerId === id));
     if (meeting) return MEETING_CHAIRS[meeting.assigneeId === id ? 0 : 1]!;
     return deskOf(e.id, e.spriteSet);

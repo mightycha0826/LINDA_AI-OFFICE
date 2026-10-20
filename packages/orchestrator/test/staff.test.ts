@@ -123,6 +123,6 @@ describe('비서실장 두뇌 표시 (헤르메스 64K 문맥 하한으로 Gemma
     // 마케팅은 7-4부터 GPT 카피라이터
     expect(s.ctx.db.select().from(employees).where(eq(employees.id, 'marketing')).get()!.brain).toEqual({ provider: 'codex' });
     const { brainLabel } = await import('../src/screen/snapshot.ts');
-    expect(brainLabel('chief-of-staff', chief.brain)).toBe('헤르메스 · Gemma 4 12B');
+    expect(brainLabel('chief-of-staff', chief.brain)).toBe('헤르메스 · Gemma');
   });
 });

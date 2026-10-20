@@ -7,16 +7,18 @@ import { approvals, employees, events, meetingMinutes, messages, tickets, usage 
 import { isCeoPresent } from '../discord/presence.ts';
 import { localTime, nextCheckTime } from '../discord/schedule.ts';
 import { approvalLink } from '../reports.ts';
+import { jobOf, rankOf } from '../staff/org.ts';
 
+/** 이름표의 두뇌 이름. 조직도(2-0)의 말로 짧게: Claude·GPT·Gemma (자세한 모델은 자원 탭) */
 export function brainLabel(id: string, b: Brain): string {
-  if (id === 'chief-of-staff') return '헤르메스 · Gemma 4 12B';
+  if (id === 'chief-of-staff') return '헤르메스 · Gemma';
   switch (b.provider) {
     case 'claude-code':
-      return b.budget === 'research' ? 'Claude' : 'Claude Code';
+      return 'Claude';
     case 'codex':
-      return 'Codex';
+      return 'GPT';
     case 'ollama':
-      return b.model === 'qwen3:14b' ? 'Qwen3-14B' : 'Gemma 4 12B'; // gemma4:12b·gemma4:12b-64k
+      return b.model === 'qwen3:14b' ? 'Qwen' : 'Gemma'; // gemma4:12b·gemma4:12b-64k
     case 'none':
       return '코드';
   }
@@ -70,6 +72,8 @@ export function buildSnapshot(c: Ctx, extras: SnapshotExtras): Snapshot {
       displayName: e.displayName,
       role: e.role,
       department: e.department,
+      rank: rankOf(e.id, e.isTemporary),
+      job: jobOf(e.id),
       brainLabel: brainLabel(e.id, e.brain),
       spriteSet: e.spriteSet,
       isTemporary: e.isTemporary,

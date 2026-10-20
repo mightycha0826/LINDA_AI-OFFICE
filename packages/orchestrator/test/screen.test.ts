@@ -105,7 +105,7 @@ describe('화면 서버는 보기 전용', () => {
     expect(snap.usage.map((u) => u.budget)).toEqual(['dev', 'research', 'review']);
     expect(snap.lastSeq).toBeGreaterThan(0);
     expect(snap.combo).toBe(1);
-    expect(snap.employees.find((e) => e.id === 'developer')!.brainLabel).toBe('Claude Code');
+    expect(snap.employees.find((e) => e.id === 'developer')!.brainLabel).toBe('Claude');
   });
 
   it('티켓 상세: 완료 조건과 사용량. 없는 티켓은 404', async () => {

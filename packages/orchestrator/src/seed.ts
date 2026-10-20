@@ -12,7 +12,7 @@ interface Seed {
   department: string;
   brain: Brain;
   canSearchWeb: boolean;
-  /** 캐릭터 그림. 비우면 id. 그림이 아직 없는 직원은 비슷한 직원 그림을 빌린다 */
+  /** 캐릭터 그림 폴더(assets/characters). 비우면 id. 그림이 없는 직원은 임시 단색 그림(scripts/make-placeholder-sprites.mjs) */
   spriteSet?: string;
 }
 
@@ -24,18 +24,19 @@ export const STANDING_STAFF: readonly Seed[] = [
   // 개발팀장(테크 리드): 어려운 티켓 구현, GPT 개발자 코드의 최종 리뷰 (2-0, 7-3)
   { id: 'developer', displayName: '개발팀장', role: 'developer', department: '개발팀', brain: { provider: 'claude-code', budget: 'dev' }, canSearchWeb: true },
   // 개발자 A·B: Codex, 그 티켓 worktree 안에서만 쓰기, 네트워크 없음 (7장 7-3)
-  { id: 'dev-a', displayName: '개발자 A', role: 'developer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false, spriteSet: 'developer' },
-  { id: 'dev-b', displayName: '개발자 B', role: 'developer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false, spriteSet: 'developer' },
-  { id: 'reviewer', displayName: '리뷰어 · 감사관', role: 'reviewer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false },
+  { id: 'dev-a', displayName: '개발자 A', role: 'developer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false },
+  { id: 'dev-b', displayName: '개발자 B', role: 'developer', department: '개발팀', brain: { provider: 'codex' }, canSearchWeb: false },
+  // 리뷰어 · 감사관: 품질보증팀 팀장 (2-0). 2026-10-20까지는 개발팀으로 잘못 들어가 있었다
+  { id: 'reviewer', displayName: '리뷰어 · 감사관', role: 'reviewer', department: '품질보증팀', brain: { provider: 'codex' }, canSearchWeb: false },
   // 카피라이터·전략가: 7-4부터 GPT(Codex, 읽기 전용). 웹은 오케스트레이터가 대신 검색해 넘긴다(15장)
   { id: 'marketing', displayName: '카피라이터', role: 'marketing', department: '마케팅 · 콘텐츠팀', brain: { provider: 'codex' }, canSearchWeb: true },
   { id: 'strategy', displayName: '전략가', role: 'strategy', department: '리서치 · 전략팀', brain: { provider: 'codex' }, canSearchWeb: true },
   // 교정 담당(예전 검토 담당): 문서 1차 점검, 문서 검토, 회고 초안 (7-1, 7-4)
   { id: 'qa-local', displayName: '교정 담당', role: 'qa-local', department: '품질보증팀', brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: true },
-  { id: 'git-cat', displayName: 'Git 고양이', role: 'git-cat', department: 'Git 코너', brain: { provider: 'none' }, canSearchWeb: false },
+  { id: 'git-cat', displayName: 'Git 고양이', role: 'git-cat', department: '운영지원', brain: { provider: 'none' }, canSearchWeb: false },
   // 로컬 보조 직원 7명 (16장 7-5). 명단·하는 일은 staff/assistants.ts
   ...ASSISTANTS.map(
-    (a): Seed => ({ id: a.id, displayName: a.displayName, role: 'assistant', department: a.department, brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: false, spriteSet: a.spriteSet }),
+    (a): Seed => ({ id: a.id, displayName: a.displayName, role: 'assistant', department: a.department, brain: { provider: 'ollama', model: LOCAL_MODEL }, canSearchWeb: false }),
   ),
 ];
 
@@ -49,10 +50,13 @@ export function seedStaff(c: Ctx): void {
         .onConflictDoNothing()
         .run();
     }
-    // 이미 만든 DB의 두뇌도 설계에 맞춘다: 비서실장(예전 qwen3:14b), 기획실장(7-1 Claude), 로컬 직원(7-2 Gemma 64K), 개발팀장(7-3 이름)
-    for (const id of ['chief-of-staff', 'pm', 'marketing', 'strategy', 'qa-local', 'developer']) {
-      const s = STANDING_STAFF.find((x) => x.id === id)!;
-      t.db.update(employees).set({ brain: s.brain, displayName: s.displayName, department: s.department }).where(eq(employees.id, id)).run();
+    // 이미 만든 DB도 조직도(2-0)에 맞춘다: 두뇌(7-1·7-2·7-4), 이름(7-3), 부서(리뷰어 → 품질보증팀, Git 고양이 → 운영지원), 그림(빌린 그림 → 자기 그림)
+    for (const s of STANDING_STAFF) {
+      t.db
+        .update(employees)
+        .set({ brain: s.brain, displayName: s.displayName, department: s.department, spriteSet: s.spriteSet ?? s.id })
+        .where(eq(employees.id, s.id))
+        .run();
     }
   });
 }

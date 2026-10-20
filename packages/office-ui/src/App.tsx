@@ -8,14 +8,15 @@ import { useTheme } from './theme.ts';
 import { LogTab } from './components/LogTab.tsx';
 import { OfficeMap } from './components/OfficeMap.tsx';
 import { ResourceTab } from './components/ResourceTab.tsx';
+import { StaffTab } from './components/StaffTab.tsx';
 import { Sheet } from './components/Sheet.tsx';
 import { TicketDetailView } from './components/TicketDetailView.tsx';
 import { TopBar } from './components/TopBar.tsx';
 import { UsageCard } from './components/UsageCard.tsx';
 import { WorkTab } from './components/WorkTab.tsx';
-import { STATUS_LABEL } from './format.ts';
+import { RANK_LABEL, STATUS_LABEL } from './format.ts';
 
-type PanelTab = 'work' | 'log' | 'res';
+type PanelTab = 'work' | 'log' | 'staff' | 'res';
 type MobileTab = 'office' | 'work' | 'res';
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -121,6 +122,7 @@ export function App() {
         [
           ['work', '업무'],
           ['log', '로그'],
+          ['staff', '직원'],
           ['res', '자원'],
         ] as const
       )
@@ -148,6 +150,8 @@ export function App() {
       <WorkTab snapshot={snapshot} nowMs={nowMs} names={names} onOpenTicket={setTicket} />
     ) : panel === 'log' ? (
       <LogTab snapshot={snapshot} names={names} focusTicket={logFocus} onOpenTicket={setTicket} />
+    ) : panel === 'staff' ? (
+      <StaffTab snapshot={snapshot} onSelectEmployee={setEmployee} />
     ) : (
       <ResourceTab snapshot={snapshot} nowMs={nowMs} />
     );
@@ -234,11 +238,16 @@ export function App() {
       {emp && (
         <Sheet title={emp.displayName} onClose={closeEmployee}>
           <dl className="ao-dl">
-            <dt>역할</dt>
+            <dt>부서</dt>
             <dd>
-              {emp.department}
-              {emp.isTemporary ? ' · 임시 직원' : ''}
+              {emp.department} · {RANK_LABEL[emp.rank]}
             </dd>
+            {emp.job && (
+              <>
+                <dt>하는 일</dt>
+                <dd>{emp.job}</dd>
+              </>
+            )}
             <dt>두뇌</dt>
             <dd>{emp.brainLabel}</dd>
             <dt>지금</dt>

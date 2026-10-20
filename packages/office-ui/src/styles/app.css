@@ -155,7 +155,7 @@ body {
   padding: 0 var(--space-5);
 }
 .ao-map-scroll .ao-map {
-  width: 720px;
+  width: 900px;
 }
 .ao-dock {
   position: fixed;
@@ -326,7 +326,7 @@ body {
   padding-left: var(--space-5);
 }
 
-/* 사무실 지도: 24 × 16 격자를 폭에 맞춰 늘리고 줄인다 */
+/* 사무실 지도: 30 × 20 격자를 폭에 맞춰 늘리고 줄인다 */
 .ao-map {
   position: relative;
   width: 100%;
@@ -362,6 +362,9 @@ body {
   transform: translateX(-50%);
   font-weight: 400;
 }
+.ao-room-label__count {
+  font-weight: 400;
+}
 .ao-tray-badge {
   position: absolute;
   transform: translate(-50%, -100%);
@@ -382,19 +385,25 @@ body {
   }
 }
 
-/* 캐릭터: 기준점(발 중앙)을 지도 좌표에 맞춘다. 표시 크기 64px = 지도 폭 960의 1/15 */
+/* 캐릭터: 기준점(발 중앙)을 지도 좌표에 맞춘다. 표시 크기 64px = 지도 폭 1200의 1/18.75.
+   보조 직원(7-5)은 80% 크기로 그려 팀장·팀원과 구별한다 */
 .ao-char {
+  --ao-char: 5.333cqw;
   position: absolute;
   width: 0;
   height: 0;
   z-index: 2;
 }
+.ao-char--assistant {
+  --ao-char: 4.267cqw;
+  z-index: 1;
+}
 .ao-char__body {
   position: absolute;
   left: 0;
   top: 0;
-  width: 6.667cqw;
-  height: 6.667cqw;
+  width: var(--ao-char);
+  height: var(--ao-char);
   padding: 0;
   border: 0;
   background: none;
@@ -455,9 +464,25 @@ body {
   white-space: nowrap;
   pointer-events: none;
 }
+.ao-nametag__name {
+  display: flex;
+  align-items: center;
+}
 .ao-nametag__brain {
   color: var(--ink-muted);
   font-weight: 400;
+}
+/* 팀장 표시: 상태 색이 아니라 글자 색(조합색은 상태에만, 12장) */
+.ao-nametag__lead {
+  margin-right: var(--space-1);
+  color: var(--ink-muted);
+  font-size: var(--text-tab-size);
+  font-variation-settings: 'FILL' 1;
+}
+/* 보조 직원 이름표: 한 줄, 그림자 없이 */
+.ao-nametag--assistant {
+  box-shadow: none;
+  color: var(--ink-muted);
 }
 /* 지도가 좁으면 이름표가 겹치니 두뇌 이름은 넓을 때만 (직원을 누르면 상세에 나온다) */
 @container (max-width: 640px) {
@@ -488,7 +513,7 @@ body {
 .ao-over {
   position: absolute;
   left: 0;
-  top: -8cqw;
+  top: calc(var(--ao-char) * -1.2);
   transform: translateX(-50%);
   pointer-events: none;
 }
@@ -504,7 +529,7 @@ body {
 .ao-bubble {
   position: absolute;
   left: 0;
-  bottom: 7.2cqw;
+  bottom: calc(var(--ao-char) * 1.08);
   transform: translateX(-50%);
   max-width: 200px;
   padding: var(--space-1) var(--space-3);

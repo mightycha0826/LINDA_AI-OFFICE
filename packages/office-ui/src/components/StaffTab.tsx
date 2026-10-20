@@ -1,0 +1,59 @@
+// 직원 탭: 개편 조직도(2-0)를 부서별로. 팀장 → 팀원 → 보조 직원 순, 지금 하는 일과 두뇌를 함께 보여 준다.
+// 지도가 작은 폰에서도 누가 무엇을 하는지 한눈에 보이게 한다. 누르면 직원 상세가 열린다.
+import { currentTicketOf, deriveEmployeeStatus, type ScreenEmployee, type Snapshot } from '@ai-office/shared';
+import { RANK_LABEL, STATUS_LABEL, WORK_LABEL } from '../format.ts';
+import { ROOMS } from '../map.ts';
+
+interface Props {
+  snapshot: Snapshot;
+  onSelectEmployee: (id: string) => void;
+}
+
+const RANK_ORDER = { lead: 0, member: 1, assistant: 2, temp: 3 } as const;
+
+export function staffGroups(employees: ScreenEmployee[]): { title: string; members: ScreenEmployee[] }[] {
+  const here = employees.filter((e) => !e.leftAt);
+  const sorted = (xs: ScreenEmployee[]) => [...xs].sort((a, b) => RANK_ORDER[a.rank] - RANK_ORDER[b.rank] || a.displayName.localeCompare(b.displayName, 'ko'));
+  const groups = ROOMS.filter((r) => r.departments.length > 0).map((r) => ({ title: r.name, members: sorted(here.filter((e) => !e.isTemporary && r.departments.includes(e.department))) }));
+  const placed = new Set(groups.flatMap((g) => g.members.map((e) => e.id)));
+  const rest = sorted(here.filter((e) => !placed.has(e.id)));
+  return [...groups, { title: '방문 · 기타', members: rest }].filter((g) => g.members.length > 0);
+}
+
+export function StaffTab({ snapshot, onSelectEmployee }: Props) {
+  return (
+    <div className="ao-work">
+      {staffGroups(snapshot.employees).map((g) => (
+        <section key={g.title} className="ao-group">
+          <h3 className="ao-group__title">
+            {g.title} <span className="ao-num">{g.members.length}</span>
+          </h3>
+          <div className="ao-group__list">
+            {g.members.map((e) => {
+              const status = deriveEmployeeStatus(e.id, snapshot.tickets, e.leftAt);
+              const t = currentTicketOf(e.id, snapshot.tickets);
+              return (
+                <button key={e.id} type="button" className="ao-ticket ao-staff" onClick={() => onSelectEmployee(e.id)}>
+                  <span className="ao-ticket__line">
+                    <span className={`ao-dot ao-dot--${status}`} aria-hidden="true" />
+                    {e.rank === 'lead' && (
+                      <span className="material-symbols-rounded ao-nametag__lead" aria-hidden="true">
+                        star
+                      </span>
+                    )}
+                    <span className="ao-ticket__title">{e.displayName}</span>
+                    <span className="ao-ticket__type">
+                      {RANK_LABEL[e.rank]} · {e.brainLabel}
+                    </span>
+                  </span>
+                  {e.job && <span className="ao-ticket__meta">{e.job}</span>}
+                  <span className="ao-ticket__meta">{t ? `${t.id} ${STATUS_LABEL[t.status]}` : WORK_LABEL[status]}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}

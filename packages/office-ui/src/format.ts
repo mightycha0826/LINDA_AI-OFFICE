@@ -1,5 +1,5 @@
 // 화면 글자 모음: 시각, 경과 시간, 상태 이름. 말투는 포인트 디자인 시스템의 해요체.
-import type { ScreenTicket, TicketStatus, TicketType } from '@ai-office/shared';
+import type { DerivedStatus, ScreenTicket, StaffRank, TicketStatus, TicketType } from '@ai-office/shared';
 
 export function clock(iso: string, timeZone: string) {
   return new Intl.DateTimeFormat('ko-KR', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
@@ -52,6 +52,19 @@ export const PAUSE_LABEL: Record<NonNullable<ScreenTicket['pauseReason']>, strin
   cap: '상한 도달',
 };
 
-export const BUDGET_LABEL = { dev: '개발 몫', research: '리서치 몫', review: 'GPT 검토' } as const;
+// 8장 (2026-10-19): 리서치 몫은 기획실장이 쓰는 "기획 몫", GPT는 직원 전체가 함께 쓰는 "GPT 몫"
+export const BUDGET_LABEL = { dev: '개발 몫', research: '기획 몫', review: 'GPT 몫' } as const;
+
+export const RANK_LABEL: Record<StaffRank, string> = { lead: '팀장', member: '팀원', assistant: '보조', temp: '방문' };
+
+export const WORK_LABEL: Record<DerivedStatus, string> = {
+  idle: '대기 중',
+  working: '작업 중',
+  reviewing: '검토 중',
+  meeting: '회의 중',
+  blocked: '막힘',
+  paused: '일시정지',
+  away: '나감',
+};
 
 export const pct = (v: number) => `${Math.round(v)}%`;

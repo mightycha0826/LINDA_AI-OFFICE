@@ -1,18 +1,23 @@
-// 사무실 지도 (12장): 격자 가로 24칸 × 세로 16칸. 좌표는 칸 단위, 화면 크기에 맞춰 늘고 준다.
+// 사무실 지도 (12장): 격자 가로 30칸 × 세로 20칸(3:2). 좌표는 칸 단위, 화면 크기에 맞춰 늘고 준다.
+// 방은 개편 조직도(2-0)의 부서 하나씩이다. 위 줄: 개발팀 · 품질보증팀 · 기획실 · CEO실, 아래 줄: 마케팅 · 콘텐츠팀 · 리서치 · 전략팀 · 회의실 · 운영지원 · 서버실.
+// 자리는 방마다 뒷줄(팀장·팀원)과 앞줄(보조 직원·방문 자리)로 둔다. 이름표가 겹치지 않게 같은 높이의 자리는 3.5칸 넘게 띄우고,
+// 셋이 나란히 앉는 개발팀은 팀장을 한 칸 남짓 위로 올려 엇갈리게 앉힌다(지도 폭 700px에서도 이름표가 안 겹치게).
 // 이동은 복도의 경유 지점을 잇는 최단 경로로만 걷는다(복잡한 길찾기를 쓰지 않음).
 
-export const GRID = { w: 24, h: 16 } as const;
+export const GRID = { w: 30, h: 20 } as const;
 
 export interface Point {
   x: number;
   y: number;
 }
 
-export type RoomId = 'dev' | 'plan' | 'ceo' | 'mkt' | 'meeting' | 'git' | 'server';
+export type RoomId = 'dev' | 'qa' | 'plan' | 'ceo' | 'mkt' | 'research' | 'meeting' | 'ops' | 'server';
 
 export interface Room {
   id: RoomId;
   name: string;
+  /** 이 방에 앉는 부서 (직원 표의 department). 회의실·서버실은 비어 있다 */
+  departments: readonly string[];
   x: number;
   y: number;
   w: number;
@@ -20,68 +25,100 @@ export interface Room {
   door: Point;
 }
 
+const TOP = { y: 0.5, h: 8.5 } as const;
+const BOTTOM = { y: 10.5, h: 9 } as const;
+export const CORRIDOR_Y = 9.75;
+
+/** 위 줄 방은 아래 벽에, 아래 줄 방은 위 벽에 문이 있다 */
+function room(id: RoomId, name: string, departments: readonly string[], x: number, w: number, row: typeof TOP | typeof BOTTOM): Room {
+  const doorY = row === TOP ? row.y + row.h : row.y;
+  return { id, name, departments, x, y: row.y, w, h: row.h, door: { x: x + w / 2, y: doorY } };
+}
+
 export const ROOMS: Room[] = [
-  { id: 'dev', name: '개발팀', x: 0.5, y: 0.5, w: 7.75, h: 7, door: { x: 4.375, y: 7.5 } },
-  // 방 이름은 2-0 개편 부서를 따른다 (16장 7-5)
-  { id: 'plan', name: '기획실 · 품질보증', x: 8.75, y: 0.5, w: 6.5, h: 7, door: { x: 12, y: 7.5 } },
-  { id: 'ceo', name: 'CEO실', x: 15.75, y: 0.5, w: 7.75, h: 5.75, door: { x: 19.5, y: 6.25 } },
-  { id: 'mkt', name: '마케팅 · 리서치', x: 0.5, y: 9, w: 7.75, h: 6.5, door: { x: 4.375, y: 9 } },
-  { id: 'meeting', name: '회의실', x: 8.75, y: 9, w: 6.5, h: 6.5, door: { x: 12, y: 9 } },
-  { id: 'git', name: 'Git · 운영지원', x: 15.75, y: 9, w: 4, h: 6.5, door: { x: 17.75, y: 9 } },
-  { id: 'server', name: '서버실', x: 20.25, y: 9, w: 3.25, h: 6.5, door: { x: 21.875, y: 9 } },
+  room('dev', '개발팀', ['개발팀'], 0.5, 11.5, TOP),
+  room('qa', '품질보증팀', ['품질보증팀'], 12.5, 4.5, TOP),
+  room('plan', '기획실', ['기획실'], 17.5, 4.5, TOP),
+  room('ceo', 'CEO실', ['CEO실'], 22.5, 7, TOP),
+  room('mkt', '마케팅 · 콘텐츠팀', ['마케팅 · 콘텐츠팀'], 0.5, 7, BOTTOM),
+  room('research', '리서치 · 전략팀', ['리서치 · 전략팀'], 8, 4.5, BOTTOM),
+  room('meeting', '회의실', [], 13, 6, BOTTOM),
+  room('ops', '운영지원', ['운영지원'], 19.5, 6.5, BOTTOM),
+  room('server', '서버실', [], 26.5, 3, BOTTOM),
 ];
 
-export const CORRIDOR_Y = 8.25;
 /** 임시 직원이 드나드는 문 */
 export const ENTRANCE: Point = { x: 0.4, y: CORRIDOR_Y };
+/** 위치를 모를 때 서 있는 곳: 복도 가운데 */
+export const CORRIDOR_MID: Point = { x: GRID.w / 2, y: CORRIDOR_Y };
 
-/** 상시 직원 자리 */
+// 줄 높이: 발 위치. 뒷줄 이름표(두 줄)가 앞줄 그림과 겹치지 않게 3칸 넘게 띄운다
+const BACK_TOP = 4.4;
+const FRONT_TOP = 7.8;
+const BACK_BOTTOM = 14.2;
+const FRONT_BOTTOM = 17.6;
+
+/** 상시 직원 자리. 방은 부서를 따른다(map.test.ts가 확인) */
 export const DESKS: Record<string, Point> = {
-  developer: { x: 2.6, y: 4.8 },
-  reviewer: { x: 6.0, y: 4.8 },
-  // 개발자 A·B (GPT, 7-3): 개발팀 방 위쪽
-  'dev-a': { x: 2.6, y: 2.2 },
-  'dev-b': { x: 6.0, y: 2.2 },
-  pm: { x: 10.4, y: 4.4 },
-  'qa-local': { x: 13.6, y: 4.4 },
-  'chief-of-staff': { x: 17.4, y: 4.6 },
-  marketing: { x: 2.6, y: 13.2 },
-  strategy: { x: 6.0, y: 13.2 },
-  'git-cat': { x: 17.0, y: 12.8 },
-  // 로컬 보조 직원 (16장 7-5): 각 부서 방
-  'diff-summarizer': { x: 7.3, y: 6.4 },
-  'retro-scribe': { x: 10.4, y: 2.0 },
-  explainer: { x: 20.0, y: 2.2 },
-  briefer: { x: 22.2, y: 4.6 },
-  drafter: { x: 1.5, y: 11.0 },
-  'commit-scribe': { x: 18.6, y: 14.4 },
-  interpreter: { x: 21.9, y: 14.4 },
+  // 개발팀: 개발팀장(가운데, 한 칸 위) · 개발자 A · 개발자 B, 앞줄 변경 요약가
+  developer: { x: 6.25, y: 3.7 },
+  'dev-a': { x: 2.4, y: 4.9 },
+  'dev-b': { x: 10.1, y: 4.9 },
+  'diff-summarizer': { x: 4.3, y: FRONT_TOP },
+  // 품질보증팀: 리뷰어(팀장) · 교정 담당
+  reviewer: { x: 14.75, y: BACK_TOP },
+  'qa-local': { x: 14.75, y: FRONT_TOP },
+  // 기획실: 기획실장 · 회고 서기
+  pm: { x: 19.75, y: BACK_TOP },
+  'retro-scribe': { x: 19.75, y: FRONT_TOP },
+  // CEO실: 비서실장, 보고 초안가 · 막힘 해설가 (CEO 책상은 위쪽 가운데)
+  'chief-of-staff': { x: 25, y: 5.4 },
+  briefer: { x: 24, y: 8.1 },
+  explainer: { x: 27.8, y: 8.1 },
+  // 마케팅 · 콘텐츠팀: 카피라이터(팀장) · 초안 작가
+  marketing: { x: 4, y: BACK_BOTTOM },
+  drafter: { x: 2.1, y: FRONT_BOTTOM },
+  // 리서치 · 전략팀: 전략가 (앞줄은 검색 사서 자리, 지금은 방문 자리)
+  strategy: { x: 10.25, y: BACK_BOTTOM },
+  // 운영지원: Git 고양이, 커밋 서기, 거울 통역사
+  'git-cat': { x: 21.1, y: BACK_BOTTOM },
+  'commit-scribe': { x: 24.6, y: BACK_BOTTOM },
+  interpreter: { x: 21.1, y: FRONT_BOTTOM },
 };
 
 /** 임시 직원 자리 (스프라이트 세트 temp-1 … temp-4 순서) */
 export const TEMP_SLOTS: Point[] = [
-  { x: 4.3, y: 11.6 },
-  { x: 12.0, y: 6.0 },
-  { x: 7.1, y: 11.6 },
-  { x: 4.3, y: 2.8 },
+  { x: 5.7, y: FRONT_BOTTOM },
+  { x: 10.25, y: FRONT_BOTTOM },
+  { x: 8.4, y: FRONT_TOP },
+  { x: 16, y: 18.3 },
 ];
 
 export const MEETING_CHAIRS: Point[] = [
-  { x: 10.8, y: 12.6 },
-  { x: 13.2, y: 12.6 },
+  { x: 14.2, y: 15.8 },
+  { x: 17.8, y: 15.8 },
 ];
 
-export const CEO_DESK: Point = { x: 20.6, y: 3.4 };
+export const CEO_DESK: Point = { x: 26, y: 2.6 };
 // 결재함: CEO실 문 앞 복도 (12장 "문 앞 결재함")
-export const APPROVAL_TRAY: Point = { x: 20.9, y: 7.0 };
-export const MAILBOX: Point = { x: 19.0, y: 14.6 };
+export const APPROVAL_TRAY: Point = { x: 27.4, y: 9.6 };
+export const MAILBOX: Point = { x: 24.6, y: 18.2 };
 export const RACKS: Point[] = [
-  { x: 21.2, y: 11.0 },
-  { x: 22.6, y: 11.0 },
+  { x: 27.3, y: 13.2 },
+  { x: 28.7, y: 13.2 },
 ];
+/** 올라간 로컬 모델 이름 */
+export const MODEL_NOTE: Point = { x: 28, y: 18.6 };
+/** 예산 게이지: 지도 오른쪽 가장자리 */
+export const BUDGET_GAUGE = { x: 29.62, y: 1, h: 7 } as const;
 
 export function roomAt(p: Point): Room | null {
   return ROOMS.find((r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) ?? null;
+}
+
+/** 이 부서가 앉는 방. 모르는 부서(임시 직원 등)는 null */
+export function roomOfDepartment(department: string): Room | null {
+  return ROOMS.find((r) => r.departments.includes(department)) ?? null;
 }
 
 /** p에서 q로 걷는 경유 지점들 (p 제외, q 포함) */

@@ -13,8 +13,6 @@ export interface AssistantSpec {
   priority: number;
   does: string[];
   never: string[];
-  /** 캐릭터 그림이 아직 없어 빌려 쓰는 그림 */
-  spriteSet: string;
 }
 
 const COMMON_NEVER = ['상태 변경·결재·합격 판정을 하지 않는다(참고용 글만 쓴다)', '파일 수정이나 명령 실행을 하지 않는다', '모르는 사실은 지어내지 않는다'];
@@ -28,7 +26,6 @@ export const ASSISTANTS: readonly AssistantSpec[] = [
     priority: QUEUE_PRIORITY.urgent,
     does: ['#막힘 알림을 주인이 바로 이해하게 무엇이 멈췄는지, 왜인지, 다음에 무엇을 누르면 되는지 2~3줄로 쓴다', '버튼 이름은 알림에 있는 그대로 쓴다'],
     never: COMMON_NEVER,
-    spriteSet: 'chief-of-staff',
   },
   {
     id: 'diff-summarizer',
@@ -38,7 +35,6 @@ export const ASSISTANTS: readonly AssistantSpec[] = [
     priority: QUEUE_PRIORITY.urgent,
     does: ['푸시 결재 전에 바뀐 코드를 한국어 5줄 이내로 요약한다. 무엇이 추가·변경·삭제됐는지, 사용자에게 보이는 차이를 먼저'],
     never: COMMON_NEVER,
-    spriteSet: 'reviewer',
   },
   {
     id: 'interpreter',
@@ -48,7 +44,6 @@ export const ASSISTANTS: readonly AssistantSpec[] = [
     priority: QUEUE_PRIORITY.background,
     does: ['직원끼리 주고받은 JSON(작업 제출, 검토, 교정, 회의 발언)을 #사무실-대화에 올릴 자연스러운 한국어 몇 문장으로 바꾼다', '판정·통과·반려 같은 결과는 원문 그대로 옮긴다'],
     never: COMMON_NEVER,
-    spriteSet: 'temp-1',
   },
   {
     id: 'commit-scribe',
@@ -58,7 +53,6 @@ export const ASSISTANTS: readonly AssistantSpec[] = [
     priority: QUEUE_PRIORITY.normal,
     does: ['커밋 메시지 초안(종류·범위·요약)만 쓴다. 형식은 회사 코드가 맞춘다'],
     never: ['git 명령을 실행하지 않는다', '요약에 티켓 번호나 줄바꿈을 넣지 않는다'],
-    spriteSet: 'git-cat',
   },
   {
     id: 'retro-scribe',
@@ -68,7 +62,6 @@ export const ASSISTANTS: readonly AssistantSpec[] = [
     priority: QUEUE_PRIORITY.background,
     does: ['티켓·주간 회고 초안과 규칙 후보 초안을 쓴다. 확인은 GPT 리뷰어가 한다', '실수한 직원보다 앞단에서 막는 규칙을 먼저 찾는다'],
     never: COMMON_NEVER,
-    spriteSet: 'pm',
   },
   {
     id: 'briefer',
@@ -78,7 +71,6 @@ export const ASSISTANTS: readonly AssistantSpec[] = [
     priority: QUEUE_PRIORITY.normal,
     does: ['비서실장 보고가 없을 때 회사 데이터로 정기 보고문 초안을 쓴다. 숫자와 티켓 번호는 데이터에 있는 것만 쓴다'],
     never: COMMON_NEVER,
-    spriteSet: 'chief-of-staff',
   },
   {
     id: 'drafter',
@@ -88,7 +80,6 @@ export const ASSISTANTS: readonly AssistantSpec[] = [
     priority: QUEUE_PRIORITY.normal,
     does: ['자리표시 문구, 예시 데이터, 번역 초안을 쓴다. 결과물은 나중에 사람이나 카피라이터가 다듬을 초안이다', '모르는 정보는 [자리표시]로 남긴다'],
     never: ['파일 수정이나 명령 실행을 하지 않는다', '초안을 완성본처럼 꾸미지 않는다'],
-    spriteSet: 'marketing',
   },
 ];
 

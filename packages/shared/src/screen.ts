@@ -1,12 +1,18 @@
 // 사무실 화면 데이터 (12장 데이터 흐름). 화면 서버와 화면(UI)이 같이 쓰는 형식.
 import type { EmployeeRole, PauseReason, TempKind, TicketStatus, TicketType } from './domain.ts';
 
+/** 개편 조직도(2-0)의 직급: 팀장, 팀원, 로컬 보조 직원, 임시 직원 */
+export type StaffRank = 'lead' | 'member' | 'assistant' | 'temp';
+
 export interface ScreenEmployee {
   id: string;
   displayName: string;
   role: EmployeeRole;
   department: string;
-  /** 두뇌 이름 (화면 이름표용): 'Claude Code', 'Codex', 'Qwen3-14B' … */
+  rank: StaffRank;
+  /** 한 줄 "하는 일" (2-0 표). 모르면 빈 문자열 */
+  job: string;
+  /** 두뇌 이름 (화면 이름표용): 'Claude', 'GPT', 'Gemma', '헤르메스 · Gemma', '코드' */
   brainLabel: string;
   spriteSet: string;
   isTemporary: boolean;

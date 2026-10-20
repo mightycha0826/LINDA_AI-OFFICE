@@ -43,7 +43,9 @@ export function messageSummary(content: string, max = 40): string {
         ?.replace(/^#+\s*/gm, '')
         .split('\n')
         .find((l) => l.trim());
-      const pick = str('summary') ?? (verdict ? [verdict, str('reason') ?? str('feedback')].filter(Boolean).join(': ') : null) ?? str('claim') ?? str('message') ?? doc ?? null;
+      // 교정 1차 점검·관문처럼 지적 목록만 있는 출력은 건수로 (원문 JSON이 말풍선에 보이지 않게)
+      const issues = Array.isArray(j.issues) ? (j.issues.length ? `지적 ${j.issues.length}건` : '지적 없음') : null;
+      const pick = str('summary') ?? (verdict ? [verdict, str('reason') ?? str('feedback')].filter(Boolean).join(': ') : null) ?? str('claim') ?? str('message') ?? doc ?? issues;
       if (pick) return clip(prefix && prefix.length < 20 ? `${prefix} ${pick}` : pick);
     } catch {
       /* JSON이 아니면 원문 */

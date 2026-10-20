@@ -12,6 +12,7 @@ import { systemClock } from '../clock.ts';
 import { makeConfig } from '../config.ts';
 import { emit, inTx, type Ctx } from '../context.ts';
 import { markCeoActive } from '../discord/presence.ts';
+import { LOCAL_MODEL } from '@ai-office/shared';
 import { pendingApprovals } from '../core/approvals.ts';
 import { openDb } from '../db/client.ts';
 import { orders, tickets } from '../db/schema.ts';
@@ -101,7 +102,6 @@ function every(ms: number, fn: () => Promise<unknown> | unknown) {
 
 const seenApproval = new Map<string, number>();
 const pushed = new Set<string>();
-let model = 'qwen3:14b';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const startedAt = new Date().toISOString();
@@ -127,11 +127,8 @@ every(1000, () => {
     setTimeout(() => inTx(ctx, (c) => emit(c, 'git.push', { ticketId: t.id, ok: true, branch: `feature/${t.id.toLowerCase()}` })), 3000);
   }
 });
-every(30_000, () => {
-  const to = model === 'qwen3:14b' ? 'gemma4:12b' : 'qwen3:14b';
-  inTx(ctx, (c) => emit(c, 'model.loaded', { from: model, to, loadMs: 8200 }));
-  model = to;
-});
+// 7-2부터 로컬 모델은 하나라 교체가 없다. 쉬다가 다시 올라오는 모습만 (Ollama는 쉬면 모델을 내린다)
+every(30_000, () => inTx(ctx, (c) => emit(c, 'model.loaded', { from: null, to: LOCAL_MODEL, loadMs: 8200 })));
 every(75_000, () => inTx(ctx, (c) => emit(c, 'employee.move', { employeeId: 'chief-of-staff', to: 'ceo', slot: 'demo' })));
 
 console.log(`사무실 화면 미리보기: http://127.0.0.1:${port}  (UI를 먼저 빌드: npm run build:screen)`);
