@@ -56,8 +56,10 @@ export const ConfigSchema = z
       binArgs: z.array(z.string()),
       timeoutMin: count,
       maxTurns: count,
-      /** 비우면 계정 기본 모델. 예: 'sonnet' (0단계 #5: 기본이 Opus라 한도를 빨리 씀) */
+      /** 비우면 계정 기본 모델. 2026-10-20 CEO 결정: Opus 5.5 (8장) */
       model: z.string(),
+      /** claude --effort. 비우면 CLI 기본. 2026-10-20 CEO 결정: medium (8장) */
+      effort: z.enum(['', 'low', 'medium', 'high', 'xhigh', 'max']),
     }),
     codex: z.object({
       bin: z.string().min(1),
@@ -195,7 +197,7 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
   paths: { wt: 'C:\\ai-office\\wt', data: 'C:\\ai-office\\data', repos: 'C:\\ai-office\\repos' },
   // num_ctx는 로컬 모델 태그(gemma4:12b-64k)와 같아야 Ollama가 다시 올리지 않는다 (7-2)
   ollama: { host: 'http://127.0.0.1:11434', numCtx: LOCAL_NUM_CTX, timeoutSec: 600, keepAlive: '30m', maxWaitSec: 120 },
-  claude: { bin: 'claude', binArgs: [], timeoutMin: 30, maxTurns: 40, model: '' },
+  claude: { bin: 'claude', binArgs: [], timeoutMin: 30, maxTurns: 40, model: 'claude-opus-5-5', effort: 'medium' },
   codex: { bin: 'codex', binArgs: [], timeoutMin: 15, promptVia: 'stdin', home: 'C:\\ai-office\\data\\codex-home', model: '', concurrency: 2 },
   tests: { timeoutMin: 15 },
   // 임시값. 0단계 #5와 첫 1~2주 운영으로 보정한다.

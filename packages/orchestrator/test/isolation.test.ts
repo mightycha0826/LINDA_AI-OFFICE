@@ -24,6 +24,16 @@ describe('Claude Code: 개인 설정 분리', () => {
     expect(args[args.indexOf('--model') + 1]).toBe('sonnet');
   });
 
+  it('기본은 CEO가 정한 Opus 5.5 · 노력 medium이고, 노력은 --effort로 넘긴다', () => {
+    const c = makeConfig({ ceoDiscordId: CEO });
+    expect(c.claude.model).toBe('claude-opus-5-5');
+    expect(c.claude.effort).toBe('medium');
+    const args = new ClaudeCodeBrain({ ...base, model: c.claude.model, effort: c.claude.effort }).buildArgs('research', files, {});
+    expect(args[args.indexOf('--model') + 1]).toBe('claude-opus-5-5');
+    expect(args[args.indexOf('--effort') + 1]).toBe('medium');
+    expect(new ClaudeCodeBrain(base).buildArgs('research', files, {})).not.toContain('--effort');
+  });
+
   it('Claude 앱이 넘긴 ANTHROPIC_BASE_URL 같은 세션 변수는 자식에게 가지 않는다', () => {
     const env = safeEnv({}, { PATH: 'x', ANTHROPIC_BASE_URL: 'http://127.0.0.1:1', CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'desktop' });
     expect(Object.keys(env)).not.toEqual(expect.arrayContaining(['ANTHROPIC_BASE_URL']));

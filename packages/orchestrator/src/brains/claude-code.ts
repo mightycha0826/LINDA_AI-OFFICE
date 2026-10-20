@@ -23,6 +23,8 @@ export interface ClaudeCodeOptions {
   dataDir: string;
   /** 비우면 계정 기본 모델 */
   model?: string;
+  /** --effort (low…max). 비우면 CLI 기본 */
+  effort?: string;
   /** 테스트용 가짜 CLI 설정 등. 비밀로 보이는 이름은 거부된다 */
   extraEnv?: Record<string, string>;
 }
@@ -116,6 +118,7 @@ export class ClaudeCodeBrain implements Brain {
       '--strict-mcp-config',
       '--disable-slash-commands',
       ...(this.o.model ? ['--model', this.o.model] : []),
+      ...(this.o.effort ? ['--effort', this.o.effort] : []),
       '--settings', files.settings,
       '--append-system-prompt-file', files.systemPrompt,
     ];

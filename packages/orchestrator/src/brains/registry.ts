@@ -38,6 +38,7 @@ export function createBrainRegistry(config: Config, opts: RegistryOptions = {}):
     wtRoot: config.paths.wt,
     dataDir: config.paths.data,
     ...(config.claude.model ? { model: config.claude.model } : {}),
+    ...(config.claude.effort ? { effort: config.claude.effort } : {}),
     ...env,
   });
   const codex = new CodexBrain({
