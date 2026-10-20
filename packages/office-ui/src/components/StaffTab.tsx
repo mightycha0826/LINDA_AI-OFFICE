@@ -1,23 +1,12 @@
 // 직원 탭: 개편 조직도(2-0)를 부서별로. 팀장 → 팀원 → 보조 직원 순, 지금 하는 일과 두뇌를 함께 보여 준다.
 // 지도가 작은 폰에서도 누가 무엇을 하는지 한눈에 보이게 한다. 누르면 직원 상세가 열린다.
-import { currentTicketOf, deriveEmployeeStatus, type ScreenEmployee, type Snapshot } from '@ai-office/shared';
+import { currentTicketOf, deriveEmployeeStatus, type Snapshot } from '@ai-office/shared';
 import { RANK_LABEL, STATUS_LABEL, WORK_LABEL } from '../format.ts';
-import { ROOMS } from '../map.ts';
+import { staffGroups } from '../staff.ts';
 
 interface Props {
   snapshot: Snapshot;
   onSelectEmployee: (id: string) => void;
-}
-
-const RANK_ORDER = { lead: 0, member: 1, assistant: 2, temp: 3 } as const;
-
-export function staffGroups(employees: ScreenEmployee[]): { title: string; members: ScreenEmployee[] }[] {
-  const here = employees.filter((e) => !e.leftAt);
-  const sorted = (xs: ScreenEmployee[]) => [...xs].sort((a, b) => RANK_ORDER[a.rank] - RANK_ORDER[b.rank] || a.displayName.localeCompare(b.displayName, 'ko'));
-  const groups = ROOMS.filter((r) => r.departments.length > 0).map((r) => ({ title: r.name, members: sorted(here.filter((e) => !e.isTemporary && r.departments.includes(e.department))) }));
-  const placed = new Set(groups.flatMap((g) => g.members.map((e) => e.id)));
-  const rest = sorted(here.filter((e) => !placed.has(e.id)));
-  return [...groups, { title: '방문 · 기타', members: rest }].filter((g) => g.members.length > 0);
 }
 
 export function StaffTab({ snapshot, onSelectEmployee }: Props) {
