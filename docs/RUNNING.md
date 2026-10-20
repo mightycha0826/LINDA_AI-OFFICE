@@ -51,12 +51,34 @@ http://127.0.0.1:8780 을 연다. 메모리 DB와 MockLLM으로 직원들이 천
   - `discord.guildId`, `discord.channels`(#비서실, #결재함, #보고, #막힘, #사무실-대화의 채널 ID)
   - 폰에서 화면을 보려면 `screen.hosts`와 `screen.allowedHostnames`에 Tailscale 주소·이름
   - `hermes.homeDir`: 헤르메스 데이터 폴더 (비우면 백업하지 않는다)
-- `secrets.json`: `discordToken`, `mirrorWebhookUrl`, `githubToken`, `internalApiToken`(처음 켤 때 자동으로 만든다).
+- `secrets.json`: `discordToken`, `mirrorWebhookUrl`, `githubToken`, `staffBotTokens`(직원 봇, 아래), `internalApiToken`(처음 켤 때 자동으로 만든다).
   - `githubToken`: 세분화된 토큰(fine-grained). `/새프로젝트`로 저장소를 자동으로 만들려면 **Repository access: All repositories**, 권한 **Administration: Read and write**, **Contents: Read and write**(Metadata는 자동). 회사는 DB에 등록된 저장소에만 푸시한다(DESIGN 11장, 2026-10-19 변경).
   - 시스템 봇(LINDA)은 `/새프로젝트`가 카테고리와 `#작업`을 만들 수 있게 서버에서 **채널 관리(Manage Channels)** 권한이 있어야 한다.
   - 값은 손으로 붙여 넣지 말고 `powershell -ExecutionPolicy Bypass -File scripts\set-secrets.ps1`로 넣는다(입력이 화면에 안 보이고, 형식을 검사하고, BOM 없는 UTF-8로 저장). GitHub 토큰까지 넣으려면 `-WithGithub`.
 
 설정 검사에 실패하면 무엇이 틀렸는지 알려 주고 켜지지 않는다.
+
+### 직원 봇 9개 만들기 (DESIGN 9장, 보여 주기 전용)
+
+정규 직원 9명(기획실장, 개발팀장, 개발자 A, 개발자 B, 리뷰어 · 감사관, 카피라이터, 전략가, 교정 담당, Git 고양이)이 #사무실-대화에 자기 계정으로 글을 올리고, 멤버 목록에 `T-3 작업 중` 같은 상태를 띄운다. 말을 걸어도 답하지 않는다. 지시는 지금처럼 #비서실과 `/지시`로만 한다. 토큰이 없는 직원은 지금처럼 웹훅 이름으로 보이니, 몇 명만 먼저 만들어도 된다.
+
+직원마다 아래를 한 번씩 한다.
+
+1. https://discord.com/developers/applications 에서 **New Application**을 누르고, 이름을 직원 이름(예: `기획실장`)으로 짓는다. 아이콘은 원하면 캐릭터 그림으로 바꾼다.
+2. 왼쪽 **Bot** 메뉴에서:
+   - **Public Bot**은 끈다.
+   - **Privileged Gateway Intents** 세 개(Presence, Server Members, Message Content)는 모두 **꺼 둔다**.
+   - **Reset Token**을 눌러 토큰을 복사한다. 바로 4번에서 붙여 넣고, 채팅이나 메모장 같은 다른 곳에는 붙이지 않는다.
+3. 왼쪽 **OAuth2 → URL Generator**에서:
+   - Scopes는 `bot` 하나만 고른다.
+   - Bot Permissions는 **View Channels**, **Send Messages in Threads**, **Read Message History** 세 개만 고른다. Administrator나 Send Messages는 고르지 않는다.
+   - 아래 생긴 URL을 열어 회사 서버에 초대한다.
+4. 9명을 다 만들었거나 일부만 만들었으면, 아래 명령으로 토큰을 넣는다. 직원 이름이 차례로 나오니 해당 토큰을 붙여 넣고, 없는 직원은 그냥 Enter를 누른다.
+   ```
+   powershell -ExecutionPolicy Bypass -File C:\ai-office\office\scripts\set-secrets.ps1 -WithStaffBots
+   ```
+   다른 값을 묻는 칸(Discord 봇 토큰, 웹훅 URL)은 비우고 Enter를 누르면 그대로 둔다.
+5. `pm2 restart ai-office`로 다시 켠다. 로그(`pm2 logs ai-office`)에 `직원 봇 연결: pm (기획실장#1234)`처럼 나오면 된다. `직원 봇 로그인 실패: …`가 나오면 그 직원의 토큰을 다시 넣는다.
 
 ## 5. 켜기
 

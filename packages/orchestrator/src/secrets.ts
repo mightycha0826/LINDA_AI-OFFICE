@@ -11,6 +11,8 @@ const SecretsSchema = z.object({
   internalApiToken: z.string().min(32),
   /** 등록 저장소에만 쓰기 권한이 있는 세분화된 토큰 (11장). Git 고양이가 푸시하는 순간에만 꺼낸다 */
   githubToken: z.string().min(20).optional(),
+  /** 직원 봇 토큰 (9장, 보여 주기 전용). 키는 직원 ID(STAFF_BOT_IDS). 주인이 set-secrets.ps1 -WithStaffBots로 넣는다 */
+  staffBotTokens: z.record(z.string(), z.string().min(50)).optional(),
 });
 export type Secrets = z.infer<typeof SecretsSchema>;
 

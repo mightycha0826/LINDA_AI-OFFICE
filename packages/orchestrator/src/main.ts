@@ -9,7 +9,8 @@ import { systemClock } from './clock.ts';
 import { DEFAULTS, loadConfig } from './config.ts';
 import { emit, type Ctx } from './context.ts';
 import { openDb } from './db/client.ts';
-import { startDiscordBot, type DiscordBot } from './discord/bot.ts';
+import { startDiscordBot, startStaffBots, type DiscordBot } from './discord/bot.ts';
+import { routeMirror, StaffPresence, type StaffBotPort } from './discord/staff-bots.ts';
 import { InteractionHandler } from './discord/interactions.ts';
 import { Mirror } from './discord/mirror.ts';
 import { Notifier } from './discord/notifier.ts';
@@ -58,14 +59,21 @@ let bot: DiscordBot | null = null;
 let notifier: Notifier | null = null;
 let mirror: Mirror | null = null;
 let reports: ReportService | null = null;
+let staffBots: StaffBotPort | null = null;
+let presence: StaffPresence | null = null;
 // /새프로젝트 (11장): 봇은 명령 처리기가 있어야 뜨므로, 채널 포트는 봇이 뜬 뒤에 꺼내 쓴다
 const newProjects = new NewProjectService({ c: ctx, gitcat, channels: () => bot?.projectChannels ?? null, discord: () => bot?.port ?? null, log });
 if (secrets.discordToken && config.discord.guildId) {
   bot = await startDiscordBot({ c: ctx, handler: new InteractionHandler(ctx, engine, log, gitcat, newProjects), token: secrets.discordToken, ...(secrets.mirrorWebhookUrl ? { webhookUrl: secrets.mirrorWebhookUrl } : {}), log });
   // 막힘 해설가·거울 통역사 (16장 7-5). 실패하면 해설·통역 없이 원래대로
   notifier = new Notifier(ctx, bot.port, log, async (notice) => (await engine.callAs('explainer', 'explain', ExplainOutputSchema, { notice }, { workdir: 'explain' }))?.lines ?? null);
+  // 직원 봇 9개 (9장, 보여 주기 전용). 토큰이 있는 직원만 뜨고, 없거나 실패한 직원의 거울 글은 웹훅으로
+  if (secrets.staffBotTokens && Object.keys(secrets.staffBotTokens).length) {
+    staffBots = await startStaffBots({ tokens: secrets.staffBotTokens, log });
+    presence = new StaffPresence(ctx, staffBots);
+  }
   mirror = bot.mirror
-    ? new Mirror(ctx, bot.mirror, { log, interpret: async (from, content) => (await engine.callAs('interpreter', 'interpret', InterpretOutputSchema, { from, content }, { workdir: 'interpret' }))?.text ?? null })
+    ? new Mirror(ctx, staffBots ? routeMirror(bot.mirror, staffBots, log) : bot.mirror, { log, interpret: async (from, content) => (await engine.callAs('interpreter', 'interpret', InterpretOutputSchema, { from, content }, { workdir: 'interpret' }))?.text ?? null })
     : null;
   reports = new ReportService(ctx, engine, bot.port);
 } else {
@@ -112,6 +120,7 @@ const timers = [
     const r = backupHermes(config, new Date());
     if (r.copied.length) log(`헤르메스 백업 ${r.date}: ${r.copied.join(', ')}`);
   }),
+  every(30_000, '직원 봇 상태', async () => presence?.tick()),
   every(60_000, '접속 상태·보고', async () => {
     refreshPresence(ctx);
     await reports?.fallbackIfMissing();
@@ -124,6 +133,7 @@ async function shutdown(): Promise<void> {
   for (const t of timers) clearInterval(t);
   api.close();
   for (const s of screens) s.close();
+  await staffBots?.stop();
   await bot?.stop();
   process.exit(0);
 }

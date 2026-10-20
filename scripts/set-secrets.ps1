@@ -1,7 +1,8 @@
 ﻿# 비밀 값 넣기 (주인이 PC 앞에서 직접 실행). 입력한 값은 화면에 보이지 않고, C:\ai-office\data\secrets.json에만 저장된다.
 #   powershell -ExecutionPolicy Bypass -File C:\ai-office\office\scripts\set-secrets.ps1
+#   직원 봇 9개 토큰(9장, 보여 주기 전용)은 -WithStaffBots, GitHub 토큰은 -WithGithub를 붙인다.
 # 비워 두고 Enter를 누르면 그 값은 바꾸지 않는다. 채팅이나 다른 곳에 붙여 넣지 않는다.
-param([string]$DataDir = 'C:\ai-office\data', [switch]$WithGithub)
+param([string]$DataDir = 'C:\ai-office\data', [switch]$WithGithub, [switch]$WithStaffBots)
 
 $file = Join-Path $DataDir 'secrets.json'
 $secrets = [ordered]@{}
@@ -33,6 +34,26 @@ foreach ($it in $items) {
     if (& $it.ok $v) { $secrets[$it.key] = $v; Write-Host "  저장할게요: $($it.key)"; break }
     Write-Host '  형식이 맞지 않아요. 다시 붙여 넣어 주세요 (비우고 Enter = 건너뛰기).'
   }
+}
+
+if ($WithStaffBots) {
+  # 직원 ID는 오케스트레이터 STAFF_BOT_IDS(discord/staff-bots.ts)와 같아야 한다
+  $staff = [ordered]@{ 'pm' = '기획실장'; 'developer' = '개발팀장'; 'dev-a' = '개발자 A'; 'dev-b' = '개발자 B'; 'reviewer' = '리뷰어 · 감사관'; 'marketing' = '카피라이터'; 'strategy' = '전략가'; 'qa-local' = '교정 담당'; 'git-cat' = 'Git 고양이' }
+  $bots = [ordered]@{}
+  if ($secrets.Contains('staffBotTokens') -and $secrets['staffBotTokens']) {
+    foreach ($p in $secrets['staffBotTokens'].PSObject.Properties) { $bots[$p.Name] = $p.Value }
+  }
+  foreach ($id in $staff.Keys) {
+    $state = if ($bots.Contains($id)) { '이미 있음, 비우면 그대로' } else { '없음' }
+    while ($true) {
+      $v = Read-Secret "직원 봇 토큰: $($staff[$id]) ($id) [$state]"
+      if ($v -eq '') { break }
+      if ($v -eq $secrets['discordToken'] -or @($bots.Values) -contains $v) { Write-Host '  이미 다른 봇에 쓴 토큰이에요. 직원마다 새 앱을 만들어 그 봇 토큰을 넣어 주세요.'; continue }
+      if ($v.Length -ge 50 -and $v -notmatch '\s') { $bots[$id] = $v; Write-Host "  저장할게요: staffBotTokens.$id"; break }
+      Write-Host '  형식이 맞지 않아요. 다시 붙여 넣어 주세요 (비우고 Enter = 건너뛰기).'
+    }
+  }
+  $secrets['staffBotTokens'] = $bots
 }
 
 New-Item -ItemType Directory -Force $DataDir | Out-Null

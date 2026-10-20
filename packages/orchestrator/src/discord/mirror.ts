@@ -1,5 +1,5 @@
 // #사무실-대화 거울 (9장 ⑦). AI끼리 대화는 오케스트레이터 안에서 하고, Discord에는 복사해서 보여주기만 한다.
-// - 티켓마다 스레드 하나. 웹훅으로 메시지마다 직원 이름을 붙인다.
+// - 티켓마다 스레드 하나. 정규 직원 9명은 자기 직원 봇으로, 나머지는 웹훅에 직원 이름을 붙여 올린다(staff-bots.ts).
 // - 긴 내용은 앞부분과 사무실 화면 링크만. 회의록은 스레드 끝에 올린다.
 // - 묶어서 보낸다: 한 번에 최대 maxPerFlush개 (Discord 전송 제한).
 // - 이 채널에 사람이 답해도 지시로 처리하지 않는다 (봇이 이 채널의 메시지를 읽지 않는다).
@@ -71,7 +71,7 @@ export class Mirror {
           const threadId = m && (await this.thread(p.ticketId));
           if (m && threadId) {
             const content = (await this.readable(m.fromId, m.content)) ?? m.content;
-            await this.port.post(threadId, { username: this.name(m.fromId), content: clip(content, c.config.mirror.maxChars, c.config.screenUrl, p.ticketId) });
+            await this.port.post(threadId, { username: this.name(m.fromId), employeeId: m.fromId, content: clip(content, c.config.mirror.maxChars, c.config.screenUrl, p.ticketId) });
             sent++;
           }
         } else if (ev.type === 'meeting.minutes' && typeof p.ticketId === 'string') {

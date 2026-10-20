@@ -5,6 +5,7 @@
 // - 멘션은 주인 한 명만 허용한다(allowedMentions).
 import {
   ActionRowBuilder,
+  ActivityType,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -23,10 +24,12 @@ import {
   type ChatInputCommandInteraction,
   type ModalSubmitInteraction,
   type TextChannel,
+  type ThreadChannel,
 } from 'discord.js';
 import type { Ctx } from '../context.ts';
 import { SLASH_COMMANDS, type InteractionHandler } from './interactions.ts';
 import { onDiscordMessage } from '../chief/order-message.ts';
+import { STAFF_BOT_IDS, type StaffBotPort } from './staff-bots.ts';
 import type { Button, ChannelKey, DiscordPort, InteractionReply, MirrorPort, OutgoingMessage, ProjectChannelPort } from './types.ts';
 
 const STYLE: Record<Button['style'], ButtonStyle> = {
@@ -180,6 +183,52 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
     async stop() {
       webhook?.destroy();
       await client.destroy();
+    },
+  };
+}
+
+/**
+ * 직원 봇 9개 (9장, 보여 주기 전용). 인텐트는 Guilds만이고 이벤트 처리기를 하나도 달지 않는다:
+ * 직원 봇에게 말하거나 멘션해도 아무 일도 일어나지 않는다. 토큰은 로그에 남기지 않는다.
+ * 로그인에 실패한 직원은 빠지고(그 직원 글은 웹훅으로), 나머지는 그대로 뜬다.
+ */
+export async function startStaffBots(o: { tokens: Partial<Record<string, string>>; log: (s: string) => void }): Promise<StaffBotPort> {
+  const clients = new Map<string, Client<true>>();
+  await Promise.all(
+    STAFF_BOT_IDS.map(async (id) => {
+      const token = o.tokens[id];
+      if (!token) return;
+      const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+      try {
+        const ready = new Promise<Client<true>>((resolve, reject) => {
+          client.once(Events.ClientReady, resolve);
+          setTimeout(() => reject(new Error('30초 안에 연결되지 않음')), 30_000).unref();
+        });
+        await client.login(token);
+        const c = await ready;
+        clients.set(id, c);
+        o.log(`직원 봇 연결: ${id} (${c.user.tag})`);
+      } catch (err) {
+        o.log(`직원 봇 로그인 실패: ${id} (${(err as Error).name})`);
+        await client.destroy();
+      }
+    }),
+  );
+  return {
+    has: (id) => clients.has(id),
+    async post(id, threadId, content) {
+      const client = clients.get(id);
+      if (!client) throw new Error(`직원 봇 없음: ${id}`);
+      const ch = (await client.channels.fetch(threadId)) as ThreadChannel | null;
+      if (!ch?.isThread()) throw new Error(`스레드를 찾을 수 없음: ${threadId}`);
+      await ch.send({ content: fit(content), allowedMentions: { parse: [] } });
+    },
+    async setStatus(id, text) {
+      clients.get(id)?.user.setPresence({ status: text === '대기 중' ? 'idle' : 'online', activities: [{ name: text, state: text, type: ActivityType.Custom }] });
+    },
+    async stop() {
+      await Promise.all([...clients.values()].map((c) => c.destroy()));
+      clients.clear();
     },
   };
 }

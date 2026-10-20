@@ -28,10 +28,11 @@ export interface DiscordPort {
   edit(channel: ChannelKey, messageId: string, msg: { content: string; buttons?: Button[][] }): Promise<void>;
 }
 
-/** #사무실-대화 거울 (9장 ⑦). 웹훅으로 메시지마다 직원 이름을 붙인다 */
+/** #사무실-대화 거울 (9장 ⑦). 직원 봇이 있으면 그 봇으로, 없으면 웹훅에 직원 이름을 붙여 올린다 */
 export interface MirrorPort {
   ensureThread(ticketId: string, title: string): Promise<string>;
-  post(threadId: string, m: { username: string; content: string }): Promise<void>;
+  /** employeeId: 보낸 직원. 직원 봇으로 보낼지 정할 때 쓴다(회의록·회사 시스템은 없음) */
+  post(threadId: string, m: { username: string; content: string; employeeId?: string }): Promise<void>;
 }
 
 /** /새프로젝트의 Discord 작업 공간: 카테고리 <프로젝트> › #작업 (9장). 시스템 봇에 채널 관리 권한이 필요하다 */
