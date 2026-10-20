@@ -31,6 +31,15 @@ const ASSISTANT_JOBS: Record<string, string> = {
   drafter: '글쓰기·마케팅 티켓의 초안',
 };
 
+/** 정해진 개인 이름 (13장 증명사진). 화면의 직원 상세에만 쓴다. 지도 이름표·Discord·역할 카드는 직함 그대로 */
+const PERSONAL_NAMES: Record<string, string> = {
+  'chief-of-staff': '백서진', // 2026-10-21 CEO
+};
+
+export function personalNameOf(id: string): string | null {
+  return PERSONAL_NAMES[id] ?? null;
+}
+
 export function rankOf(id: string, isTemporary: boolean): StaffRank {
   if (isTemporary) return 'temp';
   if ((TEAM_LEADS as readonly string[]).includes(id)) return 'lead';

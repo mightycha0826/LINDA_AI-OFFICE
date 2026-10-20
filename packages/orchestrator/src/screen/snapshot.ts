@@ -7,7 +7,7 @@ import { approvals, employees, events, meetingMinutes, messages, tickets, usage 
 import { isCeoPresent } from '../discord/presence.ts';
 import { localTime, nextCheckTime } from '../discord/schedule.ts';
 import { approvalLink } from '../reports.ts';
-import { jobOf, rankOf } from '../staff/org.ts';
+import { jobOf, personalNameOf, rankOf } from '../staff/org.ts';
 
 /** 이름표의 두뇌 이름. 조직도(2-0)의 말로 짧게: Claude·GPT·Gemma (자세한 모델은 자원 탭) */
 export function brainLabel(id: string, b: Brain): string {
@@ -74,6 +74,9 @@ export function buildSnapshot(c: Ctx, extras: SnapshotExtras): Snapshot {
       department: e.department,
       rank: rankOf(e.id, e.isTemporary),
       job: jobOf(e.id),
+      personalName: personalNameOf(e.id),
+      // 증명사진은 화면 서버가 assets 폴더를 보고 채운다 (http/screen-server.ts withPortraits)
+      portrait: null,
       brainLabel: brainLabel(e.id, e.brain),
       spriteSet: e.spriteSet,
       isTemporary: e.isTemporary,

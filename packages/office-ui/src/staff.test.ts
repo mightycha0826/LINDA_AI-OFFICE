@@ -9,6 +9,8 @@ const emp = (id: string, department: string, rank: ScreenEmployee['rank'], over:
   department,
   rank,
   job: '',
+  personalName: null,
+  portrait: null,
   brainLabel: 'GPT',
   spriteSet: id,
   isTemporary: rank === 'temp',

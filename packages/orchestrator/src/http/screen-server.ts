@@ -2,13 +2,14 @@
 // - GET/HEAD만 받는다. 쓰기 API는 없다. 결재와 푸시는 Discord에서만.
 // - localhost와 설정한 Tailscale 주소에서만 연다. Host 머리글도 확인한다(DNS 재바인딩 방지).
 // - GET /snapshot: 현재 전체 상태, GET /events: SSE(순번 = events.seq, Last-Event-ID로 이어 받기),
-//   GET /tickets/<id>: 티켓 상세. 나머지는 화면 파일(office-ui/dist), /point/는 포인트 디자인 시스템, /assets/는 캐릭터 그림.
+//   GET /tickets/<id>: 티켓 상세. 나머지는 화면 파일(office-ui/dist), /point/는 포인트 디자인 시스템, /assets/는 캐릭터 그림·증명사진.
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, resolve } from 'node:path';
 import { gt } from 'drizzle-orm';
 import type { Ctx } from '../context.ts';
 import { events } from '../db/schema.ts';
+import type { Snapshot } from '@ai-office/shared';
 import { buildSnapshot, buildTicketDetail, type SnapshotExtras } from '../screen/snapshot.ts';
 import { isInside } from '../workspace/paths.ts';
 
@@ -19,6 +20,9 @@ const TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',
   '.ico': 'image/x-icon',
@@ -39,7 +43,7 @@ export interface ScreenServerOptions {
   staticDir: string;
   /** design-systems/point */
   pointDir: string;
-  /** assets (characters/<세트>/…) */
+  /** assets (characters/<세트>/…, portraits/<직원 ID>.webp) */
   assetsDir: string;
   extras: () => Promise<SnapshotExtras> | SnapshotExtras;
   /** SSE가 새 이벤트를 확인하는 간격 */
@@ -50,6 +54,21 @@ export interface ScreenServerOptions {
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...SECURITY_HEADERS });
   res.end(JSON.stringify(body));
+}
+
+const PORTRAIT_EXTS = ['.webp', '.png', '.jpg', '.jpeg'] as const;
+
+/** 증명사진 (13장): assets/portraits/<직원 ID>.(webp|png|jpg) 중 처음 찾은 것의 주소 */
+export function portraitOf(assetsDir: string, employeeId: string): string | null {
+  if (!/^[\w-]+$/.test(employeeId)) return null;
+  for (const ext of PORTRAIT_EXTS) {
+    if (existsSync(join(assetsDir, 'portraits', employeeId + ext))) return `/assets/portraits/${employeeId}${ext}`;
+  }
+  return null;
+}
+
+function withPortraits(snap: Snapshot, assetsDir: string): Snapshot {
+  return { ...snap, employees: snap.employees.map((e) => ({ ...e, portrait: portraitOf(assetsDir, e.id) })) };
 }
 
 function sendFile(res: ServerResponse, root: string, rel: string, head: boolean): boolean {
@@ -79,7 +98,7 @@ export function screenHandler(o: ScreenServerOptions) {
       const url = new URL(req.url ?? '/', 'http://screen');
       const path = decodeURIComponent(url.pathname);
 
-      if (path === '/snapshot') return sendJson(res, 200, buildSnapshot(o.c, await o.extras()));
+      if (path === '/snapshot') return sendJson(res, 200, withPortraits(buildSnapshot(o.c, await o.extras()), o.assetsDir));
       const tm = /^\/tickets\/(T-\d+)$/.exec(path);
       if (tm) {
         const d = buildTicketDetail(o.c, tm[1]!);

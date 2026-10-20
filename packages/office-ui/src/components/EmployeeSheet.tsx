@@ -1,4 +1,5 @@
-// 직원 상세 (12장: 직원을 누르면 PC는 오른쪽, 폰은 아래에서 올라온다). 부서 · 직급, 하는 일, 두뇌, 지금 티켓.
+// 직원 상세 (12장: 직원을 누르면 PC는 오른쪽, 폰은 아래에서 올라온다).
+// 맨 위에 증명사진(13장, assets/portraits/<직원 ID>)과 개인 이름·직함, 그 아래 하는 일, 두뇌, 지금 티켓.
 import type { ScreenEmployee, ScreenTicket } from '@ai-office/shared';
 import { RANK_LABEL, STATUS_LABEL } from '../format.ts';
 import { Sheet } from './Sheet.tsx';
@@ -11,13 +12,28 @@ interface Props {
 }
 
 export function EmployeeSheet({ employee: e, ticket, onClose, onOpenTicket }: Props) {
+  const name = e.personalName ?? e.displayName;
   return (
-    <Sheet title={e.displayName} onClose={onClose}>
+    <Sheet title={e.personalName ? `${e.personalName} · ${e.displayName}` : e.displayName} onClose={onClose}>
+      <div className="ao-profile">
+        <figure className="ao-portrait">
+          {e.portrait ? (
+            <img src={e.portrait} alt={`${name} 증명사진`} />
+          ) : (
+            <span className="material-symbols-rounded" role="img" aria-label="증명사진 없음">
+              person
+            </span>
+          )}
+        </figure>
+        <div className="ao-profile__text">
+          <p className="ao-profile__name">{name}</p>
+          {e.personalName && <p className="ao-profile__title">{e.displayName}</p>}
+          <p className="ao-profile__title">
+            {e.department} · {RANK_LABEL[e.rank]}
+          </p>
+        </div>
+      </div>
       <dl className="ao-dl">
-        <dt>부서</dt>
-        <dd>
-          {e.department} · {RANK_LABEL[e.rank]}
-        </dd>
         {e.job && (
           <>
             <dt>하는 일</dt>

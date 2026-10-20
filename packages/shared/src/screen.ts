@@ -12,6 +12,10 @@ export interface ScreenEmployee {
   rank: StaffRank;
   /** 한 줄 "하는 일" (2-0 표). 모르면 빈 문자열 */
   job: string;
+  /** 개인 이름 (예: 비서실장 = 백서진). 아직 없으면 null. 직원 상세에만 쓴다 */
+  personalName: string | null;
+  /** 증명사진 주소 (/assets/portraits/<id>.webp). 화면 서버가 파일이 있을 때만 채운다 (13장) */
+  portrait: string | null;
   /** 두뇌 이름 (화면 이름표용): 'Claude', 'GPT', 'Gemma', '헤르메스 · Gemma', '코드' */
   brainLabel: string;
   spriteSet: string;

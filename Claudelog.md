@@ -52,7 +52,7 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5. 7-2부터 로컬 두뇌는 `gemma4:12b-64k` 하나(헤르메스·오케스트레이터 공용, num_ctx 65536). qwen3:14b·gemma4:12b 파일은 아직 디스크에 있음(지울지는 주인 결정). C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 512개 통과, typecheck·lint:ds 깨끗하다.
+- **테스트**: `npm test` 517개 통과, typecheck·lint:ds 깨끗하다.
 - **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 그 뒤 커밋(64K 원인, 0단계 결과, 메시지 ID 기록)은 로컬에만 있다.
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
@@ -72,6 +72,7 @@
 | Claude 두뇌 Opus 5.5 · 노력 medium (CEO 결정 10-20) | `config.claude.model`=`claude-opus-5-5`, `config.claude.effort`=`medium`, `claude -p --effort`. 실제 CLI 응답 확인 | DESIGN 8장, `brains/claude-code.ts`, `test/isolation.test.ts` |
 | 직원 봇 9개 (CEO 결정 10-20, 보여 주기 전용) | 정규 직원 9명이 자기 봇으로 #사무실-대화 거울 글과 상태 글(`T-3 작업 중`). 인텐트 Guilds만, 처리기 없음, 실패하면 웹훅. 토큰은 주인이 `set-secrets.ps1 -WithStaffBots` | DESIGN 9장, `discord/staff-bots.ts`, `test/staff-bots.test.ts`, RUNNING 4장 |
 | 화면을 2-0 조직도에 맞춤 + 엔진 리팩터링 (주인 부재 중, AUTONOMOUS-LOG 76-A~I) | 지도 30×20·부서별 방·인원, 팀장 별·보조 80%, 직원 탭, 자기 색 임시 그림, 기획 몫·GPT 몫 이름. 리뷰어 → 품질보증팀, Git 고양이 → 운영지원. engine.ts를 호출 계층·계획·티켓 단계로 분리(동작 그대로). 14:47 운영 반영 | DESIGN 12장, `office-ui/src/map.ts`, `staff/org.ts`, `src/engine/`, `test/org-screen.test.ts` |
+| 증명사진 (CEO 요청 10-21) | 직원을 누르면 상세 맨 위에 증명사진(`assets/portraits/<직원 ID>.webp`, 없으면 빈 틀)과 개인 이름. 비서실장 = 백서진(CEO). 지도 이름표·Discord는 직함 그대로. 로그 탭에서 다른 탭으로 가면 화면이 멈추던 문제도 고침 | DESIGN 12·13장, `EmployeeSheet.tsx`, `http/screen-server.ts` portraitOf, `test/portraits.test.ts` |
 | 비밀 파일 읽기 막기 (별도 세션, b3295f3) | Codex 샌드박스 계정(CodexSandboxOffline, 그룹 CodexSandboxUsers)이 secrets.json·codex-homeauth.json을 읽을 수 있음을 canary로 확인. 막기·되돌리기 스크립트 준비, Claude 데이터 폴더 거부 규칙. **주인이 `scriptsprotect-secrets.ps1 -IncludeCodexAuth` 실행 필요**(아직 안 함) | DESIGN 7장 비밀 파일 읽기 |
 | 7-4: 전략가·카피라이터를 GPT로, 교정 1차 점검 | GPT 직원도 웹 도구 없이 오케스트레이터가 SearXNG로 대신 검색(Codex --search는 읽기 명령+검색어로 비밀이 샐 길이 있어 안 씀). 문서 티켓은 검토 전에 교정 담당(Gemma)이 지적 목록(판정 아님), 실패해도 안 멈춤. 리서치 몫은 기획실장만. 10-20 00:37 pm2 재시작으로 운영 반영(비밀 파일 세션의 Claude 거부 규칙 b3295f3도 함께) | DESIGN 15·16장, `engine/ticket-work.ts` proofread, `test/org-7-4.test.ts` |
 | 7-3 완료: GPT 개발자 A·B(Codex) | Codex 쓰기는 개발자의 티켓 작업이 정확히 그 티켓 worktree일 때만(`codexSandboxFor`), 네트워크 끔, `--add-dir`·샌드박스 끄기 옵션 없음. GPT 코드는 개발팀장(Claude), 개발팀장 코드는 리뷰어(GPT), 로컬은 코드 판정 안 함. Codex 동시 2. 진짜 Codex로 안 쓰기 성공·밖 쓰기 거부·인터넷 차단 확인 | DESIGN 7장 7-3, `brains/codex.ts`, `test/org-7-3.test.ts`, RESULTS 7-3 |
@@ -127,7 +128,7 @@ Discord 명령: `/지시`, `/보고`, `/상태 T-n`, `/push T-n`, `/되돌리기
 5. **재부팅 대비** (주인): 자동 로그인, 업데이트 자동 재시작 막기. pm2(`AI_Office_pm2`)·헤르메스(`Hermes_Gateway`) 작업은 등록됨.
 6. **SearXNG(#10)**: 주인이 `wsl --install`과 재부팅 → Claude가 Docker·SearXNG 설치와 연결. 그전엔 GPT 직원 웹 근거가 비어 있다.
 7. **정리**: Qwen 모델 지우기(`ollama rm qwen3:14b`, 주인 승인), 교정 담당이 대괄호 안 공백 같은 형식 실수를 놓친 것 보완.
-8. **주인**: 직원 봇 9개 만들기(RUNNING 4장 "직원 봇 9개 만들기", 토큰은 `set-secrets.ps1 -WithStaffBots`). 결정 대기: 화면 비서실장 이름 "백서진".
+8. **주인**: 직원 봇 9개 만들기(RUNNING 4장 "직원 봇 9개 만들기", 토큰은 `set-secrets.ps1 -WithStaffBots`).
 9. 캐릭터 그림(개발자 A·B, 보조 직원 7명 포함), 화면 임시 초안(`point.extra.css`) 결재, #8 밤 재측정, 헤르메스를 켠 상태로 #3 RAM 재측정.
 
 ## 8. 커밋 흐름 (요약)
