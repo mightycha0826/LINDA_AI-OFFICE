@@ -5,6 +5,7 @@
 import { inArray } from 'drizzle-orm';
 import { isStopped, type Ctx } from '../context.ts';
 import { tickets } from '../db/schema.ts';
+import { CHAT_PERSONAS } from '../staff/chat-personas.ts';
 import { STAFF_BOT_IDS, staffStatus } from './staff-bots.ts';
 
 /** 주인 메시지에서 AI에게 넘기는 최대 글자 수 */
@@ -31,7 +32,7 @@ export function cleanMessage(content: string): string {
   return content.replace(/<@[!&]?\d+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_INPUT);
 }
 
-/** AI에게 넘기는 회사 집계: 지금 상태와 맡은(담당·검토) 열린 티켓 */
+/** AI에게 넘기는 것: 대화 캐릭터, 회사 집계(지금 상태와 맡은 담당·검토 열린 티켓), 주인 말 */
 export function chatInput(c: Ctx, employeeId: string, message: string) {
   const mine = c.db
     .select()
@@ -42,7 +43,8 @@ export function chatInput(c: Ctx, employeeId: string, message: string) {
     .sort((a, b) => Number(a.id.slice(2)) - Number(b.id.slice(2)))
     .slice(0, CHAT_MAX_TICKETS)
     .map((t) => ({ id: t.id, title: t.title, status: t.status, role: t.assigneeId === employeeId ? '담당' : '검토' }));
-  return { status: staffStatus(c, employeeId), tickets: mine, message };
+  const persona = CHAT_PERSONAS[employeeId as keyof typeof CHAT_PERSONAS] ?? null;
+  return { persona, status: staffStatus(c, employeeId), tickets: mine, message };
 }
 
 export class StaffChat {

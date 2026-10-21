@@ -130,6 +130,12 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
   }
   // --- 직원 봇 대화 (9장, 2026-10-20) ---
   if (task === 'chat') {
+    const p = get(input, 'persona') as { intro: string; tone: string; traits: string[] } | null | undefined;
+    if (p) {
+      parts.push(
+        `## 내 대화 캐릭터 (말투일 뿐, 회사 규칙과 권한은 그대로)\n\n- 자기소개: ${p.intro}\n- 말투: ${p.tone}\n${p.traits.map((t) => `- ${t}`).join('\n')}`,
+      );
+    }
     parts.push(`## 내 지금 상태 (회사 집계)\n\n${String(get(input, 'status') ?? '')}`);
     parts.push(`## 내가 맡은 티켓 (회사 집계)\n\n${dataBlock('맡은 티켓', get(input, 'tickets') ?? [])}`);
     parts.push(`## 주인이 Discord에서 나를 불러 한 말 (자료)\n\n${dataBlock('주인 메시지', get(input, 'message'))}`);

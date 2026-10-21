@@ -51,7 +51,7 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5. 7-2부터 로컬 두뇌는 `gemma4:12b-64k` 하나(헤르메스·오케스트레이터 공용, num_ctx 65536). qwen3:14b·gemma4:12b 파일은 아직 디스크에 있음(지울지는 주인 결정). C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 520개(통과 517, 건너뜀 2. Windows 기준. 나머지 1개 `workspace.test.ts`는 Windows 경로 테스트라 리눅스에서만 실패한다), typecheck·lint:ds 깨끗하다.
+- **테스트**: `npm test` 523개(통과 520, 건너뜀 2. Windows 기준. 나머지 1개 `workspace.test.ts`는 Windows 경로 테스트라 리눅스에서만 실패한다), typecheck·lint:ds 깨끗하다.
 - **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 지금은 `origin/main`이 로컬 `main`과 같다(10-20 기준 모두 푸시됨).
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
@@ -68,6 +68,7 @@
 | **조직 개편 7단계** (CEO 지시) | GPT 한도를 회사가 전부 쓰기로(100%/100%), Claude는 그대로. Claude=판단(기획실장·개발팀장), GPT=양(개발자 A·B, 리뷰어·감사관, 전략가, 카피라이터), Gemma=보조 10명. 부서·팀장 구조 | DESIGN 2-0 조직도, 16장 7-1~7-5 |
 | 7-5: 로컬 보조 직원 7명 (주인 부재 중, AUTONOMOUS-LOG 75-A~H) | 막힘 해설가·변경 요약가·거울 통역사·커밋 서기·회고 서기·보고 초안가·초안 작가, 역할 `assistant`(직원 표 다시 만들기 0008, 마이그레이션 동안만 외래 키 끔), GPU 순위(급함·보통·뒤), 화면 부서 배치. 보조 직원은 검토 불가, 초안 작가만 writing·marketing 티켓 | DESIGN 16장 7-5, `staff/assistants.ts`, `test/org-7-5.test.ts` |
 | 7단계 진짜 두뇌 확인 (주인 부재 중) | `smoke --flow`(개발자 A 구현 → 개발팀장 검토, done)와 `smoke --doc`(카피라이터 → 교정 1차 점검 → 기획실장 검토, done) 통과. 문서 티켓이 토큰 상한에 걸려 기획실장 역할 카드에 문서 티켓 토큰 기준 추가 | stage0/RESULTS.md 맨 아래, `sim/smoke.ts` |
+| 직원 봇 대화 캐릭터 (CEO 요청 10-21) | 9개 봇이 같은 업무 카드라 말투가 비슷했다(개발팀장·개발자 A·B는 카드까지 같음). 봇마다 자기소개·말투·성격을 대화에만 붙임. 초안은 Claude 작성, 주인 검토 대기 | DESIGN 9장, `staff/chat-personas.ts`, `test/staff-chat.test.ts` |
 | 직원 봇 주인 멘션 대답 (CEO 결정 10-20, 선택은 모두 추천안) | 주인이 아무 채널에서 직원 봇을 멘션하면 그 직원 이름으로 답글. 두뇌는 누구든 로컬 Gemma(한도 안 씀), 대화·상태 안내만(지시·결재·푸시 길 없음). 인텐트 Guilds·GuildMessages, Message Content는 여전히 끔(멘션한 글은 내용이 온다). 정지 중엔 AI 안 부름, 직원당 한 번에 한 질문. 초대 권한에 Send Messages 추가 | DESIGN 9장, `discord/staff-chat.ts`, `engine.chatAs`, `test/staff-chat.test.ts`, RUNNING 4장 |
 | Claude 두뇌 Opus 5.5 · 노력 medium (CEO 결정 10-20) | `config.claude.model`=`claude-opus-5-5`, `config.claude.effort`=`medium`, `claude -p --effort`. 실제 CLI 응답 확인 | DESIGN 8장, `brains/claude-code.ts`, `test/isolation.test.ts` |
 | 직원 봇 9개 (CEO 결정 10-20, 보여 주기 전용) | 정규 직원 9명이 자기 봇으로 #사무실-대화 거울 글과 상태 글(`T-3 작업 중`). 인텐트 Guilds만, 처리기 없음, 실패하면 웹훅. 토큰은 주인이 `set-secrets.ps1 -WithStaffBots` | DESIGN 9장, `discord/staff-bots.ts`, `test/staff-bots.test.ts`, RUNNING 4장 |

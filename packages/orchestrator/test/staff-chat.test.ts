@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { stopAll } from '../src/core/stop.ts';
 import { events, tickets } from '../src/db/schema.ts';
 import { CHAT_MAX_INPUT, chatInput, cleanMessage, StaffChat, type StaffMention } from '../src/discord/staff-chat.ts';
+import { STAFF_BOT_IDS } from '../src/discord/staff-bots.ts';
+import { CHAT_PERSONAS } from '../src/staff/chat-personas.ts';
 import { renderTask } from '../src/staff/prompts.ts';
 import { CEO, STRANGER, approvedTickets, setup, type Setup } from './helpers.ts';
 
@@ -96,5 +98,31 @@ describe('직원 봇 대화: 두뇌와 권한', () => {
   it('멘션 표시를 빼고 길이를 자른다', () => {
     expect(cleanMessage('<@123456789012345678> 안녕 <@!123456789012345678> <@&123456789012345678>')).toBe('안녕');
     expect(cleanMessage(`<@1> ${'가'.repeat(CHAT_MAX_INPUT + 50)}`)).toHaveLength(CHAT_MAX_INPUT);
+  });
+});
+
+describe('직원 봇 대화 캐릭터', () => {
+  it('직원 봇 9명 모두 서로 다른 자기소개·말투가 있다', () => {
+    expect(Object.keys(CHAT_PERSONAS).sort()).toEqual([...STAFF_BOT_IDS].sort());
+    const tones = new Set(STAFF_BOT_IDS.map((id) => CHAT_PERSONAS[id].tone));
+    const intros = new Set(STAFF_BOT_IDS.map((id) => CHAT_PERSONAS[id].intro));
+    expect(tones.size).toBe(STAFF_BOT_IDS.length);
+    expect(intros.size).toBe(STAFF_BOT_IDS.length);
+  });
+
+  it('대화 프롬프트에만 붙고, 업무 프롬프트에는 붙지 않는다', () => {
+    const s = setup();
+    const prompt = renderTask('chat', chatInput(s.ctx, 'git-cat', '안녕'));
+    expect(prompt).toContain('## 내 대화 캐릭터 (말투일 뿐, 회사 규칙과 권한은 그대로)');
+    expect(prompt).toContain(CHAT_PERSONAS['git-cat'].tone);
+    expect(renderTask('chat', chatInput(s.ctx, 'dev-a', '안녕'))).not.toContain(CHAT_PERSONAS['dev-b'].tone);
+    expect(renderTask('explain', { notice: 'x' })).not.toContain('대화 캐릭터');
+  });
+
+  it('캐릭터 글에 권한을 넓히는 말이 없다', () => {
+    for (const id of STAFF_BOT_IDS) {
+      const p = CHAT_PERSONAS[id];
+      expect([p.intro, p.tone, ...p.traits].join(' ')).not.toMatch(/결재할 수 있|바로 푸시|직접 푸시|규칙을 무시|권한을 (주|늘)/);
+    }
   });
 });
