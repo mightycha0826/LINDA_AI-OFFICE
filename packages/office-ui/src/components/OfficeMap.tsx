@@ -6,6 +6,7 @@ import type { Snapshot } from '@ai-office/shared';
 import type { Director } from '../director.ts';
 import { APPROVAL_TRAY, BUDGET_GAUGE, CEO_DESK, DESKS, GRID, MAILBOX, MEETING_CHAIRS, MODEL_NOTE, RACKS, ROOMS, TEMP_SLOTS, type Point } from '../map.ts';
 import { Character } from './Character.tsx';
+import { fullName } from '../format.ts';
 
 const G = 40; // 그림 좌표: 한 칸 40, 전체 1200 × 800
 const pct = (p: Point) => ({ left: `${(p.x / GRID.w) * 100}%`, top: `${(p.y / GRID.h) * 100}%` });
@@ -133,7 +134,7 @@ export function OfficeMap({ snapshot, director, night, onOpenTicket, onSelectEmp
                 </span>
               )}
               {c.status === 'paused' && <span className="ao-over ao-zzz">Zzz</span>}
-              <button type="button" className="ao-char__body" aria-label={`${e.displayName}${t ? `, ${t.id}` : ''} 상세`} onClick={() => onSelectEmployee(e.id)}>
+              <button type="button" className="ao-char__body" aria-label={`${fullName(e)}${t ? `, ${t.id}` : ''} 상세`} onClick={() => onSelectEmployee(e.id)}>
                 <Character spriteSet={e.spriteSet} pose={c.pose} facing={c.facing} />
                 {c.carrying && <span className="ao-box-label">{c.carrying}</span>}
               </button>
@@ -146,7 +147,8 @@ export function OfficeMap({ snapshot, director, night, onOpenTicket, onSelectEmp
                       star
                     </span>
                   )}
-                  {e.displayName}
+                  {/* 지도 이름표는 짧게: 캐릭터 이름이 있으면 이름만 (직함은 상세·직원 탭에) */}
+                  {e.personName ?? e.displayName}
                   {e.isTemporary ? ' · 방문' : ''}
                 </span>
                 {e.rank !== 'assistant' && <span className="ao-nametag__brain">{e.brainLabel}</span>}

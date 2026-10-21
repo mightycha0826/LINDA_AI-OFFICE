@@ -7,7 +7,7 @@ import { approvals, employees, events, meetingMinutes, messages, tickets, usage 
 import { isCeoPresent } from '../discord/presence.ts';
 import { localTime, nextCheckTime } from '../discord/schedule.ts';
 import { approvalLink } from '../reports.ts';
-import { jobOf, rankOf } from '../staff/org.ts';
+import { jobOf, personNameOf, rankOf } from '../staff/org.ts';
 
 /** 이름표의 두뇌 이름. 조직도(2-0)의 말로 짧게: Claude·GPT·Gemma (자세한 모델은 자원 탭) */
 export function brainLabel(id: string, b: Brain): string {
@@ -70,6 +70,7 @@ export function buildSnapshot(c: Ctx, extras: SnapshotExtras): Snapshot {
     .map((e) => ({
       id: e.id,
       displayName: e.displayName,
+      personName: personNameOf(e.id),
       role: e.role,
       department: e.department,
       rank: rankOf(e.id, e.isTemporary),

@@ -1,7 +1,7 @@
 // 직원 탭: 개편 조직도(2-0)를 부서별로. 팀장 → 팀원 → 보조 직원 순, 지금 하는 일과 두뇌를 함께 보여 준다.
 // 지도가 작은 폰에서도 누가 무엇을 하는지 한눈에 보이게 한다. 누르면 직원 상세가 열린다.
 import { currentTicketOf, deriveEmployeeStatus, type Snapshot } from '@ai-office/shared';
-import { RANK_LABEL, STATUS_LABEL, WORK_LABEL } from '../format.ts';
+import { fullName, RANK_LABEL, STATUS_LABEL, WORK_LABEL } from '../format.ts';
 import { staffGroups } from '../staff.ts';
 
 interface Props {
@@ -30,7 +30,7 @@ export function StaffTab({ snapshot, onSelectEmployee }: Props) {
                         star
                       </span>
                     )}
-                    <span className="ao-ticket__title">{e.displayName}</span>
+                    <span className="ao-ticket__title">{fullName(e)}</span>
                     <span className="ao-ticket__type">
                       {RANK_LABEL[e.rank]} · {e.brainLabel}
                     </span>

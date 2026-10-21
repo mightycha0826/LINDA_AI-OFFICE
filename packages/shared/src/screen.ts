@@ -7,6 +7,8 @@ export type StaffRank = 'lead' | 'member' | 'assistant' | 'temp';
 export interface ScreenEmployee {
   id: string;
   displayName: string;
+  /** 캐릭터 이름(예: 한주아). 정해지지 않은 직원은 null */
+  personName: string | null;
   role: EmployeeRole;
   department: string;
   rank: StaffRank;

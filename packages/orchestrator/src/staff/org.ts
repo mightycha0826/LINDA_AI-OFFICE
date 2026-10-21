@@ -31,6 +31,20 @@ const ASSISTANT_JOBS: Record<string, string> = {
   drafter: '글쓰기·마케팅 티켓의 초안',
 };
 
+/** 캐릭터 이름 (2026-10-21 CEO 지정). 직함(displayName)은 그대로 두고 화면 이름표·대화에만 쓴다. 기준 그림은 assets/sources/<ID>-portrait.webp */
+export const PERSON_NAMES: Record<string, string> = {
+  'dev-a': '한주아',
+  'dev-b': '한서윤',
+  strategy: '서예린',
+  'qa-local': '백예원',
+  reviewer: '차은설',
+};
+
+/** 캐릭터 이름. 아직 없으면 null */
+export function personNameOf(id: string): string | null {
+  return PERSON_NAMES[id] ?? null;
+}
+
 export function rankOf(id: string, isTemporary: boolean): StaffRank {
   if (isTemporary) return 'temp';
   if ((TEAM_LEADS as readonly string[]).includes(id)) return 'lead';

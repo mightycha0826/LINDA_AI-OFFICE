@@ -5,6 +5,7 @@ import { staffGroups } from './staff.ts';
 const emp = (id: string, department: string, rank: ScreenEmployee['rank'], over: Partial<ScreenEmployee> = {}): ScreenEmployee => ({
   id,
   displayName: id,
+  personName: null,
   role: 'developer',
   department,
   rank,
@@ -30,5 +31,13 @@ describe('직원 탭 묶음', () => {
       ['기획실', ['pm']],
       ['방문 · 기타', ['t1']],
     ]);
+  });
+});
+
+describe('캐릭터 이름', () => {
+  it('이름이 있으면 `이름 · 직함`, 없으면 직함만', async () => {
+    const { fullName } = await import('./format.ts');
+    expect(fullName({ displayName: '개발자 A', personName: '한주아' })).toBe('한주아 · 개발자 A');
+    expect(fullName({ displayName: '기획실장', personName: null })).toBe('기획실장');
   });
 });

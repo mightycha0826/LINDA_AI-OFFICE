@@ -1,6 +1,6 @@
 // 직원 상세 (12장: 직원을 누르면 PC는 오른쪽, 폰은 아래에서 올라온다). 부서 · 직급, 하는 일, 두뇌, 지금 티켓.
 import type { ScreenEmployee, ScreenTicket } from '@ai-office/shared';
-import { RANK_LABEL, STATUS_LABEL } from '../format.ts';
+import { fullName, RANK_LABEL, STATUS_LABEL } from '../format.ts';
 import { Sheet } from './Sheet.tsx';
 
 interface Props {
@@ -12,7 +12,7 @@ interface Props {
 
 export function EmployeeSheet({ employee: e, ticket, onClose, onOpenTicket }: Props) {
   return (
-    <Sheet title={e.displayName} onClose={onClose}>
+    <Sheet title={fullName(e)} onClose={onClose}>
       <dl className="ao-dl">
         <dt>부서</dt>
         <dd>

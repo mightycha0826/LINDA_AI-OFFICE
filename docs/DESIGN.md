@@ -1252,6 +1252,18 @@ AI-Office-Ticket: T-12
 
 ## 13. 캐릭터 스프라이트 규격
 
+> **2026-10-21 추가 (CEO 지정)**: 캐릭터 이름과 기준 그림. 직함(`displayName`)은 그대로 두고, 이름은 화면(지도 이름표는 이름만, 직원 탭·상세는 `이름 · 직함`)과 직원 봇 대화 자기소개에만 쓴다. 코드: `staff/org.ts` `PERSON_NAMES`, 화면 데이터 `personName`.
+>
+> | 직원 | 이름 | 기준 그림 (정면 상반신, 13장 시트를 만들 때 쓴다) |
+> | --- | --- | --- |
+> | 개발자 A | 한주아 | `assets/sources/dev-a-portrait.webp` |
+> | 개발자 B | 한서윤 | `assets/sources/dev-b-portrait.webp` |
+> | 전략가 | 서예린 | `assets/sources/strategy-portrait.webp` |
+> | 교정 담당 | 백예원 | `assets/sources/qa-local-portrait.webp` |
+> | 리뷰어 · 감사관 | 차은설 | `assets/sources/reviewer-portrait.webp` |
+>
+> 기준 그림은 아직 스프라이트 시트(옆모습·정면)가 아니라서 화면 그림은 그대로 임시 그림이다. 시트 만드는 법은 `docs/CHARACTER-PROMPTS.md`.
+
 캐릭터는 스프라이트 시트로 만들고, 캐릭터 하나 = 폴더 하나다. 캐릭터를 바꿀 때는 폴더만 새로 넣고 코드는 손대지 않는다. 리깅(Rive 등)은 쓰지 않는다. 그림체는 플랫 일러스트, 직원은 사람, Git 고양이는 옥토캣과 겹치지 않는 우리만의 고양이다.
 
 **폴더 구조**
