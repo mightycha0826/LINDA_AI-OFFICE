@@ -696,3 +696,154 @@ body {
     transition: none;
   }
 }
+
+/* 사무실 보기 전환 [3D] [2D] (12장, 2026-10-21) */
+.ao-view {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  padding: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--row);
+}
+.ao-view__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-tab-size);
+  line-height: var(--text-tab-line);
+  cursor: pointer;
+}
+.ao-view__btn .material-symbols-rounded {
+  font-size: 18px;
+}
+.ao-view__btn[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--primary-text);
+  font-weight: var(--text-tab-weight);
+  box-shadow: var(--shadow-card);
+}
+.ao-view__btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* 3D 사무실: 캔버스 위에 이름표(HTML 단추)를 겹친다. 3D 재질 색은 DS 예외(17장), 이름표·버튼은 토큰 */
+.ao3 {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: var(--shadow-card);
+}
+.ao3__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+.ao3__canvas:active {
+  cursor: grabbing;
+}
+.ao3__labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ao3-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--badge-bg);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-tab-size);
+  line-height: var(--text-tab-line);
+  font-weight: var(--text-caption-weight);
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: pointer;
+  will-change: transform;
+}
+.ao3-tag:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.ao3-tag--small {
+  box-shadow: none;
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+.ao3__labels--far .ao3-tag--small {
+  visibility: hidden !important;
+}
+.ao3-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--track);
+}
+.ao3-dot[data-status='working'],
+.ao3-dot[data-status='reviewing'],
+.ao3-dot[data-status='meeting'] {
+  background: var(--primary-icon);
+}
+.ao3-dot[data-status='blocked'] {
+  background: var(--point-icon);
+}
+.ao3-dot[data-status='paused'] {
+  background: var(--control);
+}
+.ao3__tools {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: flex;
+  gap: var(--space-2);
+}
+.ao3__tools .pt-icon-btn {
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.ao3__tools .pt-icon-btn[aria-pressed='true'] {
+  color: var(--primary-text);
+}
+.ao3__hint {
+  position: absolute;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  margin: 0;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--badge-bg);
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  pointer-events: none;
+}
+@media (max-width: 767px) {
+  .ao3 {
+    aspect-ratio: 3 / 4;
+  }
+  .ao3__hint {
+    display: none;
+  }
+}

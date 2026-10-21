@@ -1,5 +1,5 @@
 // 사무실 화면 (12장). 보기 전용: 승인·푸시 같은 동작 버튼은 없다. 결재는 Discord에서만 한다.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Snapshot } from '@ai-office/shared';
 import { useOffice, type LiveEvent } from './data.ts';
 import { Director } from './director.ts';
@@ -8,6 +8,7 @@ import { useTheme } from './theme.ts';
 import { EmployeeSheet } from './components/EmployeeSheet.tsx';
 import { LogTab } from './components/LogTab.tsx';
 import { OfficeMap } from './components/OfficeMap.tsx';
+import { webglAvailable } from './office3d/layout.ts';
 import { ResourceTab } from './components/ResourceTab.tsx';
 import { StaffTab } from './components/StaffTab.tsx';
 import { SummaryStrip } from './components/SummaryStrip.tsx';
@@ -17,8 +18,12 @@ import { TopBar } from './components/TopBar.tsx';
 import { UsageCard } from './components/UsageCard.tsx';
 import { WorkTab } from './components/WorkTab.tsx';
 
+// three.js는 3D를 볼 때만 불러온다 (첫 화면을 가볍게)
+const Office3DView = lazy(() => import('./components/Office3DView.tsx'));
+
 type PanelTab = 'work' | 'log' | 'staff' | 'res';
 type MobileTab = 'office' | 'work' | 'res';
+type View = '3d' | '2d';
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -62,6 +67,14 @@ export function App() {
   const [employee, setEmployee] = useState<string | null>(null);
   const [logFocus, setLogFocus] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(readPanelOpen);
+  // 사무실 보기: PC는 3D, 폰은 2D가 기본. 고른 값은 이 브라우저에만 남는다. WebGL이 없으면 2D만
+  const has3d = useMemo(webglAvailable, []);
+  const [viewPick, setViewPick] = useState<View | null>(readView);
+  const view: View = has3d ? (viewPick ?? (narrow ? '2d' : '3d')) : '2d';
+  const pickView = (v: View) => {
+    writeView(v);
+    setViewPick(v);
+  };
   const togglePanel = () =>
     setPanelOpen((open) => {
       writePanelOpen(!open);
@@ -116,7 +129,30 @@ export function App() {
     if (narrow) setMobile('work');
   };
 
-  const map = <OfficeMap snapshot={snapshot} director={director} night={night || !snapshot.system.ceoPresent} onOpenTicket={openLogFor} onSelectEmployee={setEmployee} />;
+  const dark = night || !snapshot.system.ceoPresent;
+  const viewSwitch = has3d && (
+    <div className="ao-view" role="group" aria-label="사무실 보기">
+      {(
+        [
+          ['3d', 'view_in_ar', '3D'],
+          ['2d', 'map', '2D'],
+        ] as const
+      ).map(([k, icon, label]) => (
+        <button key={k} type="button" className="ao-view__btn" aria-pressed={view === k} onClick={() => pickView(k)}>
+          <span className="material-symbols-rounded" aria-hidden="true">
+            {icon}
+          </span>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  const map2d = <OfficeMap snapshot={snapshot} director={director} night={dark} onOpenTicket={openLogFor} onSelectEmployee={setEmployee} />;
+  const map3d = (
+    <Suspense fallback={<div className="ao3 pt-empty pt-empty--loading" role="status" aria-label="3D 사무실을 여는 중" />}>
+      <Office3DView snapshot={snapshot} night={dark} onSelectEmployee={setEmployee} />
+    </Suspense>
+  );
   const tabs = (
     <div className="ao-tabs" role="tablist" aria-label="패널">
       {(
@@ -170,7 +206,12 @@ export function App() {
 
       {narrow ? (
         <main className="ao-mobile">
-          {mobile === 'office' && <div className="ao-map-scroll">{map}</div>}
+          {mobile === 'office' && (
+            <>
+              {viewSwitch}
+              {view === '3d' ? map3d : <div className="ao-map-scroll">{map2d}</div>}
+            </>
+          )}
           {mobile === 'work' && (
             <div className="ao-panel">
               <SummaryStrip snapshot={snapshot} />
@@ -205,7 +246,10 @@ export function App() {
         </main>
       ) : (
         <main className={`ao-main${panelOpen ? '' : ' ao-main--collapsed'}`}>
-          <div className="ao-map-wrap">{map}</div>
+          <div className="ao-map-wrap">
+            {viewSwitch}
+            {view === '3d' ? map3d : map2d}
+          </div>
           {/* 오른쪽 패널 숨기기·열기. 숨기면 지도가 넓어진다. 고른 상태는 이 브라우저에만 남는다 */}
           <div className="ao-panel-rail">
             <button
@@ -265,6 +309,25 @@ function readPanelOpen(): boolean {
 function writePanelOpen(open: boolean) {
   try {
     localStorage.setItem(PANEL_KEY, open ? '1' : '0');
+  } catch {
+    /* 저장할 수 없는 브라우저면 이번 화면에서만 */
+  }
+}
+
+const VIEW_KEY = 'ao-office-view';
+
+function readView(): View | null {
+  try {
+    const v = localStorage.getItem(VIEW_KEY);
+    return v === '3d' || v === '2d' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeView(v: View) {
+  try {
+    localStorage.setItem(VIEW_KEY, v);
   } catch {
     /* 저장할 수 없는 브라우저면 이번 화면에서만 */
   }
