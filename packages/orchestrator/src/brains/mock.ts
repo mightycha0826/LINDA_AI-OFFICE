@@ -77,6 +77,7 @@ export const DEFAULT_HANDLERS: Record<BrainTask, MockHandler> = {
   summarize: () => ({ lines: ['기능 파일을 추가했어요'] }),
   interpret: () => ({ text: '작업을 마치고 검토를 부탁했어요' }),
   report: () => ({ text: '진행 중인 일과 결재 대기를 정리했어요' }),
+  chat: () => ({ text: '지금은 대기 중이에요', intent: 'chat' }),
   design: (): DesignComboOutput => ({ combo: 2, mode: 'light', reason: '관리 화면이라 오래 들여다봄' }),
   commit: (req) => ({ type: 'feat', scope: 'app', subject: `${(req.input as TicketInput).ticket.title} 추가` }),
   retro: (req) => {

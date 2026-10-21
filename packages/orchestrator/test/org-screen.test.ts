@@ -14,6 +14,14 @@ import { setup } from './helpers.ts';
 const snap = (s: ReturnType<typeof setup>): Snapshot => buildSnapshot(s.ctx, { startedAt: new Date().toISOString(), gpu: null });
 
 describe('조직도(2-0)와 직원 데이터', () => {
+  it('화면 데이터에 캐릭터 이름이 실린다 (2026-10-21), 이름이 없는 직원은 null', () => {
+    const byId = new Map(snap(setup()).employees.map((e) => [e.id, e]));
+    expect(byId.get('dev-a')!.personalName).toBe('한주아');
+    expect(byId.get('reviewer')!.personalName).toBe('차은설');
+    expect(byId.get('dev-a')!.displayName).toBe('개발자 A');
+    expect(byId.get('pm')!.personalName).toBeNull();
+  });
+
   it('부서는 2-0 표를 따른다: 리뷰어는 품질보증팀, Git 고양이는 운영지원', () => {
     const dept = (id: string) => STANDING_STAFF.find((x) => x.id === id)!.department;
     expect(dept('reviewer')).toBe('품질보증팀');

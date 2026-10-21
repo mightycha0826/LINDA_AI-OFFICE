@@ -1,5 +1,6 @@
 // 오케스트레이터 서비스 (3장). pm2가 띄운다: npm start (또는 ecosystem.config.cjs).
 // 설정은 C:\ai-office\data\config.json, 비밀 값은 secrets.json, DB는 office.db (모두 저장소 밖).
+import { eq } from 'drizzle-orm';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createBrainRegistry } from './brains/registry.ts';
@@ -9,8 +10,11 @@ import { systemClock } from './clock.ts';
 import { DEFAULTS, loadConfig } from './config.ts';
 import { emit, type Ctx } from './context.ts';
 import { openDb } from './db/client.ts';
+import { employees } from './db/schema.ts';
 import { startDiscordBot, startStaffBots, type DiscordBot } from './discord/bot.ts';
-import { routeMirror, StaffPresence, type StaffBotPort } from './discord/staff-bots.ts';
+import { directChannelRoute, routeMirror, StaffPresence, type StaffBotPort } from './discord/staff-bots.ts';
+import { proposalMessage } from './discord/messages.ts';
+import { StaffChat } from './discord/staff-chat.ts';
 import { InteractionHandler } from './discord/interactions.ts';
 import { Mirror } from './discord/mirror.ts';
 import { Notifier } from './discord/notifier.ts';
@@ -67,13 +71,29 @@ if (secrets.discordToken && config.discord.guildId) {
   bot = await startDiscordBot({ c: ctx, handler: new InteractionHandler(ctx, engine, log, gitcat, newProjects), token: secrets.discordToken, ...(secrets.mirrorWebhookUrl ? { webhookUrl: secrets.mirrorWebhookUrl } : {}), log });
   // 막힘 해설가·거울 통역사 (16장 7-5). 실패하면 해설·통역 없이 원래대로
   notifier = new Notifier(ctx, bot.port, log, async (notice) => (await engine.callAs('explainer', 'explain', ExplainOutputSchema, { notice }, { workdir: 'explain' }))?.lines ?? null);
-  // 직원 봇 9개 (9장, 보여 주기 전용). 토큰이 있는 직원만 뜨고, 없거나 실패한 직원의 거울 글은 웹훅으로
+  // 직원 봇 9개 (9장). 토큰이 있는 직원만 뜨고, 없거나 실패한 직원의 거울 글은 웹훅으로. 주인이 멘션하면 로컬 Gemma로 대답
   if (secrets.staffBotTokens && Object.keys(secrets.staffBotTokens).length) {
-    staffBots = await startStaffBots({ tokens: secrets.staffBotTokens, log });
+    const chat = new StaffChat(ctx, (id, input) => engine.chatAs(id, input), log);
+    const replies = bot.replies;
+    staffBots = await startStaffBots({
+      tokens: secrets.staffBotTokens,
+      log,
+      onMention: (id, m) => chat.answer(id, m),
+      // 지시·수정으로 읽히면 LINDA가 주인 메시지 바로 아래에 확인 버튼을 띄운다 (2026-10-21). 일은 버튼을 눌러야 생긴다
+      onProposal: async (p) => {
+        const name = ctx.db.select().from(employees).where(eq(employees.id, p.employeeId)).get()?.displayName ?? p.employeeId;
+        await replies.reply(p.channelId, p.messageId, proposalMessage(p, name));
+      },
+    });
     presence = new StaffPresence(ctx, staffBots);
   }
   mirror = bot.mirror
-    ? new Mirror(ctx, staffBots ? routeMirror(bot.mirror, staffBots, log) : bot.mirror, { log, interpret: async (from, content) => (await engine.callAs('interpreter', 'interpret', InterpretOutputSchema, { from, content }, { workdir: 'interpret' }))?.text ?? null })
+    ? new Mirror(ctx, staffBots ? routeMirror(bot.mirror, staffBots, log) : bot.mirror, {
+        log,
+        interpret: async (from, content) => (await engine.callAs('interpreter', 'interpret', InterpretOutputSchema, { from, content }, { workdir: 'interpret' }))?.text ?? null,
+        // 직원 직접 지시로 시작한 일은 주인이 말한 채널 바로 아래에 (2026-10-21)
+        direct: directChannelRoute(staffBots, bot.replies, log),
+      })
     : null;
   reports = new ReportService(ctx, engine, bot.port);
 } else {

@@ -1,4 +1,4 @@
-// 직원 봇 9개 (9장, 2026-10-20 CEO 결정: 보여 주기 전용)
+// 직원 봇 9개 (9장, 2026-10-20 CEO 결정. 같은 날 주인 멘션 대답 추가: staff-chat.test.ts)
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -25,6 +25,9 @@ class FakeStaffBots implements StaffBotPort {
   async post(id: string, threadId: string, content: string) {
     if (this.failing.has(id)) throw new Error('보내기 실패');
     this.posts.push({ id, threadId, content });
+  }
+  userIdOf(id: string) {
+    return this.ids.includes(id) ? `9000000000000000${this.ids.indexOf(id)}` : null;
   }
   async setStatus(id: string, text: string) {
     this.statuses.push({ id, text });
@@ -98,20 +101,23 @@ describe('거울 글 보내기: 직원 봇 → 없거나 실패하면 웹훅', (
   });
 });
 
-describe('직원 봇은 아무것도 받지 않는다 (코드로 집행)', () => {
+describe('직원 봇이 받는 것 (코드로 집행)', () => {
   const src = readFileSync(join(import.meta.dirname, '../src/discord/bot.ts'), 'utf8');
   const body = src.slice(src.indexOf('export async function startStaffBots'));
 
-  it('게이트웨이 권한은 Guilds만, 처리기는 연결 확인 하나뿐, 명령 등록 없음', () => {
-    expect(body).toContain('intents: [GatewayIntentBits.Guilds] }');
-    expect(body).not.toMatch(/GuildMessages|MessageContent|DirectMessages/);
-    expect(body.match(/\.on\(|\.once\(/g)).toEqual(['.once(']);
+  // 2026-10-20: 주인 멘션에 대답하려고 GuildMessages와 메시지 처리기 하나를 더했다. 메시지 내용 권한·DM·명령·버튼은 여전히 없다
+  it('게이트웨이 권한은 Guilds·GuildMessages만, 처리기는 연결 확인과 멘션 대답뿐, 명령 등록 없음', () => {
+    expect(body).toContain('intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] }');
+    expect(body).not.toMatch(/MessageContent|DirectMessages/);
+    expect(body.match(/\.on\(|\.once\(/g)).toEqual(['.on(', '.once(']);
+    expect(body).toContain('client.on(Events.MessageCreate');
     expect(body).toContain('client.once(Events.ClientReady');
-    expect(body).not.toMatch(/applicationGuildCommands|InteractionCreate|MessageCreate/);
+    expect(body).not.toMatch(/applicationGuildCommands|InteractionCreate/);
   });
 
   it('멘션을 걸지 않고, 토큰을 로그에 쓰지 않는다', () => {
     expect(body).toContain('allowedMentions: { parse: [] }');
+    expect(body).toContain('allowedMentions: { parse: [], repliedUser: false }');
     expect(body).not.toMatch(/log\([^)]*token/);
   });
 });

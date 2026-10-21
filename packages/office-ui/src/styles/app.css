@@ -110,6 +110,54 @@ body {
   opacity: 0;
   visibility: hidden;
 }
+/* PC 오른쪽 패널: 지도 옆 로비 데스크처럼 한 장의 카드로 묶는다 (2026-10-21) */
+.ao-main:not(.ao-main--collapsed) .ao-side {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+/* 오늘 한눈에: 네 칸 숫자 타일 */
+.ao-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.ao-summary__tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--row);
+}
+.ao-summary__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  white-space: nowrap;
+}
+.ao-summary__value {
+  color: var(--ink);
+  font-size: var(--text-heading-size);
+  line-height: var(--text-heading-line);
+  font-weight: var(--text-heading-weight);
+}
+.ao-summary__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+.ao-summary__dot--primary {
+  background: var(--primary-icon);
+}
+.ao-summary__dot--point {
+  background: var(--point-icon);
+}
 .ao-panel-rail {
   position: sticky;
   top: var(--space-5);
@@ -193,11 +241,22 @@ body {
   gap: var(--space-2);
 }
 .ao-group__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--text-label-size);
   line-height: var(--text-label-line);
   font-weight: var(--text-label-weight);
   color: var(--ink-muted);
+}
+.ao-group__count {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--row);
+  color: var(--ink);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
 }
 .ao-group__list {
   display: flex;
@@ -205,6 +264,7 @@ body {
   gap: var(--space-2);
 }
 .ao-done summary {
+  display: list-item;
   cursor: pointer;
   list-style-position: inside;
 }
@@ -408,6 +468,24 @@ body {
 .ao-room-note {
   transform: translateX(-50%);
   font-weight: 400;
+}
+/* 서버 랙: 라이트는 짙은 회색, 다크는 바탕보다 어둡게 (ink가 밝아지면 랙이 하얘지므로) */
+.ao-rack {
+  fill: color-mix(in srgb, var(--ink) 70%, transparent);
+}
+[data-theme='dark'] .ao-rack {
+  fill: var(--bg);
+}
+/* 방 이름: 유리문에 붙인 작은 표지판 */
+.ao-room-label {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+}
+.ao-room-label__count {
+  color: var(--ink-muted);
 }
 .ao-room-label__count {
   font-weight: 400;

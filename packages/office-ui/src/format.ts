@@ -1,5 +1,10 @@
 // 화면 글자 모음: 시각, 경과 시간, 상태 이름. 말투는 포인트 디자인 시스템의 해요체.
-import type { DerivedStatus, ScreenTicket, StaffRank, TicketStatus, TicketType } from '@ai-office/shared';
+import type { DerivedStatus, ScreenEmployee, ScreenTicket, StaffRank, TicketStatus, TicketType } from '@ai-office/shared';
+
+/** 캐릭터 이름이 있으면 `한주아 · 개발자 A`, 없으면 직함만 */
+export function fullName(e: Pick<ScreenEmployee, 'displayName' | 'personalName'>) {
+  return e.personalName ? `${e.personalName} · ${e.displayName}` : e.displayName;
+}
 
 export function clock(iso: string, timeZone: string) {
   return new Intl.DateTimeFormat('ko-KR', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));

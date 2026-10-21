@@ -30,7 +30,9 @@ import type { Ctx } from '../context.ts';
 import { SLASH_COMMANDS, type InteractionHandler } from './interactions.ts';
 import { onDiscordMessage } from '../chief/order-message.ts';
 import { STAFF_BOT_IDS, type StaffBotPort } from './staff-bots.ts';
-import type { Button, ChannelKey, DiscordPort, InteractionReply, MirrorPort, OutgoingMessage, ProjectChannelPort } from './types.ts';
+import type { DirectProposal } from '../core/direct.ts';
+import type { StaffMention, StaffReply } from './staff-chat.ts';
+import type { Button, ChannelKey, ChannelReplyPort, DiscordPort, InteractionReply, MirrorPort, OutgoingMessage, ProjectChannelPort } from './types.ts';
 
 const STYLE: Record<Button['style'], ButtonStyle> = {
   primary: ButtonStyle.Primary,
@@ -79,6 +81,7 @@ export interface DiscordBot {
   port: DiscordPort;
   mirror: MirrorPort | null;
   projectChannels: ProjectChannelPort;
+  replies: ChannelReplyPort;
   stop(): Promise<void>;
 }
 
@@ -176,10 +179,25 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
     },
   };
 
+  // 직원 직접 지시 (2026-10-21): 주인이 말한 채널 바로 아래에 확인 버튼과 진행 소식. 멘션은 주인 한 명만
+  const replies: ChannelReplyPort = {
+    async reply(channelId, replyToMessageId, msg) {
+      const ch = (await client.channels.fetch(channelId)) as TextChannel | ThreadChannel | null;
+      if (!ch?.isTextBased()) throw new Error(`글을 쓸 수 없는 채널: ${channelId}`);
+      await ch.send({ content: fit(msg.content), components: rows(msg.buttons), reply: { messageReference: replyToMessageId, failIfNotExists: false }, allowedMentions: { users: [c.config.ceoDiscordId], repliedUser: false } });
+    },
+    async post(channelId, content) {
+      const ch = (await client.channels.fetch(channelId)) as TextChannel | ThreadChannel | null;
+      if (!ch?.isTextBased()) throw new Error(`글을 쓸 수 없는 채널: ${channelId}`);
+      await ch.send({ content: fit(content), allowedMentions: { parse: [] } });
+    },
+  };
+
   return {
     port,
     mirror,
     projectChannels,
+    replies,
     async stop() {
       webhook?.destroy();
       await client.destroy();
@@ -188,17 +206,39 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
 }
 
 /**
- * 직원 봇 9개 (9장, 보여 주기 전용). 인텐트는 Guilds만이고 이벤트 처리기를 하나도 달지 않는다:
- * 직원 봇에게 말하거나 멘션해도 아무 일도 일어나지 않는다. 토큰은 로그에 남기지 않는다.
- * 로그인에 실패한 직원은 빠지고(그 직원 글은 웹훅으로), 나머지는 그대로 뜬다.
+ * 직원 봇 9개 (9장). 거울 글·상태 글, 그리고 주인이 멘션하면 대답(2026-10-20 CEO 결정).
+ * 인텐트는 Guilds, GuildMessages. 메시지 내용(Message Content) 권한은 켜지 않는다:
+ * Discord는 그 봇을 멘션한 글의 내용만 보내 준다. 답할지는 onMention(StaffChat)이 정한다. 명령·버튼·DM 처리기는 없다.
+ * 토큰은 로그에 남기지 않는다. 로그인에 실패한 직원은 빠지고(그 직원 글은 웹훅으로), 나머지는 그대로 뜬다.
  */
-export async function startStaffBots(o: { tokens: Partial<Record<string, string>>; log: (s: string) => void }): Promise<StaffBotPort> {
+export async function startStaffBots(o: {
+  tokens: Partial<Record<string, string>>;
+  log: (s: string) => void;
+  onMention?: (employeeId: string, m: StaffMention) => Promise<StaffReply | null>;
+  /** 대답에 지시·수정 제안이 붙었을 때 (LINDA가 확인 버튼을 띄운다) */
+  onProposal?: (p: DirectProposal) => Promise<void>;
+}): Promise<StaffBotPort> {
   const clients = new Map<string, Client<true>>();
   await Promise.all(
     STAFF_BOT_IDS.map(async (id) => {
       const token = o.tokens[id];
       if (!token) return;
-      const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+      const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+      if (o.onMention) {
+        const onMention = o.onMention;
+        client.on(Events.MessageCreate, async (m) => {
+          try {
+            const mentionsMe = !!client.user && m.mentions.users.has(client.user.id);
+            if (!mentionsMe) return;
+            const reply = await onMention(id, { guildId: m.guildId, channelId: m.channelId, messageId: m.id, authorId: m.author.id, authorIsBot: m.author.bot, mentionsMe, content: m.content });
+            if (!reply) return;
+            await m.reply({ content: fit(reply.text), allowedMentions: { parse: [], repliedUser: false } });
+            if (reply.proposal) await o.onProposal?.(reply.proposal);
+          } catch (err) {
+            o.log(`직원 봇 대답 실패(${id}): ${(err as Error).message}`);
+          }
+        });
+      }
       try {
         const ready = new Promise<Client<true>>((resolve, reject) => {
           client.once(Events.ClientReady, resolve);
@@ -219,10 +259,11 @@ export async function startStaffBots(o: { tokens: Partial<Record<string, string>
     async post(id, threadId, content) {
       const client = clients.get(id);
       if (!client) throw new Error(`직원 봇 없음: ${id}`);
-      const ch = (await client.channels.fetch(threadId)) as ThreadChannel | null;
-      if (!ch?.isThread()) throw new Error(`스레드를 찾을 수 없음: ${threadId}`);
+      const ch = (await client.channels.fetch(threadId)) as ThreadChannel | TextChannel | null;
+      if (!ch?.isTextBased()) throw new Error(`글을 쓸 수 없는 채널·스레드: ${threadId}`);
       await ch.send({ content: fit(content), allowedMentions: { parse: [] } });
     },
+    userIdOf: (id) => clients.get(id)?.user.id ?? null,
     async setStatus(id, text) {
       clients.get(id)?.user.setPresence({ status: text === '대기 중' ? 'idle' : 'online', activities: [{ name: text, state: text, type: ActivityType.Custom }] });
     },

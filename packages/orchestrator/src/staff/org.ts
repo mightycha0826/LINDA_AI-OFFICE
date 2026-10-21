@@ -31,9 +31,17 @@ const ASSISTANT_JOBS: Record<string, string> = {
   drafter: '글쓰기·마케팅 티켓의 초안',
 };
 
-/** 정해진 개인 이름 (13장 증명사진). 화면의 직원 상세에만 쓴다. 지도 이름표·Discord·역할 카드는 직함 그대로 */
-const PERSONAL_NAMES: Record<string, string> = {
-  'chief-of-staff': '백서진', // 2026-10-21 CEO
+/**
+ * 정해진 개인 이름 (13장 증명사진, 2026-10-21 CEO 지정). 직함(displayName)은 그대로 두고
+ * 화면(지도 이름표·직원 탭·직원 상세)과 직원 봇 대화 자기소개에만 쓴다. Discord 거울·역할 카드는 직함 그대로
+ */
+export const PERSONAL_NAMES: Record<string, string> = {
+  'chief-of-staff': '백서진',
+  'dev-a': '한주아',
+  'dev-b': '한서윤',
+  strategy: '서예린',
+  'qa-local': '백예원',
+  reviewer: '차은설',
 };
 
 export function personalNameOf(id: string): string | null {

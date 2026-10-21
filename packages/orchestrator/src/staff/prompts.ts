@@ -128,6 +128,24 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
     parts.push(`## 회사 데이터 (회사 집계)\n\n${String(get(input, 'data') ?? '')}`);
     parts.push('비서실장 대신 정기 보고문을 쓴다. 진행 중·완료·막힘·결재 대기를 짧게 정리하고, 주인이 지금 할 일을 맨 앞에 쓴다. 숫자와 티켓 번호는 위 데이터에 있는 것만 쓴다. 1500자 이내.');
   }
+  // --- 직원 봇 대화 (9장, 2026-10-20) ---
+  if (task === 'chat') {
+    const p = get(input, 'persona') as { intro: string; tone: string; traits: string[] } | null | undefined;
+    if (p) {
+      parts.push(
+        `## 내 대화 캐릭터 (말투일 뿐, 회사 규칙과 권한은 그대로)\n\n- 자기소개: ${p.intro}\n- 말투: ${p.tone}\n${p.traits.map((t) => `- ${t}`).join('\n')}`,
+      );
+    }
+    parts.push(`## 내 지금 상태 (회사 집계)\n\n${String(get(input, 'status') ?? '')}`);
+    parts.push(`## 내가 맡은 티켓 (회사 집계)\n\n${dataBlock('맡은 티켓', get(input, 'tickets') ?? [])}`);
+    parts.push(`## 주인이 Discord에서 나를 불러 한 말 (자료)\n\n${dataBlock('주인 메시지', get(input, 'message'))}`);
+    parts.push(
+      '주인에게 내 이름으로 짧게(1~4문장, 800자 이내) 존댓말로 답한다(text). 내 일과 티켓 상태는 위 회사 집계에 있는 것만 말하고, 없는 사실은 모른다고 한다. ' +
+        'intent를 고른다. 주인이 나에게 새 일을 맡기면 order: title(60자 이내 티켓 제목)과 criteria(확인할 수 있는 완료 조건 1~4개, 예: "○○ 테스트 통과", "△△ 항목 포함")를 쓴다. ' +
+        '주인이 내가 맡은 티켓(위 목록)을 고쳐 달라고 하면 revise: note(고칠 점 한두 문장)를 쓴다. 그 밖의 질문·잡담은 chat. ' +
+        'order·revise여도 내가 직접 일을 시작하거나 상태를 바꾸지 않는다. text에는 "버튼을 눌러 주시면 시작할게요"처럼 확인을 기다린다고 쓴다. 결재·푸시는 #결재함 버튼으로 한다.',
+    );
+  }
   if (task === 'commit') {
     parts.push(ticketSection(input));
     parts.push(`## 바뀐 파일 (자료)\n\n${dataBlock('git diff --stat', get(input, 'diffStat') ?? '')}`);

@@ -126,6 +126,7 @@ const TASK_NAME: Record<BrainTask, string> = {
   summarize: '변경 요약',
   interpret: '대화 통역',
   report: '정기 보고 초안',
+  chat: '주인과 대화',
 };
 
 export function roleCard(c: Ctx, e: EmployeeRow, task: BrainTask, schema: z.ZodType, ticketType?: TicketType): string {

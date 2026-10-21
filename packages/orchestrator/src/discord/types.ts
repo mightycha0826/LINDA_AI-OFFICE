@@ -35,6 +35,15 @@ export interface MirrorPort {
   post(threadId: string, m: { username: string; content: string; employeeId?: string }): Promise<void>;
 }
 
+/**
+ * 직원 직접 지시 (9장, 2026-10-21): 주인이 직원 봇을 멘션한 그 채널에 시스템 봇(LINDA)이 바로 아래로 답한다.
+ * 확인 버튼([맡기고 시작] 등)과 진행 소식을 올린다. 스레드는 열지 않는다
+ */
+export interface ChannelReplyPort {
+  reply(channelId: string, replyToMessageId: string, msg: { content: string; buttons?: Button[][] }): Promise<void>;
+  post(channelId: string, content: string): Promise<void>;
+}
+
 /** /새프로젝트의 Discord 작업 공간: 카테고리 <프로젝트> › #작업 (9장). 시스템 봇에 채널 관리 권한이 필요하다 */
 export interface ProjectChannelPort {
   /** 같은 이름의 카테고리·#작업이 이미 있으면 그것을 돌려준다(다시 시도해도 두 개 생기지 않음) */

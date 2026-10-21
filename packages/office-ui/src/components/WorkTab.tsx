@@ -11,10 +11,21 @@ interface Props {
   onOpenTicket: (id: string) => void;
 }
 
+/** 지도 이름표와 같은 상태 점 (일하는 중 = 첫 번째 색, 막힘 = 두 번째 색, 멈춤 = 회색) */
+const CARD_DOT: Partial<Record<ScreenTicket['status'], string>> = {
+  in_progress: 'working',
+  rework: 'working',
+  in_review: 'reviewing',
+  meeting: 'meeting',
+  blocked: 'blocked',
+  paused: 'paused',
+};
+
 function TicketCard({ t, names, nowMs, onOpen }: { t: ScreenTicket; names: Map<string, string>; nowMs: number; onOpen: (id: string) => void }) {
   return (
     <button type="button" className="ao-ticket" onClick={() => onOpen(t.id)}>
       <span className="ao-ticket__line">
+        <span className={`ao-dot ao-dot--${CARD_DOT[t.status] ?? 'idle'}`} aria-hidden="true" />
         <span className="ao-ticket__id ao-num">{t.id}</span>
         <span className="ao-ticket__type">{TYPE_LABEL[t.type]}</span>
         {t.status === 'blocked' && (
@@ -42,7 +53,7 @@ function Group({ title, count, children }: { title: string; count: number; child
   return (
     <section className="ao-group">
       <h3 className="ao-group__title">
-        {title} <span className="ao-num">{count}</span>
+        {title} <span className="ao-group__count ao-num">{count}</span>
       </h3>
       <div className="ao-group__list">{children}</div>
     </section>
@@ -118,7 +129,7 @@ export function WorkTab({ snapshot, nowMs, names, onOpenTicket }: Props) {
       {done.length > 0 && (
         <details className="ao-group ao-done">
           <summary className="ao-group__title">
-            오늘 완료 <span className="ao-num">{done.length}</span>
+            오늘 완료 <span className="ao-group__count ao-num">{done.length}</span>
           </summary>
           <div className="ao-group__list">{done.map(card)}</div>
         </details>

@@ -1,7 +1,7 @@
 // 직원 상세 (12장: 직원을 누르면 PC는 오른쪽, 폰은 아래에서 올라온다).
 // 맨 위에 증명사진(13장, assets/portraits/<직원 ID>)과 개인 이름·직함, 그 아래 하는 일, 두뇌, 지금 티켓.
 import type { ScreenEmployee, ScreenTicket } from '@ai-office/shared';
-import { RANK_LABEL, STATUS_LABEL } from '../format.ts';
+import { fullName, RANK_LABEL, STATUS_LABEL } from '../format.ts';
 import { Sheet } from './Sheet.tsx';
 
 interface Props {
@@ -14,7 +14,7 @@ interface Props {
 export function EmployeeSheet({ employee: e, ticket, onClose, onOpenTicket }: Props) {
   const name = e.personalName ?? e.displayName;
   return (
-    <Sheet title={e.personalName ? `${e.personalName} · ${e.displayName}` : e.displayName} onClose={onClose}>
+    <Sheet title={fullName(e)} onClose={onClose}>
       <div className="ao-profile">
         <figure className="ao-portrait">
           {e.portrait ? (

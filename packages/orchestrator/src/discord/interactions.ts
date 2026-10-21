@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import type { Ctx } from '../context.ts';
 import { pendingApprovals, requestApproval, type ApprovalDecision } from '../core/approvals.ts';
 import { budgetStatus } from '../core/budget.ts';
+import { applyRevision, dismissProposal, getProposal, startDirectOrder } from '../core/direct.ts';
 import { approvals, messages, orders, plans, tickets } from '../db/schema.ts';
 import type { Engine } from '../engine.ts';
 import { AlreadyDecidedError, OfficeError, StaleApprovalError } from '../errors.ts';
@@ -102,7 +103,25 @@ export class InteractionHandler {
       return this.decide(target, 'approved', action === 'feature' ? 'feature' : 'main');
     }
     if (kind === 'pushc') return action === 'merge' ? this.decide(target, 'approved', 'main') : this.decide(target, 'rejected');
+    if (kind === 'dp' || kind === 'rv') return this.direct(kind, target, action);
     return { kind: 'reply', content: '모르는 버튼이에요', ephemeral: true };
+  }
+
+  /** 직원 직접 지시 [맡기고 시작]·진행 중 수정 [수정 반영]·[그냥 대화] (9장, 2026-10-21). 규칙은 core/direct.ts가 집행한다 */
+  private direct(kind: 'dp' | 'rv', proposalId: string, action: string): InteractionReply {
+    const ceo = this.c.config.ceoDiscordId;
+    const p = getProposal(this.c, proposalId);
+    const head = p ? (p.kind === 'order' ? `**${p.title}**` : `**${p.ticketId} 수정 요청**\n> ${p.note}`) : '**직원 제안**';
+    if (action === 'chat') {
+      dismissProposal(this.c, proposalId, ceo);
+      return { kind: 'update', content: `${head}\n\n그냥 대화로 남겼어요`, buttons: [] };
+    }
+    if (kind === 'dp') {
+      const r = startDirectOrder(this.c, proposalId, ceo);
+      return { kind: 'update', content: `${head}\n\n**시작했어요** · ${r.orderId} / ${r.ticketId}. 직원들이 이 채널에서 서로 태그하며 진행 상황을 올려요`, buttons: [] };
+    }
+    const r = applyRevision(this.c, proposalId, ceo);
+    return { kind: 'update', content: `${head}\n\n**반영했어요** · ${r.ticketId} (${r.status === 'rework' ? '다시 작업으로 돌아가요' : '다음 제출부터 새 조건으로 검토해요'})`, buttons: [] };
   }
 
   private async modal(id: string, fields: Record<string, string>): Promise<InteractionReply> {

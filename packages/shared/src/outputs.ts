@@ -131,6 +131,22 @@ export type DiffSummary = z.infer<typeof DiffSummarySchema>;
 export const InterpretOutputSchema = z.object({ text: text.max(600) });
 export type InterpretOutput = z.infer<typeof InterpretOutputSchema>;
 
+/**
+ * 직원 봇 대화 (9장, 2026-10-20): 주인이 멘션한 직원 봇의 답. 로컬 Gemma, 참고용.
+ * 2026-10-21: intent로 지시·수정을 알아본다. 이것은 제안일 뿐이고, 일이 생기는 것은 주인이 버튼을 눌렀을 때다(core/direct.ts)
+ */
+export const StaffChatOutputSchema = z.object({
+  text: text.max(800),
+  intent: z.enum(['chat', 'order', 'revise']),
+  /** order: 티켓 제목 */
+  title: z.string().trim().max(60).optional(),
+  /** order: 확인할 수 있는 완료 조건 1~4개 */
+  criteria: z.array(text.max(150)).max(4).optional(),
+  /** revise: 지금 하는 일에 붙일 고칠 점 */
+  note: z.string().trim().max(300).optional(),
+});
+export type StaffChatOutput = z.infer<typeof StaffChatOutputSchema>;
+
 /** 보고 초안가: 비서실장 보고가 없을 때의 정기 보고 본문 (숫자는 회사 데이터에서만) */
 export const ReportDraftSchema = z.object({ text: text.max(1500) });
 export type ReportDraft = z.infer<typeof ReportDraftSchema>;
