@@ -362,6 +362,24 @@ body {
   transform: translateX(-50%);
   font-weight: 400;
 }
+/* 서버 랙: 라이트는 짙은 회색, 다크는 바탕보다 어둡게 (ink가 밝아지면 랙이 하얘지므로) */
+.ao-rack {
+  fill: color-mix(in srgb, var(--ink) 70%, transparent);
+}
+[data-theme='dark'] .ao-rack {
+  fill: var(--bg);
+}
+/* 방 이름: 유리문에 붙인 작은 표지판 */
+.ao-room-label {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+}
+.ao-room-label__count {
+  color: var(--ink-muted);
+}
 .ao-room-label__count {
   font-weight: 400;
 }
