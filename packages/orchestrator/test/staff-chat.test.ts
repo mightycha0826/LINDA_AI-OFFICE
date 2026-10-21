@@ -12,6 +12,8 @@ import { CEO, STRANGER, approvedTickets, setup, type Setup } from './helpers.ts'
 
 const mention = (s: Setup, over: Partial<StaffMention> = {}): StaffMention => ({
   guildId: s.config.discord.guildId,
+  channelId: '400000000000000004',
+  messageId: '500000000000000005',
   authorId: CEO,
   authorIsBot: false,
   mentionsMe: true,
@@ -25,48 +27,48 @@ describe('직원 봇 대화: 누구에게 답하나', () => {
   it('주인이 그 봇을 멘션한 글에만 답한다', async () => {
     const s = setup();
     const chat = chatOf(s);
-    expect(await chat.answer('developer', mention(s))).toBe('지금은 대기 중이에요');
-    expect(await chat.answer('developer', mention(s, { authorId: STRANGER }))).toBeNull();
-    expect(await chat.answer('developer', mention(s, { authorIsBot: true }))).toBeNull();
-    expect(await chat.answer('developer', mention(s, { mentionsMe: false }))).toBeNull();
-    expect(await chat.answer('developer', mention(s, { guildId: '999999999999999999' }))).toBeNull();
+    expect((await chat.answer('developer', mention(s)))?.text ?? null).toBe('지금은 대기 중이에요');
+    expect((await chat.answer('developer', mention(s, { authorId: STRANGER })))?.text ?? null).toBeNull();
+    expect((await chat.answer('developer', mention(s, { authorIsBot: true })))?.text ?? null).toBeNull();
+    expect((await chat.answer('developer', mention(s, { mentionsMe: false })))?.text ?? null).toBeNull();
+    expect((await chat.answer('developer', mention(s, { guildId: '999999999999999999' })))?.text ?? null).toBeNull();
     // 직원 봇이 없는 직원(비서실장·보조 직원)은 답하지 않는다
-    expect(await chat.answer('chief-of-staff', mention(s))).toBeNull();
-    expect(await chat.answer('explainer', mention(s))).toBeNull();
+    expect((await chat.answer('chief-of-staff', mention(s)))?.text ?? null).toBeNull();
+    expect((await chat.answer('explainer', mention(s)))?.text ?? null).toBeNull();
     expect(s.mock.callsFor('chat')).toHaveLength(1);
   });
 
   it('정지 중이면 AI를 부르지 않는다', async () => {
     const s = setup();
     stopAll(s.ctx, CEO);
-    expect(await chatOf(s).answer('pm', mention(s))).toContain('정지 중');
+    expect((await chatOf(s).answer('pm', mention(s)))?.text ?? null).toContain('정지 중');
     expect(s.mock.callsFor('chat')).toHaveLength(0);
   });
 
   it('멘션만 있고 내용이 없으면 AI를 부르지 않고 상태만 알린다', async () => {
     const s = setup();
-    expect(await chatOf(s).answer('pm', mention(s, { content: '<@300000000000000003>' }))).toContain('대기 중');
+    expect((await chatOf(s).answer('pm', mention(s, { content: '<@300000000000000003>' })))?.text ?? null).toContain('대기 중');
     expect(s.mock.callsFor('chat')).toHaveLength(0);
   });
 
   it('한 직원은 한 번에 한 질문만 답한다', async () => {
     const s = setup();
-    let release!: (v: string) => void;
-    const chat = new StaffChat(s.ctx, () => new Promise<string>((r) => (release = r)));
+    let release!: (v: { text: string; intent: 'chat' }) => void;
+    const chat = new StaffChat(s.ctx, () => new Promise((r) => (release = r)));
     const first = chat.answer('dev-a', mention(s));
-    expect(await chat.answer('dev-a', mention(s))).toContain('답하는 중');
-    release('네, 작업 중이에요');
-    expect(await first).toBe('네, 작업 중이에요');
+    expect((await chat.answer('dev-a', mention(s)))?.text ?? null).toContain('답하는 중');
+    release({ text: '네, 작업 중이에요', intent: 'chat' });
+    expect((await first)?.text).toBe('네, 작업 중이에요');
   });
 
   it('두뇌가 답하지 못하면 상태를 담은 기본 답을 한다', async () => {
     const s = setup();
     const chat = new StaffChat(s.ctx, async () => null);
-    expect(await chat.answer('reviewer', mention(s))).toContain('지금 상태: 대기 중');
+    expect((await chat.answer('reviewer', mention(s)))?.text ?? null).toContain('지금 상태: 대기 중');
     const throwing = new StaffChat(s.ctx, async () => {
       throw new Error('끊김');
     });
-    expect(await throwing.answer('reviewer', mention(s))).toContain('답을 만들지 못했어요');
+    expect((await throwing.answer('reviewer', mention(s)))?.text ?? null).toContain('답을 만들지 못했어요');
   });
 });
 
@@ -93,7 +95,8 @@ describe('직원 봇 대화: 두뇌와 권한', () => {
     expect(chatInput(s.ctx, 'reviewer', 'x').tickets[0]!.role).toBe('검토');
     const prompt = renderTask('chat', input);
     expect(prompt).toContain('<data source="주인 메시지">');
-    expect(prompt).toContain('/지시');
+    expect(prompt).toContain('버튼');
+    expect(prompt).toContain('intent');
   });
 
   it('멘션 표시를 빼고 길이를 자른다', () => {

@@ -16,6 +16,7 @@ export type TicketEvent =
   | { type: 'ceo.retry' }
   | { type: 'ceo.direct'; note: string }
   | { type: 'ceo.cancel' }
+  | { type: 'ceo.revise' }
   | { type: 'guard.pingpong' }
   | { type: 'system.pause'; reason: PauseReason }
   | { type: 'system.resume'; cause: ResumeCause };
@@ -114,6 +115,8 @@ export const TRANSITIONS: readonly Rule[] = [
   { name: 'CEO 다시 시도', from: ['blocked'], event: 'ceo.retry', to: 'in_progress', by: ['ceo'] },
   { name: 'CEO 방향 지시', from: ['blocked'], event: 'ceo.direct', to: 'in_progress', by: ['ceo'] },
   { name: 'CEO 취소', from: ['blocked'], event: 'ceo.cancel', to: 'cancelled', by: ['ceo'] },
+  // 직원 직접 지시의 진행 중 수정 (9장, 2026-10-21): 검토 중이면 검토를 멈추고 새 완료 조건으로 다시 작업
+  { name: 'CEO 수정 요청', from: ['in_review'], event: 'ceo.revise', to: 'rework', by: ['ceo'] },
   { name: '핑퐁 → 회의', from: ['in_progress', 'in_review', 'rework'], event: 'guard.pingpong', to: 'meeting', by: ['orchestrator'] },
   { name: '회의 중 핑퐁 → 막힘', from: ['meeting'], event: 'guard.pingpong', to: 'blocked', by: ['orchestrator'] },
   {

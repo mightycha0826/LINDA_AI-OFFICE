@@ -3,11 +3,32 @@
 // - 긴 내용은 앞부분과 사무실 화면 링크만. 회의록은 스레드 끝에 올린다.
 // - 묶어서 보낸다: 한 번에 최대 maxPerFlush개 (Discord 전송 제한).
 // - 이 채널에 사람이 답해도 지시로 처리하지 않는다 (봇이 이 채널의 메시지를 읽지 않는다).
+// - 직원 직접 지시(2026-10-21)로 시작한 일은 스레드 대신 주인이 말한 채널 바로 아래에 올린다.
+//   받는 직원을 태그하고(직원 봇끼리), 상태가 바뀌면 회사 시스템이 한 줄로 알린다. 태그는 보여 주기일 뿐 봇이 반응하지 않는다.
 import { eq, gt } from 'drizzle-orm';
 import { getState, setState, type Ctx } from '../context.ts';
+import { originOfOrder } from '../core/direct.ts';
 import { employees, events, meetingMinutes, messages, tickets } from '../db/schema.ts';
 import { clip, minutesText } from './messages.ts';
 import type { MirrorPort } from './types.ts';
+
+/** 직접 지시 채널에 알리는 상태 변화 */
+const STATUS_LINE: Partial<Record<string, string>> = {
+  in_review: '검토를 시작해요',
+  rework: '반려돼서 다시 작업해요',
+  meeting: '의견이 갈려 회의를 열어요',
+  blocked: '막혔어요. #막힘에서 방향을 정해 주세요',
+  awaiting_approval: '검토를 통과했어요. #결재함에서 푸시를 결재해 주세요',
+  done: '끝났어요',
+  cancelled: '취소됐어요',
+};
+
+/** 직접 지시 채널에 올리는 길 (main.ts가 직원 봇·LINDA로 이어 준다) */
+export interface DirectChannelRoute {
+  post(channelId: string, m: { username: string; content: string; employeeId?: string }): Promise<void>;
+  /** 직원 봇 태그(<@id>). 봇이 없으면 null */
+  mentionOf(employeeId: string): string | null;
+}
 
 const CURSOR = 'mirror.cursor';
 const THREADS = 'mirror.threads';
@@ -18,14 +39,27 @@ export class Mirror {
   private readonly maxPerFlush: number;
   private readonly log: (s: string) => void;
   private readonly interpret: ((from: string, content: string) => Promise<string | null>) | undefined;
+  private readonly direct: DirectChannelRoute | undefined;
 
   /** interpret: 거울 통역사 (16장 7-5). JSON 메시지를 문장으로. 없거나 실패하면 원문(앞부분)을 그대로 */
-  constructor(c: Ctx, port: MirrorPort, opts: { maxPerFlush?: number; log?: (s: string) => void; interpret?: (from: string, content: string) => Promise<string | null> } = {}) {
+  constructor(
+    c: Ctx,
+    port: MirrorPort,
+    opts: { maxPerFlush?: number; log?: (s: string) => void; interpret?: (from: string, content: string) => Promise<string | null>; direct?: DirectChannelRoute } = {},
+  ) {
     this.c = c;
     this.port = port;
     this.maxPerFlush = opts.maxPerFlush ?? 8;
     this.log = opts.log ?? (() => {});
     this.interpret = opts.interpret;
+    this.direct = opts.direct;
+  }
+
+  /** 직접 지시로 시작한 티켓이면 주인이 말한 채널 */
+  private originChannel(ticketId: string): string | null {
+    if (!this.direct) return null;
+    const t = this.c.db.select().from(tickets).where(eq(tickets.id, ticketId)).get();
+    return t ? (originOfOrder(this.c, t.orderId)?.channelId ?? null) : null;
   }
 
   private async thread(ticketId: string): Promise<string | null> {
@@ -68,6 +102,15 @@ export class Mirror {
       try {
         if (ev.type === 'message.sent' && typeof p.ticketId === 'string') {
           const m = c.db.select().from(messages).where(eq(messages.id, String(p.messageId))).get();
+          const origin = m && this.originChannel(p.ticketId);
+          if (m && origin && this.direct) {
+            const content = (await this.readable(m.fromId, m.content)) ?? m.content;
+            const tag = m.toId && m.toId !== m.fromId ? this.direct.mentionOf(m.toId) : null;
+            await this.direct.post(origin, { username: this.name(m.fromId), employeeId: m.fromId, content: `${tag ? `${tag} ` : ''}${clip(content, c.config.mirror.maxChars, c.config.screenUrl, p.ticketId)}` });
+            sent++;
+            setState(c, CURSOR, ev.seq);
+            continue;
+          }
           const threadId = m && (await this.thread(p.ticketId));
           if (m && threadId) {
             const content = (await this.readable(m.fromId, m.content)) ?? m.content;
@@ -76,9 +119,22 @@ export class Mirror {
           }
         } else if (ev.type === 'meeting.minutes' && typeof p.ticketId === 'string') {
           const m = c.db.select().from(meetingMinutes).where(eq(meetingMinutes.id, String(p.minutesId))).get();
+          const origin = m && this.originChannel(p.ticketId);
+          if (m && origin && this.direct) {
+            await this.direct.post(origin, { username: '회의록', content: minutesText(m) });
+            sent++;
+            setState(c, CURSOR, ev.seq);
+            continue;
+          }
           const threadId = m && (await this.thread(p.ticketId));
           if (m && threadId) {
             await this.port.post(threadId, { username: '회의록', content: minutesText(m) });
+            sent++;
+          }
+        } else if (ev.type === 'ticket.status' && typeof p.ticketId === 'string' && typeof p.to === 'string' && STATUS_LINE[p.to]) {
+          const origin = this.originChannel(p.ticketId);
+          if (origin && this.direct) {
+            await this.direct.post(origin, { username: '회사 시스템', content: `**${p.ticketId}** ${STATUS_LINE[p.to]}` });
             sent++;
           }
         }

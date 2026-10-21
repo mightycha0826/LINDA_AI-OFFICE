@@ -26,6 +26,9 @@ class FakeStaffBots implements StaffBotPort {
     if (this.failing.has(id)) throw new Error('보내기 실패');
     this.posts.push({ id, threadId, content });
   }
+  userIdOf(id: string) {
+    return this.ids.includes(id) ? `9000000000000000${this.ids.indexOf(id)}` : null;
+  }
   async setStatus(id: string, text: string) {
     this.statuses.push({ id, text });
   }

@@ -1,5 +1,6 @@
 // Discord 메시지 형식 (9장 ①~⑦). 말투는 포인트 디자인 시스템의 해요체(17장).
 import type { ApprovalRow } from '../core/approvals.ts';
+import type { DirectProposal } from '../core/direct.ts';
 import type { PlanRow } from '../core/plans.ts';
 import type { TicketRow } from '../core/tickets.ts';
 import type { MinutesRow } from '../core/meeting.ts';
@@ -167,4 +168,33 @@ export function minutesText(m: MinutesRow): string {
     ...m.rounds.map((r) => `${r.round}라운드: ${r.positions.map((p) => `${p.employeeId} "${p.claim}"`).join(' / ')}`),
     `다음 할 일: ${m.nextActions.join(', ') || '없음'}`,
   ].join('\n');
+}
+
+/** 직원 직접 지시·진행 중 수정의 확인 메시지 (9장, 2026-10-21). LINDA가 주인 메시지 바로 아래에 띄운다 */
+export function proposalMessage(p: DirectProposal, name: string): { content: string; buttons: Button[][] } {
+  if (p.kind === 'order') {
+    return {
+      content: [
+        `**${name}에게 맡길까요?** · ${p.projectId ? `[${p.projectId}] ` : ''}${p.title}`,
+        '완료 조건',
+        ...p.criteria.map((x, i) => `${i + 1}. ${x}`),
+        '[맡기고 시작]을 누르면 이 내용으로 바로 시작해요(계획서 결재 한 번). 검토는 다른 모델 직원이 하고, 푸시는 지금처럼 #결재함에서 결재해요. 30분 안에 눌러 주세요.',
+      ].join('\n'),
+      buttons: [
+        [
+          { id: `dp:${p.id}:start`, label: '맡기고 시작', style: 'success' },
+          { id: `dp:${p.id}:chat`, label: '그냥 대화', style: 'secondary' },
+        ],
+      ],
+    };
+  }
+  return {
+    content: [`**${p.ticketId}에 수정 요청을 붙일까요?** · 담당 ${name}`, `> ${p.note}`, '완료 조건에 "CEO 수정 요청" 한 줄로 붙어요. 검토 중이면 다시 작업으로 돌아가요. 30분 안에 눌러 주세요.'].join('\n'),
+    buttons: [
+      [
+        { id: `rv:${p.id}:apply`, label: '수정 반영', style: 'primary' },
+        { id: `rv:${p.id}:chat`, label: '그냥 대화', style: 'secondary' },
+      ],
+    ],
+  };
 }
