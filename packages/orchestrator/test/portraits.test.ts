@@ -65,7 +65,8 @@ describe('화면 서버', () => {
     const snap = JSON.parse((await get(port, '/snapshot')).body.toString('utf8')) as Snapshot;
     const chief = snap.employees.find((e) => e.id === 'chief-of-staff')!;
     expect(chief).toMatchObject({ personalName: '백서진', portrait: '/assets/portraits/chief-of-staff.webp' });
-    expect(snap.employees.find((e) => e.id === 'pm')).toMatchObject({ personalName: null, portrait: null });
+    expect(snap.employees.find((e) => e.id === 'pm')).toMatchObject({ personalName: '류하영', portrait: null });
+    expect(snap.employees.find((e) => e.id === 'git-cat')).toMatchObject({ personalName: null, portrait: null });
 
     const img = await get(port, chief.portrait!);
     expect(img.status).toBe(200);
