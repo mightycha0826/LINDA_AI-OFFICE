@@ -74,7 +74,7 @@ async function respond(it: ButtonInteraction | ModalSubmitInteraction | ChatInpu
     return;
   }
   const content = fit(reply.kind === 'update' ? reply.content : reply.content);
-  await it.reply({ content, ...(reply.kind === 'reply' && reply.ephemeral ? { flags: MessageFlags.Ephemeral } : {}) });
+  await it.reply({ content, ...(reply.kind === 'reply' && reply.buttons ? { components: rows(reply.buttons) } : {}), ...(reply.kind === 'reply' && reply.ephemeral ? { flags: MessageFlags.Ephemeral } : {}) });
 }
 
 export interface DiscordBot {

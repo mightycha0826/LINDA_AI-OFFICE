@@ -51,7 +51,7 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5. 7-2부터 로컬 두뇌는 `gemma4:12b-64k` 하나(헤르메스·오케스트레이터 공용, num_ctx 65536). qwen3:14b·gemma4:12b 파일은 아직 디스크에 있음(지울지는 주인 결정). C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 541개(통과 538, 건너뜀 2. Windows 기준. 나머지 1개 `workspace.test.ts`는 Windows 경로 테스트라 리눅스에서만 실패한다), typecheck·lint:ds 깨끗하다.
+- **테스트**: `npm test` 558개(통과 555, 건너뜀 2. Windows 기준. 나머지 1개 `workspace.test.ts`는 Windows 경로 테스트라 리눅스에서만 실패한다), typecheck·lint:ds 깨끗하다.
 - **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 10-21에 작업 브랜치 `claude/loving-dirac-jwm9rq`를 main에 병합했다(주인 지시).
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
@@ -68,6 +68,8 @@
 | **조직 개편 7단계** (CEO 지시) | GPT 한도를 회사가 전부 쓰기로(100%/100%), Claude는 그대로. Claude=판단(기획실장·개발팀장), GPT=양(개발자 A·B, 리뷰어·감사관, 전략가, 카피라이터), Gemma=보조 10명. 부서·팀장 구조 | DESIGN 2-0 조직도, 16장 7-1~7-5 |
 | 7-5: 로컬 보조 직원 7명 (주인 부재 중, AUTONOMOUS-LOG 75-A~H) | 막힘 해설가·변경 요약가·거울 통역사·커밋 서기·회고 서기·보고 초안가·초안 작가, 역할 `assistant`(직원 표 다시 만들기 0008, 마이그레이션 동안만 외래 키 끔), GPU 순위(급함·보통·뒤), 화면 부서 배치. 보조 직원은 검토 불가, 초안 작가만 writing·marketing 티켓 | DESIGN 16장 7-5, `staff/assistants.ts`, `test/org-7-5.test.ts` |
 | 7단계 진짜 두뇌 확인 (주인 부재 중) | `smoke --flow`(개발자 A 구현 → 개발팀장 검토, done)와 `smoke --doc`(카피라이터 → 교정 1차 점검 → 기획실장 검토, done) 통과. 문서 티켓이 토큰 상한에 걸려 기획실장 역할 카드에 문서 티켓 토큰 기준 추가 | stage0/RESULTS.md 맨 아래, `sim/smoke.ts` |
+| 3D 사무실 적용 (CEO 지시 10-21) | 시안 ②를 실제 화면에 넣음. [3D][2D] 전환(PC 3D·폰 2D 기본, WebGL 없으면 2D). 자리 계산(`office3d/layout.ts`, 테스트)과 그림(`scene.ts`, three r149) 분리, three.js는 3D를 열 때만 불러옴. 회의 → 회의실, 파견 → 파견 라운지, 임시 → 커피 바, 결재 서류 수·회의실 표지·도킹 표시등·Git 고양이가 스냅샷을 따름. 이름표 클릭 → 카메라 이동 + 직원 상세. 3D 재질 색은 DS 예외 | DESIGN 12·17장, `office-ui/src/office3d/`, `components/Office3DView.tsx` |
+| 파견 직원: 빌려 온 친구 계정 (CEO 결정 10-21, 한도 70%) | 계정 하나 = 파견 직원. add-guest.ps1로 친구가 직접 로그인(`data/guests/<ID>`, CLAUDE_CONFIG_DIR/CODEX_HOME), `/파견` [출근][퇴근](CEO만). 친구 계정 사용률 70%(Claude 실제·Codex 추정)에서 멈춤, usage 표·회사 계정 표시와 분리, 검토는 안 함, 퇴근·명단 제거 시 티켓 paused(budget). protect-secrets가 guests 폴더째 막음 | DESIGN 8장, `core/guests.ts`, `brains/registry.ts`, `engine/brain-calls.ts`, `test/guests.test.ts`, RUNNING 4장 |
 | 직원 직접 지시·진행 중 수정 (CEO 결정 10-21) | 멘션 → Gemma가 intent(chat·order·revise) 제안 → LINDA가 주인 메시지 바로 아래에 [맡기고 시작]/[수정 반영] 버튼(CEO만·한 번·30분). 시작하면 담당 고정 계획서 한 장을 코드가 만들고 즉시 승인(관문 생략, 검토자는 코드가 다른 모델로), 대화·상태는 스레드 없이 그 채널에 받는 직원 태그로. 수정은 완료 조건 한 줄 + 검토 중이면 `ceo.revise`→rework. coding은 프로젝트 #작업 채널만, Git 고양이는 안 맡음. events 표 CHECK를 피하려 새 이벤트 종류는 만들지 않음 | DESIGN 5·9장, `core/direct.ts`, `discord/staff-chat.ts`·`mirror.ts`·`interactions.ts`, `test/direct.test.ts` |
 | 캐릭터 이름·기준 그림 (CEO 지정 10-21) | 한주아=개발자 A, 한서윤=개발자 B, 서예린=전략가, 백예원=교정 담당, 차은설=리뷰어 · 감사관. 직함은 그대로, 이름은 화면 이름표·직원 탭·상세와 대화 자기소개에만. 정면 그림은 `assets/portraits/<ID>.webp`(직원 상세 증명사진, 시트는 아직) | DESIGN 13장 머리, `staff/org.ts` PERSONAL_NAMES, `test/org-screen.test.ts` |
 | 직원 봇 대화 캐릭터 (CEO 요청 10-21) | 9개 봇이 같은 업무 카드라 말투가 비슷했다(개발팀장·개발자 A·B는 카드까지 같음). 봇마다 자기소개·말투·성격을 대화에만 붙임. 초안은 Claude 작성, 주인 검토 대기 | DESIGN 9장, `staff/chat-personas.ts`, `test/staff-chat.test.ts` |

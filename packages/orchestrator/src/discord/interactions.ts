@@ -7,7 +7,9 @@ import type { Ctx } from '../context.ts';
 import { pendingApprovals, requestApproval, type ApprovalDecision } from '../core/approvals.ts';
 import { budgetStatus } from '../core/budget.ts';
 import { applyRevision, dismissProposal, getProposal, startDirectOrder } from '../core/direct.ts';
-import { approvals, messages, orders, plans, tickets } from '../db/schema.ts';
+import { guestLine, loadGuestRegistry, setGuestOn, syncGuests } from '../core/guests.ts';
+import { isGuest } from '../core/budget.ts';
+import { approvals, employees, messages, orders, plans, tickets } from '../db/schema.ts';
 import type { Engine } from '../engine.ts';
 import { AlreadyDecidedError, OfficeError, StaleApprovalError } from '../errors.ts';
 import { buildReportData, formatReportData } from '../reports.ts';
@@ -16,7 +18,7 @@ import type { NewProjectService } from '../workspace/new-project.ts';
 import { projectByChannel } from '../workspace/projects.ts';
 import { approvalMessageFor, decidedMessage, mainMergeConfirm } from './messages.ts';
 import { markCeoActive } from './presence.ts';
-import type { Interaction, InteractionReply } from './types.ts';
+import type { Button, Interaction, InteractionReply } from './types.ts';
 
 const TICKET_ID = /^T-\d+$/;
 
@@ -104,6 +106,11 @@ export class InteractionHandler {
     }
     if (kind === 'pushc') return action === 'merge' ? this.decide(target, 'approved', 'main') : this.decide(target, 'rejected');
     if (kind === 'dp' || kind === 'rv') return this.direct(kind, target, action);
+    if (kind === 'gs') {
+      // 파견 직원 [출근]·[퇴근] (8장 2026-10-21). 규칙은 core/guests.ts가 집행한다
+      setGuestOn(this.c, target, action === 'on', this.c.config.ceoDiscordId);
+      return { kind: 'update', ...this.guestBoard() };
+    }
     return { kind: 'reply', content: '모르는 버튼이에요', ephemeral: true };
   }
 
@@ -122,6 +129,22 @@ export class InteractionHandler {
     }
     const r = applyRevision(this.c, proposalId, ceo);
     return { kind: 'update', content: `${head}\n\n**반영했어요** · ${r.ticketId} (${r.status === 'rework' ? '다시 작업으로 돌아가요' : '다음 제출부터 새 조건으로 검토해요'})`, buttons: [] };
+  }
+
+  /** /파견 목록과 버튼. 명단(data/guests.json)을 다시 읽어 직원 표에 맞춘다 */
+  private guestBoard(): { content: string; buttons: Button[][] } {
+    syncGuests(this.c, loadGuestRegistry(this.c.config.paths.data));
+    const guests = this.c.db.select().from(employees).all().filter(isGuest);
+    if (!guests.length) return { content: '등록된 파견 직원이 없어요. 데스크톱에서 scripts/add-guest.ps1로 친구 계정을 넣어 주세요.', buttons: [] };
+    const lines = guests.map((e) => guestLine(this.c, e));
+    const buttons: Button[][] = guests.slice(0, 5).map((e) => {
+      const id = e.id.replace(/^guest-/, '');
+      return [
+        { id: `gs:${id}:on`, label: `${e.displayName} 출근`, style: 'success', disabled: !e.leftAt },
+        { id: `gs:${id}:off`, label: '퇴근', style: 'secondary', disabled: !!e.leftAt },
+      ];
+    });
+    return { content: ['**파견 직원** (친구 계정, 사용률 한도까지만 써요)', ...lines.map((l) => `- ${l}`)].join('\n'), buttons };
   }
 
   private async modal(id: string, fields: Record<string, string>): Promise<InteractionReply> {
@@ -178,6 +201,10 @@ export class InteractionHandler {
         if (!created) return { kind: 'reply', content: `이미 받은 지시예요 (${order.id})`, ephemeral: true };
         return { kind: 'reply', content: `지시를 받았어요 (**${order.id}**${project ? ` · ${project.id} 프로젝트` : ''}). PM이 계획서를 만들면 결재함에 올라와요.
 > ${text.slice(0, 300)}`, ephemeral: false };
+      }
+      case '파견': {
+        const board = this.guestBoard();
+        return { kind: 'reply', content: board.content, ephemeral: false, buttons: board.buttons };
       }
       case '보고': {
         const since = new Date(c.clock.now().getTime() - 24 * 3_600_000).toISOString();
@@ -265,6 +292,7 @@ export class InteractionHandler {
 export const SLASH_COMMANDS: { name: string; description: string; options: { name: string; description: string; required: boolean; choices?: { name: string; value: string }[] }[] }[] = [
   { name: '지시', description: '회사에 일을 맡겨요 (PM이 계획서를 만들어 결재함에 올려요)', options: [{ name: '내용', description: '예: demo 프로젝트에 로그인 기능 추가', required: true }] },
   { name: '보고', description: '지금 상태를 바로 보고해요', options: [] },
+  { name: '파견', description: '빌려 온 친구 계정(파견 직원)의 출근·퇴근과 사용률', options: [] },
   { name: '상태', description: '티켓 하나의 상세', options: [{ name: '티켓', description: '예: T-12', required: true }] },
   { name: 'push', description: '푸시 확인 버튼을 결재함에 올려요', options: [{ name: '티켓', description: '예: T-12', required: true }] },
   { name: '되돌리기', description: 'revert 커밋 확인 버튼을 결재함에 올려요', options: [{ name: '티켓', description: '예: T-12', required: true }] },

@@ -10,6 +10,7 @@ import { NotFoundError, OfficeError, PlanRuleError } from '../errors.ts';
 import { expirePendingApprovals, requestApproval, type ApprovalDecision } from './approvals.ts';
 import { saveMinutes } from './meeting.ts';
 import { applyTicketEvent } from './tickets.ts';
+import { isGuest } from './budget.ts';
 import { checkTempRules, dismissAllTemps, hireTemp, isTempRef, tempBrain, tempRef } from '../staff/temp-staff.ts';
 import { ASSIGNABLE_ASSISTANTS, ASSISTANT_IDS, DRAFTER_TICKET_TYPES } from '../staff/assistants.ts';
 import type { Actor } from './transitions.ts';
@@ -49,7 +50,7 @@ export function checkPlanRules(c: Ctx, out: PmPlanOutput, boundProjectId?: strin
       .select()
       .from(employees)
       .all()
-      .filter((e) => !e.isTemporary)
+      .filter((e) => !e.isTemporary && !(isGuest(e) && e.leftAt))
       .map((e) => [e.id, e]),
   );
   if (boundProjectId && out.projectId && out.projectId !== boundProjectId) {
@@ -69,6 +70,8 @@ export function checkPlanRules(c: Ctx, out: PmPlanOutput, boundProjectId?: strin
   out.tickets.forEach((tk, i) => {
     const label = `티켓 ${i + 1}(${tk.title})`;
     if (NOT_REVIEWERS.includes(tk.reviewer)) problems.push(`${label}: ${tk.reviewer}은(는) 티켓을 검토하지 않음`);
+    const rv = staff.get(tk.reviewer);
+    if (rv && isGuest(rv)) problems.push(`${label}: 파견 직원 ${tk.reviewer}은(는) 검토하지 않음 (담당만)`);
     if (isTempRef(tk.assignee)) {
       // 임시 직원 담당 티켓은 checkTempRules가 본다. 검토자만 확인한다.
       const r = staff.get(tk.reviewer);
@@ -112,7 +115,7 @@ export const REVIEWER_ORDER: Record<'coding' | 'other', readonly string[]> = { c
 /** 담당자를 검토할 수 있는 직원: 상근 AI 직원 중 담당자와 다른 모델 (6장 PM) */
 export function reviewerCandidates(staff: StaffRow[], assignee: StaffRow): StaffRow[] {
   return staff.filter(
-    (r) => !r.isTemporary && r.brain.provider !== 'none' && !NOT_REVIEWERS.includes(r.id) && r.id !== assignee.id && brainModel(r.brain) !== brainModel(assignee.brain),
+    (r) => !r.isTemporary && !isGuest(r) && r.brain.provider !== 'none' && !NOT_REVIEWERS.includes(r.id) && r.id !== assignee.id && brainModel(r.brain) !== brainModel(assignee.brain),
   );
 }
 
@@ -139,7 +142,7 @@ export function fixReviewers(c: Ctx, out: PmPlanOutput): { out: PmPlanOutput; ch
     const r = staff.get(tk.reviewer);
     if (!model || !r) return tk;
     const coding = tk.type === 'coding';
-    const reason = NOT_REVIEWERS.includes(r.id)
+    const reason = NOT_REVIEWERS.includes(r.id) || isGuest(r)
       ? `${r.id}은(는) 검토하지 않음`
       : r.id === tk.assignee
         ? '담당자와 같음'
