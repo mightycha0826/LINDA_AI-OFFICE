@@ -3,13 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Snapshot } from '@ai-office/shared';
 import { useOffice, type LiveEvent } from './data.ts';
 import { Director } from './director.ts';
-import { hourIn } from './format.ts';
+import { fullName, hourIn } from './format.ts';
 import { useTheme } from './theme.ts';
 import { EmployeeSheet } from './components/EmployeeSheet.tsx';
 import { LogTab } from './components/LogTab.tsx';
 import { OfficeMap } from './components/OfficeMap.tsx';
 import { ResourceTab } from './components/ResourceTab.tsx';
 import { StaffTab } from './components/StaffTab.tsx';
+import { SummaryStrip } from './components/SummaryStrip.tsx';
 import { Sheet } from './components/Sheet.tsx';
 import { TicketDetailView } from './components/TicketDetailView.tsx';
 import { TopBar } from './components/TopBar.tsx';
@@ -172,6 +173,7 @@ export function App() {
           {mobile === 'office' && <div className="ao-map-scroll">{map}</div>}
           {mobile === 'work' && (
             <div className="ao-panel">
+              <SummaryStrip snapshot={snapshot} />
               {tabs}
               {panelBody}
             </div>
@@ -222,6 +224,7 @@ export function App() {
             </button>
           </div>
           <aside id="ao-side" className="ao-panel ao-side" inert={!panelOpen} aria-hidden={!panelOpen}>
+            <SummaryStrip snapshot={snapshot} />
             <UsageCard snapshot={snapshot} />
             {tabs}
             {panelBody}
@@ -268,7 +271,7 @@ function writePanelOpen(open: boolean) {
 }
 
 function nameMap(s: Snapshot) {
-  const m = new Map<string, string>(s.employees.map((e) => [e.id, e.displayName]));
+  const m = new Map<string, string>(s.employees.map((e) => [e.id, fullName(e)]));
   m.set('ceo', 'CEO');
   m.set('orchestrator', '시스템');
   return m;
