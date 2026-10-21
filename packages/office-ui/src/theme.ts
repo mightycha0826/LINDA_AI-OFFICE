@@ -47,7 +47,9 @@ export function useTheme(combo: number) {
     return () => m.removeEventListener('change', update);
   }, [pref]);
 
-  useEffect(() => applyTheme(combo, mode), [combo, mode]);
+  useEffect(() => {
+    applyTheme(combo, mode);
+  }, [combo, mode]);
 
   const cycle = () => {
     const next: ModePref = pref === 'system' ? 'light' : pref === 'light' ? 'dark' : 'system';

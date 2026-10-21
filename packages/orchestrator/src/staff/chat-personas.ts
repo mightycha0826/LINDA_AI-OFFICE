@@ -1,5 +1,5 @@
 // 직원 봇 대화 캐릭터 (9장 직원 봇 대답, 2026-10-21 CEO 요청). 주인이 멘션해 대화할 때만 붙인다.
-// 이름이 정해진 직원은 자기소개에 이름을 쓴다(staff/org.ts PERSON_NAMES, 2026-10-21).
+// 이름이 정해진 직원은 자기소개에 이름을 쓴다(staff/org.ts PERSONAL_NAMES, 2026-10-21).
 // 업무 역할 카드(role-cards.ts)는 그대로다. 캐릭터는 말투와 관심사일 뿐이고, 회사 규칙·권한을 바꾸지 않는다.
 import type { STAFF_BOT_IDS } from '../discord/staff-bots.ts';
 

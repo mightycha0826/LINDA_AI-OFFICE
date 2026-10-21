@@ -14,7 +14,11 @@ export function LogTab({ snapshot, names, focusTicket, onOpenTicket }: Props) {
   const [minutesOnly, setMinutesOnly] = useState(false);
   const first = useRef<HTMLLIElement | null>(null);
   const rows = snapshot.log.filter((l) => (!minutesOnly || l.minutes) && (!focusTicket || l.ticketId === focusTicket));
-  useEffect(() => first.current?.scrollIntoView({ block: 'nearest' }), [focusTicket]);
+  // 중괄호로 감싼다: 최신 Chrome의 scrollIntoView는 Promise를 돌려주는데, 그대로 돌려주면 React가 정리 함수로 알고
+  // 탭을 닫을 때 불러서 화면 전체가 멈췄다 (2026-10-21, 로그 → 직원 탭)
+  useEffect(() => {
+    first.current?.scrollIntoView({ block: 'nearest' });
+  }, [focusTicket]);
   const who = (id: string | null) => (id ? (names.get(id) ?? id) : '전체');
 
   return (

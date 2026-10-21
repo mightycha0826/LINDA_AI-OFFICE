@@ -51,8 +51,8 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5. 7-2부터 로컬 두뇌는 `gemma4:12b-64k` 하나(헤르메스·오케스트레이터 공용, num_ctx 65536). qwen3:14b·gemma4:12b 파일은 아직 디스크에 있음(지울지는 주인 결정). C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 536개(통과 533, 건너뜀 2. Windows 기준. 나머지 1개 `workspace.test.ts`는 Windows 경로 테스트라 리눅스에서만 실패한다), typecheck·lint:ds 깨끗하다.
-- **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 지금은 `origin/main`이 로컬 `main`과 같다(10-20 기준 모두 푸시됨).
+- **테스트**: `npm test` 541개(통과 538, 건너뜀 2. Windows 기준. 나머지 1개 `workspace.test.ts`는 Windows 경로 테스트라 리눅스에서만 실패한다), typecheck·lint:ds 깨끗하다.
+- **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 10-21에 작업 브랜치 `claude/loving-dirac-jwm9rq`를 main에 병합했다(주인 지시).
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
 ### 0단계 결과
@@ -69,12 +69,13 @@
 | 7-5: 로컬 보조 직원 7명 (주인 부재 중, AUTONOMOUS-LOG 75-A~H) | 막힘 해설가·변경 요약가·거울 통역사·커밋 서기·회고 서기·보고 초안가·초안 작가, 역할 `assistant`(직원 표 다시 만들기 0008, 마이그레이션 동안만 외래 키 끔), GPU 순위(급함·보통·뒤), 화면 부서 배치. 보조 직원은 검토 불가, 초안 작가만 writing·marketing 티켓 | DESIGN 16장 7-5, `staff/assistants.ts`, `test/org-7-5.test.ts` |
 | 7단계 진짜 두뇌 확인 (주인 부재 중) | `smoke --flow`(개발자 A 구현 → 개발팀장 검토, done)와 `smoke --doc`(카피라이터 → 교정 1차 점검 → 기획실장 검토, done) 통과. 문서 티켓이 토큰 상한에 걸려 기획실장 역할 카드에 문서 티켓 토큰 기준 추가 | stage0/RESULTS.md 맨 아래, `sim/smoke.ts` |
 | 직원 직접 지시·진행 중 수정 (CEO 결정 10-21) | 멘션 → Gemma가 intent(chat·order·revise) 제안 → LINDA가 주인 메시지 바로 아래에 [맡기고 시작]/[수정 반영] 버튼(CEO만·한 번·30분). 시작하면 담당 고정 계획서 한 장을 코드가 만들고 즉시 승인(관문 생략, 검토자는 코드가 다른 모델로), 대화·상태는 스레드 없이 그 채널에 받는 직원 태그로. 수정은 완료 조건 한 줄 + 검토 중이면 `ceo.revise`→rework. coding은 프로젝트 #작업 채널만, Git 고양이는 안 맡음. events 표 CHECK를 피하려 새 이벤트 종류는 만들지 않음 | DESIGN 5·9장, `core/direct.ts`, `discord/staff-chat.ts`·`mirror.ts`·`interactions.ts`, `test/direct.test.ts` |
-| 캐릭터 이름·기준 그림 (CEO 지정 10-21) | 한주아=개발자 A, 한서윤=개발자 B, 서예린=전략가, 백예원=교정 담당, 차은설=리뷰어 · 감사관. 직함은 그대로, 이름은 화면 이름표·직원 탭·상세와 대화 자기소개에만. 정면 그림은 `assets/sources/<ID>-portrait.webp`(시트는 아직) | DESIGN 13장 머리, `staff/org.ts` PERSON_NAMES, `test/org-screen.test.ts` |
+| 캐릭터 이름·기준 그림 (CEO 지정 10-21) | 한주아=개발자 A, 한서윤=개발자 B, 서예린=전략가, 백예원=교정 담당, 차은설=리뷰어 · 감사관. 직함은 그대로, 이름은 화면 이름표·직원 탭·상세와 대화 자기소개에만. 정면 그림은 `assets/portraits/<ID>.webp`(직원 상세 증명사진, 시트는 아직) | DESIGN 13장 머리, `staff/org.ts` PERSONAL_NAMES, `test/org-screen.test.ts` |
 | 직원 봇 대화 캐릭터 (CEO 요청 10-21) | 9개 봇이 같은 업무 카드라 말투가 비슷했다(개발팀장·개발자 A·B는 카드까지 같음). 봇마다 자기소개·말투·성격을 대화에만 붙임. 초안은 Claude 작성, 주인 검토 대기 | DESIGN 9장, `staff/chat-personas.ts`, `test/staff-chat.test.ts` |
 | 직원 봇 주인 멘션 대답 (CEO 결정 10-20, 선택은 모두 추천안) | 주인이 아무 채널에서 직원 봇을 멘션하면 그 직원 이름으로 답글. 두뇌는 누구든 로컬 Gemma(한도 안 씀), 대화·상태 안내만(지시·결재·푸시 길 없음). 인텐트 Guilds·GuildMessages, Message Content는 여전히 끔(멘션한 글은 내용이 온다). 정지 중엔 AI 안 부름, 직원당 한 번에 한 질문. 초대 권한에 Send Messages 추가 | DESIGN 9장, `discord/staff-chat.ts`, `engine.chatAs`, `test/staff-chat.test.ts`, RUNNING 4장 |
 | Claude 두뇌 Opus 5.5 · 노력 medium (CEO 결정 10-20) | `config.claude.model`=`claude-opus-5-5`, `config.claude.effort`=`medium`, `claude -p --effort`. 실제 CLI 응답 확인 | DESIGN 8장, `brains/claude-code.ts`, `test/isolation.test.ts` |
 | 직원 봇 9개 (CEO 결정 10-20, 보여 주기 전용) | 정규 직원 9명이 자기 봇으로 #사무실-대화 거울 글과 상태 글(`T-3 작업 중`). 인텐트 Guilds만, 처리기 없음, 실패하면 웹훅. 토큰은 주인이 `set-secrets.ps1 -WithStaffBots` | DESIGN 9장, `discord/staff-bots.ts`, `test/staff-bots.test.ts`, RUNNING 4장 |
 | 화면을 2-0 조직도에 맞춤 + 엔진 리팩터링 (주인 부재 중, AUTONOMOUS-LOG 76-A~I) | 지도 30×20·부서별 방·인원, 팀장 별·보조 80%, 직원 탭, 자기 색 임시 그림, 기획 몫·GPT 몫 이름. 리뷰어 → 품질보증팀, Git 고양이 → 운영지원. engine.ts를 호출 계층·계획·티켓 단계로 분리(동작 그대로). 14:47 운영 반영 | DESIGN 12장, `office-ui/src/map.ts`, `staff/org.ts`, `src/engine/`, `test/org-screen.test.ts` |
+| 증명사진 (CEO 요청 10-21) | 직원을 누르면 상세 맨 위에 증명사진(`assets/portraits/<직원 ID>.webp`, 없으면 빈 틀)과 개인 이름. 비서실장 = 백서진(CEO). 같은 날 한주아·한서윤·서예린·백예원·차은설 사진·이름도 여기로 합침(브랜치 병합, 지도 이름표·직원 탭에도 이름). 로그 탭에서 다른 탭으로 가면 화면이 멈추던 문제도 고침 | DESIGN 12·13장, `EmployeeSheet.tsx`, `http/screen-server.ts` portraitOf, `test/portraits.test.ts` |
 | 비밀 파일 읽기 막기 (별도 세션, b3295f3) | Codex 샌드박스 계정(CodexSandboxOffline, 그룹 CodexSandboxUsers)이 secrets.json·`codex-home\auth.json`을 읽을 수 있음을 canary로 확인. 막기·되돌리기 스크립트 준비, Claude 데이터 폴더 거부 규칙. **주인이 `scripts\protect-secrets.ps1 -IncludeCodexAuth` 실행 필요**(아직 안 함) | DESIGN 7장 비밀 파일 읽기 |
 | 7-4: 전략가·카피라이터를 GPT로, 교정 1차 점검 | GPT 직원도 웹 도구 없이 오케스트레이터가 SearXNG로 대신 검색(Codex --search는 읽기 명령+검색어로 비밀이 샐 길이 있어 안 씀). 문서 티켓은 검토 전에 교정 담당(Gemma)이 지적 목록(판정 아님), 실패해도 안 멈춤. 리서치 몫은 기획실장만. 10-20 00:37 pm2 재시작으로 운영 반영(비밀 파일 세션의 Claude 거부 규칙 b3295f3도 함께) | DESIGN 15·16장, `engine/ticket-work.ts` proofread, `test/org-7-4.test.ts` |
 | 7-3 완료: GPT 개발자 A·B(Codex) | Codex 쓰기는 개발자의 티켓 작업이 정확히 그 티켓 worktree일 때만(`codexSandboxFor`), 네트워크 끔, `--add-dir`·샌드박스 끄기 옵션 없음. GPT 코드는 개발팀장(Claude), 개발팀장 코드는 리뷰어(GPT), 로컬은 코드 판정 안 함. Codex 동시 2. 진짜 Codex로 안 쓰기 성공·밖 쓰기 거부·인터넷 차단 확인 | DESIGN 7장 7-3, `brains/codex.ts`, `test/org-7-3.test.ts`, RESULTS 7-3 |
@@ -129,8 +130,8 @@ Discord 명령: `/지시`, `/보고`, `/상태 T-n`, `/push T-n`, `/되돌리기
 5. **재부팅 대비** (주인): 자동 로그인, 업데이트 자동 재시작 막기. pm2(`AI_Office_pm2`)·헤르메스(`Hermes_Gateway`) 작업은 등록됨.
 6. **SearXNG(#10)**: 주인이 `wsl --install`과 재부팅 → Claude가 Docker·SearXNG 설치와 연결. 그전엔 GPT 직원 웹 근거가 비어 있다.
 7. **정리**: Qwen 모델 지우기(`ollama rm qwen3:14b`, 주인 승인), 교정 담당이 대괄호 안 공백 같은 형식 실수를 놓친 것 보완.
-8. **주인**: 직원 봇 9개 만들기(RUNNING 4장 "직원 봇 9개 만들기", 초대 권한에 Send Messages 포함, 토큰은 `set-secrets.ps1 -WithStaffBots`). 만든 뒤 `@직원 지금 뭐 해?`로 대답 확인. 확인 필요: 화면 비서실장 이름 "백서진"이 확정인지(1·3장에서는 이미 이 이름을 쓴다).
-9. 캐릭터 그림: 한주아·한서윤·서예린·백예원·차은설은 정면 기준 그림이 있으니 옆모습·정면 시트로(CHARACTER-PROMPTS), 나머지(개발팀장·카피라이터·Git 고양이·보조 직원 7명)는 그림부터. 그 밖에 화면 임시 초안(`point.extra.css`) 결재, #8 밤 재측정, 헤르메스를 켠 상태로 #3 RAM 재측정.
+8. **주인**: 직원 봇 9개 만들기(RUNNING 4장 "직원 봇 9개 만들기", 초대 권한에 Send Messages 포함, 토큰은 `set-secrets.ps1 -WithStaffBots`). 만든 뒤 `@직원 지금 뭐 해?`로 대답 확인.
+9. 캐릭터 그림: 한주아·한서윤·서예린·백예원·차은설은 정면 그림(`assets/portraits/`)이 있으니 옆모습·정면 시트로(CHARACTER-PROMPTS), 나머지(개발팀장·카피라이터·Git 고양이·보조 직원 7명)는 그림부터. 그 밖에 화면 임시 초안(`point.extra.css`) 결재, #8 밤 재측정, 헤르메스를 켠 상태로 #3 RAM 재측정.
 
 ## 8. 커밋 흐름 (요약)
 10-15~16: 1~6단계(`d569abd`…`4a612ff`) → 10-16~17: 0단계 실측·개인 설정 분리(`4f0a435`…`0bbab50`) → 10-18~19: 캐릭터(`9baf7e8`…`9f74556`) → 10-19: 비밀 값 스크립트, Codex 정리, #2·#3, worktree 버그, #9, `/지시`, 헤르메스 연결, Gemma 전환(`2bd0b70`…`368bda5`), pm2 자동 시작(`6eb2ef6`), 어댑터·엔진 리팩터링(`2ba8847`). 전체는 `git log --oneline`.

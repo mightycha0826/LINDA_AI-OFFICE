@@ -6,7 +6,7 @@ import { events, tickets } from '../src/db/schema.ts';
 import { CHAT_MAX_INPUT, chatInput, cleanMessage, StaffChat, type StaffMention } from '../src/discord/staff-chat.ts';
 import { STAFF_BOT_IDS } from '../src/discord/staff-bots.ts';
 import { CHAT_PERSONAS } from '../src/staff/chat-personas.ts';
-import { PERSON_NAMES } from '../src/staff/org.ts';
+import { PERSONAL_NAMES } from '../src/staff/org.ts';
 import { renderTask } from '../src/staff/prompts.ts';
 import { CEO, STRANGER, approvedTickets, setup, type Setup } from './helpers.ts';
 
@@ -124,8 +124,9 @@ describe('직원 봇 대화 캐릭터', () => {
   });
 
   it('이름이 정해진 직원은 자기소개에 그 이름을 쓴다', () => {
-    expect(PERSON_NAMES).toEqual({ 'dev-a': '한주아', 'dev-b': '한서윤', strategy: '서예린', 'qa-local': '백예원', reviewer: '차은설' });
-    for (const [id, name] of Object.entries(PERSON_NAMES)) expect(CHAT_PERSONAS[id as keyof typeof CHAT_PERSONAS].intro).toContain(name);
+    expect(PERSONAL_NAMES).toEqual({ 'chief-of-staff': '백서진', 'dev-a': '한주아', 'dev-b': '한서윤', strategy: '서예린', 'qa-local': '백예원', reviewer: '차은설' });
+    // 비서실장은 직원 봇이 아니라 헤르메스(SOUL.md)가 말한다
+    for (const [id, name] of Object.entries(PERSONAL_NAMES).filter(([id]) => id !== 'chief-of-staff')) expect(CHAT_PERSONAS[id as keyof typeof CHAT_PERSONAS].intro).toContain(name);
   });
 
   it('캐릭터 글에 권한을 넓히는 말이 없다', () => {

@@ -7,13 +7,15 @@ export type StaffRank = 'lead' | 'member' | 'assistant' | 'temp';
 export interface ScreenEmployee {
   id: string;
   displayName: string;
-  /** 캐릭터 이름(예: 한주아). 정해지지 않은 직원은 null */
-  personName: string | null;
   role: EmployeeRole;
   department: string;
   rank: StaffRank;
   /** 한 줄 "하는 일" (2-0 표). 모르면 빈 문자열 */
   job: string;
+  /** 개인 이름 (예: 비서실장 = 백서진, 개발자 A = 한주아). 아직 없으면 null. 지도 이름표·직원 탭·직원 상세에 쓴다 */
+  personalName: string | null;
+  /** 증명사진 주소 (/assets/portraits/<id>.webp). 화면 서버가 파일이 있을 때만 채운다 (13장) */
+  portrait: string | null;
   /** 두뇌 이름 (화면 이름표용): 'Claude', 'GPT', 'Gemma', '헤르메스 · Gemma', '코드' */
   brainLabel: string;
   spriteSet: string;

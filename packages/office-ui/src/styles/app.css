@@ -315,6 +315,53 @@ body {
   word-break: break-word;
 }
 
+/* 직원 상세 맨 위: 증명사진(가로 3 : 세로 4, 13장)과 이름 */
+.ao-profile {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.ao-portrait {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 132px;
+  aspect-ratio: 3 / 4;
+  margin: 0;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--row);
+  box-shadow: var(--shadow-card);
+  color: var(--ink-muted);
+}
+.ao-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ao-portrait .material-symbols-rounded {
+  font-size: 48px;
+}
+.ao-profile__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.ao-profile__name {
+  margin: 0;
+  font-size: var(--text-heading-size);
+  line-height: var(--text-heading-line);
+  font-weight: var(--text-heading-weight);
+}
+.ao-profile__title {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--text-row-size);
+  line-height: var(--text-row-line);
+}
+
 /* 상세 */
 .ao-dl {
   display: grid;

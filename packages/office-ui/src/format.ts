@@ -2,8 +2,8 @@
 import type { DerivedStatus, ScreenEmployee, ScreenTicket, StaffRank, TicketStatus, TicketType } from '@ai-office/shared';
 
 /** 캐릭터 이름이 있으면 `한주아 · 개발자 A`, 없으면 직함만 */
-export function fullName(e: Pick<ScreenEmployee, 'displayName' | 'personName'>) {
-  return e.personName ? `${e.personName} · ${e.displayName}` : e.displayName;
+export function fullName(e: Pick<ScreenEmployee, 'displayName' | 'personalName'>) {
+  return e.personalName ? `${e.personalName} · ${e.displayName}` : e.displayName;
 }
 
 export function clock(iso: string, timeZone: string) {

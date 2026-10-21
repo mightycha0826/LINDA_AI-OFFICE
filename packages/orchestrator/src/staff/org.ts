@@ -31,8 +31,12 @@ const ASSISTANT_JOBS: Record<string, string> = {
   drafter: '글쓰기·마케팅 티켓의 초안',
 };
 
-/** 캐릭터 이름 (2026-10-21 CEO 지정). 직함(displayName)은 그대로 두고 화면 이름표·대화에만 쓴다. 기준 그림은 assets/sources/<ID>-portrait.webp */
-export const PERSON_NAMES: Record<string, string> = {
+/**
+ * 정해진 개인 이름 (13장 증명사진, 2026-10-21 CEO 지정). 직함(displayName)은 그대로 두고
+ * 화면(지도 이름표·직원 탭·직원 상세)과 직원 봇 대화 자기소개에만 쓴다. Discord 거울·역할 카드는 직함 그대로
+ */
+export const PERSONAL_NAMES: Record<string, string> = {
+  'chief-of-staff': '백서진',
   'dev-a': '한주아',
   'dev-b': '한서윤',
   strategy: '서예린',
@@ -40,9 +44,8 @@ export const PERSON_NAMES: Record<string, string> = {
   reviewer: '차은설',
 };
 
-/** 캐릭터 이름. 아직 없으면 null */
-export function personNameOf(id: string): string | null {
-  return PERSON_NAMES[id] ?? null;
+export function personalNameOf(id: string): string | null {
+  return PERSONAL_NAMES[id] ?? null;
 }
 
 export function rankOf(id: string, isTemporary: boolean): StaffRank {

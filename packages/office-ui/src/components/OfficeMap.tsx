@@ -128,7 +128,7 @@ export function OfficeMap({ snapshot, director, night, onOpenTicket, onSelectEmp
                     </span>
                   )}
                   {/* 지도 이름표는 짧게: 캐릭터 이름이 있으면 이름만 (직함은 상세·직원 탭에) */}
-                  {e.personName ?? e.displayName}
+                  {e.personalName ?? e.displayName}
                   {e.isTemporary ? ' · 방문' : ''}
                 </span>
                 {e.rank !== 'assistant' && <span className="ao-nametag__brain">{e.brainLabel}</span>}
