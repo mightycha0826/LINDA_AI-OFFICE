@@ -32,11 +32,14 @@ const ASSISTANT_JOBS: Record<string, string> = {
 };
 
 /**
- * 정해진 개인 이름 (13장 증명사진, 2026-10-21 CEO 지정). 직함(displayName)은 그대로 두고
+ * 정해진 개인 이름 (13장 증명사진, 2026-10-21 CEO 지정. 류하영·설아인·서지우는 같은 날 주인이 만든 Discord 봇 이름). 직함(displayName)은 그대로 두고
  * 화면(지도 이름표·직원 탭·직원 상세)과 직원 봇 대화 자기소개에만 쓴다. Discord 거울·역할 카드는 직함 그대로
  */
 export const PERSONAL_NAMES: Record<string, string> = {
   'chief-of-staff': '백서진',
+  pm: '류하영',
+  developer: '설아인',
+  marketing: '서지우',
   'dev-a': '한주아',
   'dev-b': '한서윤',
   strategy: '서예린',

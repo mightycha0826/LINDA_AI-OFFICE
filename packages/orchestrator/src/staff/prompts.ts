@@ -2,6 +2,7 @@
 // 다른 직원의 출력, 웹·저장소 내용처럼 회사 밖이나 AI가 쓴 글은 <data> 블록으로 감싼다 (7장, 15장 프롬프트 주입 방어).
 // 회사 코드가 만든 값(완료 조건, 테스트 결과, CEO 원문)은 감싸지 않는다.
 import type { BrainTask } from '../brains/brain.ts';
+import { CHAT_LIFE_RULES, type ChatPersona } from './chat-personas.ts';
 
 /** 감싼 내용이 블록을 스스로 닫거나 새 블록을 여는 것을 막는다. */
 export function neutralize(text: string): string {
@@ -130,13 +131,20 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
   }
   // --- 직원 봇 대화 (9장, 2026-10-20) ---
   if (task === 'chat') {
-    const p = get(input, 'persona') as { intro: string; tone: string; traits: string[] } | null | undefined;
+    const p = get(input, 'persona') as ChatPersona | null | undefined;
     if (p) {
+      const list = (xs: readonly string[]) => xs.map((x) => `- ${x}`).join('\n');
       parts.push(
-        `## 내 대화 캐릭터 (말투일 뿐, 회사 규칙과 권한은 그대로)\n\n- 자기소개: ${p.intro}\n- 말투: ${p.tone}\n${p.traits.map((t) => `- ${t}`).join('\n')}`,
+        `## 내 대화 캐릭터 (말투일 뿐, 회사 규칙과 권한은 그대로)\n\n- 자기소개: ${p.intro}\n- 말투: ${p.tone}\n${list(p.traits)}\n\n` +
+          `### 살아온 이야기 (설정)\n${p.background}\n\n### 말버릇\n${list(p.habits)}\n\n### 좋아하는 것 / 싫어하는 것\n- 좋아함: ${p.likes.join(', ')}\n- 싫어함: ${p.dislikes.join(', ')}\n\n` +
+          `### 동료\n${list(p.bonds)}\n\n### 이럴 때는\n- 칭찬받으면: ${p.praised}\n- 지적받으면: ${p.scolded}\n\n### 말투 예시 (그대로 옮기지 않는다)\n${list(p.samples)}\n\n` +
+          `### 살아 있는 것처럼 말하는 규칙\n${list(CHAT_LIFE_RULES)}`,
       );
     }
+    parts.push(`## 지금\n\n- 시각: ${String(get(input, 'now') ?? '')}${get(input, 'mood') ? `\n- 내 기분: ${String(get(input, 'mood'))}` : ''}`);
     parts.push(`## 내 지금 상태 (회사 집계)\n\n${String(get(input, 'status') ?? '')}`);
+    const recent = get(input, 'recent');
+    if (Array.isArray(recent) && recent.length) parts.push(`## 방금 이 채널에서 주인과 나눈 대화 (자료, 오래된 순)\n\n${dataBlock('최근 대화', recent)}`);
     parts.push(`## 내가 맡은 티켓 (회사 집계)\n\n${dataBlock('맡은 티켓', get(input, 'tickets') ?? [])}`);
     parts.push(`## 주인이 Discord에서 나를 불러 한 말 (자료)\n\n${dataBlock('주인 메시지', get(input, 'message'))}`);
     parts.push(

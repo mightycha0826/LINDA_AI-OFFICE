@@ -19,7 +19,8 @@ describe('조직도(2-0)와 직원 데이터', () => {
     expect(byId.get('dev-a')!.personalName).toBe('한주아');
     expect(byId.get('reviewer')!.personalName).toBe('차은설');
     expect(byId.get('dev-a')!.displayName).toBe('개발자 A');
-    expect(byId.get('pm')!.personalName).toBeNull();
+    expect(byId.get('pm')!.personalName).toBe('류하영');
+    expect(byId.get('git-cat')!.personalName).toBeNull();
   });
 
   it('부서는 2-0 표를 따른다: 리뷰어는 품질보증팀, Git 고양이는 운영지원', () => {

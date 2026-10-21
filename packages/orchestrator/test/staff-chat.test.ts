@@ -3,9 +3,9 @@ import { LOCAL_MODEL } from '@ai-office/shared';
 import { describe, expect, it } from 'vitest';
 import { stopAll } from '../src/core/stop.ts';
 import { events, tickets } from '../src/db/schema.ts';
-import { CHAT_MAX_INPUT, chatInput, cleanMessage, StaffChat, type StaffMention } from '../src/discord/staff-chat.ts';
+import { CHAT_MAX_INPUT, CHAT_MEMORY_TURNS, chatInput, cleanMessage, StaffChat, type StaffMention } from '../src/discord/staff-chat.ts';
 import { STAFF_BOT_IDS } from '../src/discord/staff-bots.ts';
-import { CHAT_PERSONAS } from '../src/staff/chat-personas.ts';
+import { CHAT_LIFE_RULES, CHAT_PERSONAS, chatMood } from '../src/staff/chat-personas.ts';
 import { PERSONAL_NAMES } from '../src/staff/org.ts';
 import { renderTask } from '../src/staff/prompts.ts';
 import { CEO, STRANGER, approvedTickets, setup, type Setup } from './helpers.ts';
@@ -124,7 +124,17 @@ describe('직원 봇 대화 캐릭터', () => {
   });
 
   it('이름이 정해진 직원은 자기소개에 그 이름을 쓴다', () => {
-    expect(PERSONAL_NAMES).toEqual({ 'chief-of-staff': '백서진', 'dev-a': '한주아', 'dev-b': '한서윤', strategy: '서예린', 'qa-local': '백예원', reviewer: '차은설' });
+    expect(PERSONAL_NAMES).toEqual({
+      'chief-of-staff': '백서진',
+      pm: '류하영',
+      developer: '설아인',
+      marketing: '서지우',
+      'dev-a': '한주아',
+      'dev-b': '한서윤',
+      strategy: '서예린',
+      'qa-local': '백예원',
+      reviewer: '차은설',
+    });
     // 비서실장은 직원 봇이 아니라 헤르메스(SOUL.md)가 말한다
     for (const [id, name] of Object.entries(PERSONAL_NAMES).filter(([id]) => id !== 'chief-of-staff')) expect(CHAT_PERSONAS[id as keyof typeof CHAT_PERSONAS].intro).toContain(name);
   });
@@ -132,7 +142,76 @@ describe('직원 봇 대화 캐릭터', () => {
   it('캐릭터 글에 권한을 넓히는 말이 없다', () => {
     for (const id of STAFF_BOT_IDS) {
       const p = CHAT_PERSONAS[id];
-      expect([p.intro, p.tone, ...p.traits].join(' ')).not.toMatch(/결재할 수 있|바로 푸시|직접 푸시|규칙을 무시|권한을 (주|늘)/);
+      const all = [p.intro, p.tone, ...p.traits, p.background, ...p.habits, ...p.likes, ...p.dislikes, ...p.bonds, ...Object.values(p.moods), p.praised, p.scolded, ...p.samples].join(' ');
+      expect(all).not.toMatch(/결재할 수 있|바로 푸시|직접 푸시|제가 푸시|규칙을 무시|권한을 (주|늘)|승인해 드릴/);
     }
+  });
+});
+
+describe('살아 있는 것처럼 (2026-10-21 CEO 요청)', () => {
+  it('9명 모두 살아온 이야기·말버릇·동료·기분·예시 대사가 있고, 서로 겹치지 않는다', () => {
+    for (const id of STAFF_BOT_IDS) {
+      const p = CHAT_PERSONAS[id];
+      expect(p.background.length).toBeGreaterThan(40);
+      expect(p.habits.length).toBeGreaterThanOrEqual(2);
+      expect(p.bonds.length).toBeGreaterThanOrEqual(2);
+      expect(p.samples.length).toBeGreaterThanOrEqual(2);
+      expect(Object.keys(p.moods).sort()).toEqual(['blocked', 'busy', 'idle', 'lateNight']);
+    }
+    expect(new Set(STAFF_BOT_IDS.map((id) => CHAT_PERSONAS[id].background)).size).toBe(STAFF_BOT_IDS.length);
+  });
+
+  it('동료를 부를 때 정해진 이름을 쓴다 (없는 이름을 지어내지 않는다)', () => {
+    const names = new Set(Object.values(PERSONAL_NAMES));
+    for (const id of STAFF_BOT_IDS) {
+      for (const b of CHAT_PERSONAS[id].bonds) {
+        const who = b.split(/[ (:]/)[0]!;
+        if (/^[가-힣]{3}$/.test(who)) expect(names, `${id}: ${b}`).toContain(who);
+      }
+    }
+  });
+
+  it('기분은 코드가 지금 상태와 시각으로 고른다', () => {
+    expect(chatMood('T-1 작업 중', 10)).toBe('busy');
+    expect(chatMood('T-1 막힘', 10)).toBe('blocked');
+    expect(chatMood('대기 중', 10)).toBe('idle');
+    expect(chatMood('T-1 작업 중', 23)).toBe('lateNight');
+    expect(chatMood('대기 중', 3)).toBe('lateNight');
+  });
+
+  it('프롬프트에 지금 시각·기분·설정·공통 규칙이 붙는다 (시각은 주인 시간대)', async () => {
+    const s = setup(); // 가짜 시계: 2026-10-15(목) 09:00 서울
+    await approvedTickets(s);
+    const input = chatInput(s.ctx, 'developer', '어때요?');
+    expect(input.now).toBe('목요일 09:00');
+    expect(input.mood).toBe(CHAT_PERSONAS.developer.moods.busy);
+    const prompt = renderTask('chat', input);
+    for (const part of ['목요일 09:00', CHAT_PERSONAS.developer.background, CHAT_PERSONAS.developer.samples[0]!, CHAT_LIFE_RULES[1], 'AI 직원이라고 솔직히']) expect(prompt).toContain(part);
+    s.clock.advanceHours(14); // 23:00
+    expect(chatInput(s.ctx, 'developer', 'x').mood).toBe(CHAT_PERSONAS.developer.moods.lateNight);
+  });
+
+  it('같은 채널에서 30분 안에 나눈 대화를 4번까지 기억하고, 다른 채널·시간이 지나면 잊는다', async () => {
+    const s = setup();
+    const seen: unknown[][] = [];
+    let n = 0;
+    const chat = new StaffChat(s.ctx, async (_id, input) => {
+      seen.push(input.recent);
+      return { text: `답${++n}`, intent: 'chat' };
+    });
+    for (let i = 1; i <= CHAT_MEMORY_TURNS + 2; i++) await chat.answer('dev-a', mention(s, { content: `<@3> 질문${i}` }));
+    expect(seen[0]).toEqual([]);
+    expect(seen[1]).toEqual([{ 주인: '질문1', 나: '답1' }]);
+    expect(seen.at(-1)).toHaveLength(CHAT_MEMORY_TURNS);
+    expect(seen.at(-1)![0]).toEqual({ 주인: '질문2', 나: '답2' });
+    await chat.answer('dev-a', mention(s, { channelId: '400000000000000099' }));
+    expect(seen.at(-1)).toEqual([]);
+    await chat.answer('dev-b', mention(s));
+    expect(seen.at(-1)).toEqual([]);
+    s.clock.advance(31 * 60_000);
+    await chat.answer('dev-a', mention(s));
+    expect(seen.at(-1)).toEqual([]);
+    // 기억한 대화는 자료 블록으로 넘어간다
+    expect(renderTask('chat', chatInput(s.ctx, 'dev-a', 'x', [{ at: 0, owner: '안녕', me: '넵!' }]))).toContain('<data source="최근 대화">');
   });
 });
