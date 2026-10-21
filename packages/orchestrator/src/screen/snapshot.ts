@@ -75,8 +75,9 @@ export function buildSnapshot(c: Ctx, extras: SnapshotExtras): Snapshot {
       rank: rankOf(e.id, e.isTemporary),
       job: jobOf(e.id),
       personalName: personalNameOf(e.id),
-      // 증명사진은 화면 서버가 assets 폴더를 보고 채운다 (http/screen-server.ts withPortraits)
+      // 증명사진·3D 모델은 화면 서버가 assets 폴더를 보고 채운다 (http/screen-server.ts withAssets)
       portrait: null,
+      model: null,
       brainLabel: brainLabel(e.id, e.brain),
       spriteSet: e.spriteSet,
       isTemporary: e.isTemporary,

@@ -67,6 +67,8 @@ export interface Placed {
   seat: Seat;
   act: Act;
   helper: boolean;
+  /** VRM 주소 (13장 3D 캐릭터). 없으면 코드 인형 */
+  model: string | null;
 }
 
 const ACT: Record<DerivedStatus, Act> = { working: 'type', reviewing: 'type', meeting: 'talk', blocked: 'idle', paused: 'idle', idle: 'idle', away: 'idle' };
@@ -91,7 +93,7 @@ export function place3d(employees: readonly ScreenEmployee[], tickets: readonly 
             ? pools.visitor.shift()
             : (DESK_SEATS[e.id] ?? pools.visitor.shift());
     if (!seat) continue;
-    out.push({ id: e.id, name: e.personalName ?? e.displayName, status, seat, act: ACT[status], helper: e.rank === 'assistant' || e.isTemporary });
+    out.push({ id: e.id, name: e.personalName ?? e.displayName, status, seat, act: ACT[status], helper: e.rank === 'assistant' || e.isTemporary, model: e.model });
   }
   return out;
 }

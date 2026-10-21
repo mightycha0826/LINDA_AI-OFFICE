@@ -11,6 +11,7 @@ const emp = (id: string, over: Partial<ScreenEmployee> = {}): ScreenEmployee => 
   job: '',
   personalName: null,
   portrait: null,
+  model: null,
   brainLabel: 'Claude',
   spriteSet: id,
   isTemporary: false,
@@ -43,6 +44,12 @@ describe('3D 자리 배치', () => {
     const p = byId(place3d([emp('dev-a', { personalName: '한주아' }), emp('pm')], [ticket('T-1', 'in_progress', 'dev-a')]));
     expect(p.get('dev-a')).toMatchObject({ seat: DESK_SEATS['dev-a'], status: 'working', act: 'type', name: '한주아' });
     expect(p.get('pm')).toMatchObject({ seat: DESK_SEATS['pm'], status: 'idle', act: 'idle', name: 'pm' });
+  });
+
+  it('VRM 주소가 있으면 그대로 넘긴다 (없으면 코드 인형, 13장 3D 캐릭터)', () => {
+    const p = byId(place3d([emp('dev-a', { model: '/assets/models/dev-a.vrm' }), emp('pm')], []));
+    expect(p.get('dev-a')!.model).toBe('/assets/models/dev-a.vrm');
+    expect(p.get('pm')!.model).toBeNull();
   });
 
   it('회의 중이면 담당자와 검토자 모두 회의실 의자로 옮긴다', () => {

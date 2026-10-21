@@ -5,7 +5,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { DerivedStatus } from '@ai-office/shared';
+import { hash, lookOf } from './characters.ts';
+import { buildFigure, disposeFigure, FigureKit } from './figure.ts';
 import { DESK_SEATS, GUEST_SEATS, MEETING_SEATS, type Act, type Placed, type Seat } from './layout.ts';
+import type { Avatar } from './vrm.ts';
 
 const css = (n: number) => '#' + n.toString(16).padStart(6, '0');
 const W = 30;
@@ -15,38 +18,21 @@ const CZ = 9.75;
 
 export const STATUS_COLOR: Record<DerivedStatus, number> = { working: 0x17845a, reviewing: 0x2d64c8, meeting: 0x2d64c8, blocked: 0xc77700, paused: 0xb9b3a7, idle: 0xb9b3a7, away: 0xb9b3a7 };
 
-/** 캐릭터를 다시 그리기 전까지 쓰는 머리·옷 색 (정해진 직원), 나머지는 ID로 고른다 */
-const LOOKS: Record<string, { hair: number; shirt: number; long?: boolean }> = {
-  developer: { hair: 0xd9d9de, shirt: 0x2f5d8a },
-  'dev-a': { hair: 0x3a2a22, shirt: 0xe6e1d7, long: true },
-  'dev-b': { hair: 0x6b4a35, shirt: 0x6e7e73, long: true },
-  reviewer: { hair: 0xc9cdd3, shirt: 0x2b2f2d },
-  'qa-local': { hair: 0xcbb89a, shirt: 0xf1ede4, long: true },
-  pm: { hair: 0x222226, shirt: 0x6c5a8c, long: true },
-  'chief-of-staff': { hair: 0x1b1b1f, shirt: 0x22252a, long: true },
-  strategy: { hair: 0x1e1e22, shirt: 0x2b2f2d },
-  marketing: { hair: 0xe3c27a, shirt: 0xeadfc8, long: true },
-};
-const HAIRS = [0x3a2e28, 0x2e2420, 0x5c4636, 0x4c3b30, 0x2b2b2e, 0x54412f];
-const SHIRTS = [0x8fa89a, 0xc77e6b, 0xd9b26c, 0xa9b7c6, 0xb6a6c9, 0x8c9a6e, 0x4e8c74, 0x8e6fb0];
-function hash(s: string): number {
-  let h = 0;
-  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return h;
-}
-function looksOf(id: string) {
-  return LOOKS[id] ?? { hair: HAIRS[hash(id) % HAIRS.length]!, shirt: SHIRTS[hash(id + 's') % SHIRTS.length]!, long: hash(id) % 3 === 0 };
-}
 function rnd(seed: number): number {
   const s = Math.sin(seed * 12.9898) * 43758.5453;
   return s - Math.floor(s);
 }
 
 interface Rig {
+  id: string;
   group: THREE.Group;
+  /** 보조 직원은 0.9배 */
+  body: THREE.Group;
+  /** 코드 인형 (VRM을 쓰면 감춘다) */
+  figure: THREE.Group;
   head: THREE.Group;
   forearms: THREE.Group[];
-  torso: THREE.Mesh;
+  torso: THREE.Object3D;
   ring: THREE.Mesh;
   target: THREE.Vector3;
   face: 1 | -1;
@@ -54,6 +40,10 @@ interface Rig {
   phase: number;
   label: HTMLButtonElement;
   anchorY: number;
+  figureTop: number;
+  /** VRM 주소 (13장 3D 캐릭터). 불러오면 avatar */
+  model: string | null;
+  avatar: Avatar | null;
 }
 
 export interface Office3DState {
@@ -82,6 +72,8 @@ export class Office3D {
   private readonly papers: THREE.Mesh[] = [];
   private meetingSign: { busy: THREE.Mesh; free: THREE.Mesh } | null = null;
   private readonly rigs = new Map<string, Rig>();
+  private readonly kit = new FigureKit();
+  private disposed = false;
   private readonly glass: THREE.MeshStandardMaterial;
   private cat: THREE.Group | null = null;
   private catLabel: HTMLButtonElement | null = null;
@@ -144,6 +136,7 @@ export class Office3D {
     this.lamps.forEach((l) => (l.intensity = s.night ? 0.9 : 0));
     this.bulbs.forEach((m) => (m.emissiveIntensity = s.night ? 1.4 : 0.2));
     this.screens.forEach((m) => (m.emissiveIntensity = s.night ? 1.1 : 0.45));
+    this.kit.setNight(s.night);
     const seen = new Set<string>();
     for (const p of s.placed) {
       seen.add(p.id);
@@ -155,11 +148,14 @@ export class Office3D {
       rig.label.querySelector('.ao3-dot')!.setAttribute('data-status', p.status);
       rig.label.lastChild!.textContent = p.name;
       rig.label.classList.toggle('ao3-tag--small', p.helper);
+      this.setModel(rig, p.model);
     }
     for (const [id, rig] of this.rigs) {
       if (seen.has(id)) continue;
       this.scene.remove(rig.group, rig.ring);
       rig.label.remove();
+      rig.avatar?.dispose();
+      disposeFigure(rig.figure);
       this.rigs.delete(id);
     }
     // 파견 라운지 도킹 표시등: 앉은 자리는 초록
@@ -216,9 +212,15 @@ export class Office3D {
   }
 
   dispose(): void {
+    this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.resize.disconnect();
     this.controls.dispose();
+    for (const r of this.rigs.values()) {
+      r.avatar?.dispose();
+      disposeFigure(r.figure);
+    }
+    this.kit.dispose();
     this.renderer.dispose();
     this.labels.replaceChildren();
   }
@@ -247,7 +249,9 @@ export class Office3D {
       r.group.position.lerp(r.target, this.reduce ? 1 : Math.min(1, dt * 2.5));
       r.group.rotation.y = r.face > 0 ? 0 : Math.PI;
       r.ring.position.set(r.group.position.x, r.target.y + 0.49, r.group.position.z);
-      if (r.act === 'type') {
+      if (r.avatar) {
+        r.avatar.animate(r.act, t, r.phase, m, dt);
+      } else if (r.act === 'type') {
         r.forearms.forEach((f, i) => (f.rotation.x = Math.sin(t * 14 + r.phase + i * 1.7) * 0.07 * m));
         r.head.rotation.set(0.06, Math.sin(t * 0.35 + r.phase) * 0.12 * m, 0);
       } else if (r.act === 'talk') {
@@ -318,52 +322,64 @@ export class Office3D {
     return b;
   }
 
+  /** 직원 인형: 외모 표(characters.ts)대로 만든 코드 인형. VRM이 있으면 나중에 바꿔 끼운다 (13장 3D 캐릭터) */
   private makeRig(p: Placed): Rig {
-    const look = looksOf(p.id);
-    const SKIN = 0xebcdb1;
-    const PANTS = 0x3b4048;
+    const fig = buildFigure(lookOf(p.id), this.kit);
     const g = new THREE.Group();
     const body = new THREE.Group();
     body.scale.setScalar(p.helper ? 0.9 : 1);
+    body.add(fig.root);
     g.add(body);
-    const y = 0.48;
-    this.box(0.42, 0.16, 0.42, PANTS, 0, y + 0.08, 0, body);
-    for (const dx of [-0.11, 0.11]) {
-      this.box(0.17, 0.15, 0.46, PANTS, dx, y + 0.08, 0.21, body);
-      this.box(0.15, y, 0.15, PANTS, dx, y / 2, 0.42, body);
-      this.box(0.16, 0.08, 0.26, 0x24282b, dx, 0.04, 0.48, body);
-    }
-    const torso = this.box(0.46, 0.56, 0.27, look.shirt, 0, y + 0.44, -0.02, body);
-    this.cyl(0.065, 0.065, 0.08, SKIN, 0, y + 0.76, -0.02, body, 12);
-    const head = new THREE.Group();
-    head.position.set(0, y + 0.95, -0.02);
-    body.add(head);
-    this.sphere(0.17, SKIN, 0, 0, 0, head);
-    this.sphere(0.185, look.hair, 0, 0.03, -0.035, head);
-    this.box(0.3, 0.07, 0.07, look.hair, 0, 0.11, 0.12, head);
-    if (look.long) this.box(0.34, 0.42, 0.1, look.hair, 0, -0.14, -0.13, head);
-    const forearms: THREE.Group[] = [];
-    for (const side of [-1, 1]) {
-      const sh = new THREE.Group();
-      sh.position.set(side * 0.29, y + 0.66, -0.02);
-      sh.rotation.x = -0.35;
-      body.add(sh);
-      this.box(0.11, 0.3, 0.11, look.shirt, 0, -0.15, 0, sh);
-      const el = new THREE.Group();
-      el.position.set(side * 0.29, y + 0.38, 0.08);
-      body.add(el);
-      this.box(0.1, 0.1, 0.32, look.shirt, 0, 0, 0.16, el);
-      this.sphere(0.055, SKIN, 0, 0, 0.35, el);
-      forearms.push(el);
-    }
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: STATUS_COLOR[p.status], transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2;
     this.scene.add(g, ring);
     const seat = p.seat;
     g.position.set(seat.x, seat.seatY != null ? seat.seatY - 0.46 : 0, seat.z);
-    const rig: Rig = { group: g, head, forearms, torso, ring, target: g.position.clone(), face: seat.face, act: p.act, phase: rnd(hash(p.id)) * 6.28, label: this.label(p.id), anchorY: (y + 1.32) * (p.helper ? 0.9 : 1) };
+    const rig: Rig = {
+      id: p.id,
+      group: g,
+      body,
+      figure: fig.root,
+      head: fig.head,
+      forearms: fig.forearms,
+      torso: fig.torso,
+      ring,
+      target: g.position.clone(),
+      face: seat.face,
+      act: p.act,
+      phase: rnd(hash(p.id)) * 6.28,
+      label: this.label(p.id),
+      anchorY: (fig.top + 0.08) * body.scale.y,
+      figureTop: fig.top,
+      model: null,
+      avatar: null,
+    };
     this.rigs.set(p.id, rig);
     return rig;
+  }
+
+  /** VRM 주소가 바뀌면 불러와 코드 인형과 바꾼다. 못 읽으면 코드 인형 그대로 */
+  private setModel(rig: Rig, url: string | null): void {
+    if (rig.model === url) return;
+    rig.model = url;
+    if (rig.avatar) {
+      rig.body.remove(rig.avatar.root);
+      rig.avatar.dispose();
+      rig.avatar = null;
+      rig.figure.visible = true;
+      rig.anchorY = (rig.figureTop + 0.08) * rig.body.scale.y;
+    }
+    if (!url) return;
+    import('./vrm.ts')
+      .then((m) => m.loadAvatar(url))
+      .then((av) => {
+        if (this.disposed || this.rigs.get(rig.id) !== rig || rig.model !== url) return av.dispose();
+        rig.body.add(av.root);
+        rig.figure.visible = false;
+        rig.avatar = av;
+        rig.anchorY = (av.top + 0.08) * rig.body.scale.y;
+      })
+      .catch((err: unknown) => console.warn(`3D 모델을 읽지 못해 코드 인형으로 그려요: ${url}`, err));
   }
 
   // ---------- 만드는 도구 ----------

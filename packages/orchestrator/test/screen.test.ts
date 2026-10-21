@@ -89,6 +89,9 @@ describe('화면 서버는 보기 전용', () => {
     const port = await serve(setup());
     const r = await call(port, '/');
     expect(r.headers['content-security-policy']).toContain("default-src 'self'");
+    // blob:은 VRM 텍스처용으로 이미지·연결에만 (스크립트는 여전히 이 서버 파일만)
+    expect(r.headers['content-security-policy']).toContain("script-src 'self';");
+    expect(r.headers['content-security-policy']).toContain("img-src 'self' data: blob:;");
     expect(r.headers['x-frame-options']).toBe('DENY');
     const esc = await call(port, '/%2e%2e/secret.txt');
     expect(esc.body).not.toContain('nope');

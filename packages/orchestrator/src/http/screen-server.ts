@@ -27,6 +27,7 @@ const TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
+  '.vrm': 'model/gltf-binary',
 };
 
 const SECURITY_HEADERS = {
@@ -34,7 +35,8 @@ const SECURITY_HEADERS = {
   'referrer-policy': 'no-referrer',
   'x-frame-options': 'DENY',
   'content-security-policy':
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+    // blob:은 VRM 안의 텍스처를 읽을 때 브라우저가 페이지 안에서 만드는 주소 (13장 3D 캐릭터)
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob:; frame-ancestors 'none'",
 };
 
 export interface ScreenServerOptions {
@@ -43,7 +45,7 @@ export interface ScreenServerOptions {
   staticDir: string;
   /** design-systems/point */
   pointDir: string;
-  /** assets (characters/<세트>/…, portraits/<직원 ID>.webp) */
+  /** assets (characters/<세트>/…, portraits/<직원 ID>.webp, models/<직원 ID>.vrm) */
   assetsDir: string;
   extras: () => Promise<SnapshotExtras> | SnapshotExtras;
   /** SSE가 새 이벤트를 확인하는 간격 */
@@ -67,8 +69,14 @@ export function portraitOf(assetsDir: string, employeeId: string): string | null
   return null;
 }
 
-function withPortraits(snap: Snapshot, assetsDir: string): Snapshot {
-  return { ...snap, employees: snap.employees.map((e) => ({ ...e, portrait: portraitOf(assetsDir, e.id) })) };
+/** 3D 캐릭터 (13장): assets/models/<직원 ID>.vrm이 있으면 그 주소 */
+export function modelOf(assetsDir: string, employeeId: string): string | null {
+  if (!/^[\w-]+$/.test(employeeId)) return null;
+  return existsSync(join(assetsDir, 'models', employeeId + '.vrm')) ? `/assets/models/${employeeId}.vrm` : null;
+}
+
+function withAssets(snap: Snapshot, assetsDir: string): Snapshot {
+  return { ...snap, employees: snap.employees.map((e) => ({ ...e, portrait: portraitOf(assetsDir, e.id), model: modelOf(assetsDir, e.id) })) };
 }
 
 function sendFile(res: ServerResponse, root: string, rel: string, head: boolean): boolean {
@@ -98,7 +106,7 @@ export function screenHandler(o: ScreenServerOptions) {
       const url = new URL(req.url ?? '/', 'http://screen');
       const path = decodeURIComponent(url.pathname);
 
-      if (path === '/snapshot') return sendJson(res, 200, withPortraits(buildSnapshot(o.c, await o.extras()), o.assetsDir));
+      if (path === '/snapshot') return sendJson(res, 200, withAssets(buildSnapshot(o.c, await o.extras()), o.assetsDir));
       const tm = /^\/tickets\/(T-\d+)$/.exec(path);
       if (tm) {
         const d = buildTicketDetail(o.c, tm[1]!);
