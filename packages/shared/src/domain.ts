@@ -75,8 +75,9 @@ export type OllamaModel = (typeof OLLAMA_MODELS)[number];
 
 export type Brain =
   | { provider: 'ollama'; model: OllamaModel }
-  | { provider: 'claude-code'; budget: 'dev' | 'research' }
-  | { provider: 'codex' }
+  // account: 파견 직원(빌려 온 친구 계정, 8장 2026-10-21)의 계정 ID. 있으면 회사 몫이 아니라 그 계정으로 부른다
+  | { provider: 'claude-code'; budget: 'dev' | 'research'; account?: string }
+  | { provider: 'codex'; account?: string }
   | { provider: 'none' }; // Git 고양이
 
 /**

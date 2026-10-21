@@ -16,7 +16,12 @@ type LimitedBudget = Exclude<UsageBudget, 'local'>;
 const HOUR = 3_600_000;
 const WINDOWS = { fiveHour: 5 * HOUR, weekly: 7 * 24 * HOUR } as const;
 
-/** 이 직원이 AI를 부를 때 깎이는 몫. Git 고양이처럼 AI가 아니면 null. */
+/** 파견 직원(빌려 온 친구 계정, core/guests.ts): 회사 몫을 쓰지 않는다 */
+export function isGuest(e: EmployeeRow): boolean {
+  return (e.brain.provider === 'claude-code' || e.brain.provider === 'codex') && !!e.brain.account;
+}
+
+/** 이 직원이 AI를 부를 때 깎이는 몫. Git 고양이처럼 AI가 아니면 null. 파견 직원은 회사 몫이 아니다(core/guests.ts가 따로 잰다) */
 export function budgetOf(e: EmployeeRow): UsageBudget | null {
   switch (e.brain.provider) {
     case 'claude-code':
@@ -90,6 +95,11 @@ export function isExhausted(c: Ctx, b: UsageBudget): boolean {
   return budgetStatus(c, b).exhausted;
 }
 
+/** 파견 직원 ID 모음 */
+function guestIdSet(c: Ctx): Set<string> {
+  return new Set(c.db.select().from(employees).all().filter(isGuest).map((e) => e.id));
+}
+
 export interface UsageInput {
   budget: UsageBudget;
   ticketId?: string;
@@ -139,7 +149,7 @@ export function enforceBudgets(c: Ctx): { paused: string[]; resumed: string[] } 
       .select()
       .from(employees)
       .all()
-      .filter((e) => budgetOf(e) === 'dev')
+      .filter((e) => budgetOf(e) === 'dev' && !isGuest(e))
       .map((e) => e.id);
     if (devIds.length === 0) return { paused, resumed };
     const orchestrator = { kind: 'orchestrator' } as const;
@@ -151,7 +161,13 @@ export function enforceBudgets(c: Ctx): { paused: string[]; resumed: string[] } 
         paused.push(tk.id);
       }
     } else if (!isStopped(t)) {
-      const waiting = t.db.select().from(tickets).where(and(eq(tickets.status, 'paused'), eq(tickets.pauseReason, 'budget'))).all();
+      // 파견 직원 티켓은 enforceGuests가 맡는다 (퇴근·친구 계정 한도)
+      const waiting = t.db
+        .select()
+        .from(tickets)
+        .where(and(eq(tickets.status, 'paused'), eq(tickets.pauseReason, 'budget')))
+        .all()
+        .filter((tk) => !guestIdSet(t).has(tk.assigneeId));
       for (const tk of waiting) {
         applyTicketEvent(t, tk.id, { type: 'system.resume', cause: 'budget-refilled' }, orchestrator);
         resumed.push(tk.id);

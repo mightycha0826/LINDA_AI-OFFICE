@@ -80,6 +80,19 @@ http://127.0.0.1:8780 을 연다. 메모리 DB와 MockLLM으로 직원들이 천
    다른 값을 묻는 칸(Discord 봇 토큰, 웹훅 URL)은 비우고 Enter를 누르면 그대로 둔다.
 5. `pm2 restart ai-office`로 다시 켠다. 로그(`pm2 logs ai-office`)에 `직원 봇 연결: pm (기획실장#1234)`처럼 나오면 된다. `직원 봇 로그인 실패: …`가 나오면 그 직원의 토큰을 다시 넣는다.
 
+### 파견 직원 넣고 빼기 (친구 계정, DESIGN 8장)
+
+친구의 Claude·Codex 계정을 잠시 빌려 회사 직원처럼 쓸 수 있다. 친구 계정 사용률 70%까지만 쓴다.
+
+1. 친구가 이 PC 앞에 있을 때 실행한다. 친구가 직접 로그인하고, 키나 비밀번호는 어디에도 붙여 넣지 않는다.
+   ```
+   powershell -ExecutionPolicy Bypass -File C:\ai-office\office\scripts\add-guest.ps1 -Id minsu -Name 민수 -Provider claude
+   ```
+   Codex 계정이면 `-Provider codex`. 맡길 역할은 `-Role developer`(기본)·`marketing`·`strategy`·`pm`, 한도는 `-Cap 70`(기본).
+2. `protect-secrets.ps1 -IncludeCodexAuth`를 한 번 더 실행해 로그인 폴더를 막는다.
+3. Discord에서 `/파견` → [출근]. 퇴근시키려면 [퇴근]. 재시작은 필요 없다.
+4. 빼기: `scripts\remove-guest.ps1 -Id minsu` (로그인 폴더도 지울지 묻는다). 친구에게 계정에서 세션을 끊어 달라고도 부탁한다.
+
 ## 5. 켜기
 
 ```bash

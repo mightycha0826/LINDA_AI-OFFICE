@@ -861,6 +861,19 @@ GPT는 리뷰어 혼자 써서 칸막이가 없다. 관문 검사가 정기 보�
 - `claude -p` 같은 자동 실행의 과금 방식은 2026년에 여러 번 바뀌었다. 공식 도움말 최신판에는 변경이 보류돼 구독 한도에서 차감된다고 적혀 있다([Claude 도움말](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)). 구현 전에 다시 확인한다.
 - ChatGPT Plus는 제3자 도구 로그인이 허용된다는 보도가 있지만 공식 약관은 따로 확인이 필요하다([Tech Insider](https://tech-insider.org/ie/claude-code-agent-pricing-split-2026/)).
 
+### 파견 직원: 빌려 온 친구 계정 (2026-10-21, CEO 결정. 선택은 모두 추천안, 한도만 주인 지정)
+
+주인이 친구의 Claude·Codex 계정을 잠시 빌려 썼다가 뺄 수 있다. 계정 하나가 **파견 직원** 한 명이다(`core/guests.ts`).
+
+- **넣기(스크립트)**: 주인 PC에서 `scripts/add-guest.ps1 -Id minsu -Name 민수 -Provider claude|codex [-Role developer|marketing|strategy|pm] [-Cap 70]`. 친구가 그 자리에서 자기 계정으로 로그인한다. 로그인 정보는 `data/guests/<ID>/`(Claude는 `CLAUDE_CONFIG_DIR`, Codex는 `CODEX_HOME`)에만 있고, 키나 비밀번호는 AI·Discord·로그·회사 파일을 거치지 않는다. 명단 `data/guests.json`에는 ID·이름·종류·역할·한도만 있다. 폴더 경로는 코드가 ID로 정한다.
+- **보호**: `protect-secrets.ps1`이 `data/guests/*` 폴더를 폴더째 막는다(주인 계정만, Codex 샌드박스 그룹 거부, 새로 쓰인 토큰 파일도 물려받음). Claude 직원은 기존 데이터 폴더 거부 규칙에 걸린다.
+- **출근·퇴근(Discord)**: `/파견`이 명단·상태·사용률과 [출근][퇴근] 버튼을 띄운다. 버튼은 CEO 계정만. 새로 넣은 계정은 퇴근 상태로 시작한다.
+- **한도 70%**: 친구 계정 사용률(5시간·주간)이 `capPct`(기본 70%)에 닿으면 그 직원을 멈춘다(나머지는 친구 몫). Claude는 계정이 알려 주는 실제 사용률(rate_limit_event), Codex는 회사 추정치로 잰다. 제공자가 한도 도달을 알리면 그때까지 막는다.
+- **회사 몫과 분리**: 파견 직원 호출은 `usage` 표(개발·기획·GPT 몫)에 넣지 않고 회사 계정 사용률 표시에도 섞지 않는다. 회사 몫이 바닥나도 파견 직원은 일하고, 그 반대도 같다. 회사 차선(동시 실행 수)도 쓰지 않는다.
+- **일하는 방식**: PM이 출근 중인 파견 직원에게 티켓을 맡길 수 있다(계획서·관문·CEO 결재는 그대로). 권한은 같은 역할의 회사 직원과 같다(개발자는 자기 티켓 worktree 안에서만). **파견 직원은 검토하지 않는다**: 검토자는 코드가 회사의 다른 모델 직원으로 정한다(`fixReviewers`).
+- **빼기**: 퇴근이나 한도 도달이면 그 직원의 진행 중 티켓을 `paused(budget)`로 멈추고, 다시 출근·여유가 생기면 이어간다. `scripts/remove-guest.ps1 -Id minsu`로 명단에서 빼면 다음 바퀴(10초 안)에 멈추고, 로그인 폴더도 지울 수 있다.
+- 화면: 부서는 "파견 라운지". 3D 시안에는 파견 라운지 자리(도킹 표시등: 출근 초록·비어 있음 회색)가 있다.
+
 ## 9. Discord 설계
 
 Discord는 CEO와 회사가 소통하는 유일한 창구다. 직원끼리의 대화는 Discord에 올리지 않고 DB와 사무실 화면에만 남긴다.

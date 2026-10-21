@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { brainModel, DesignComboOutputSchema, GateOutputSchema, PmPlanOutputSchema } from '@ai-office/shared';
 import { BrainError } from '../brains/brain.ts';
 import { emit, getState, inTx, setState, type Ctx } from '../context.ts';
+import { isGuest } from '../core/budget.ts';
 import { recordMessage } from '../core/guards.ts';
 import { checkPlanRules, createPlanVersion, fixReviewers, GATE_REVIEWER_ID, latestPlan, recordGateResult, setDesignCombo, startGateReview, type PlanRow } from '../core/plans.ts';
 import { employees, orders } from '../db/schema.ts';
@@ -82,8 +83,9 @@ export class Planning {
       .select()
       .from(employees)
       .all()
-      .filter((e) => e.brain.provider !== 'none' && (e.role !== 'assistant' || ASSIGNABLE_ASSISTANTS.includes(e.id)))
-      .map((e) => ({ id: e.id, role: e.role, brain: e.brain }));
+      // 파견 직원(친구 계정)은 출근 중일 때만, 담당으로만 보여 준다 (8장 2026-10-21)
+      .filter((e) => e.brain.provider !== 'none' && (e.role !== 'assistant' || ASSIGNABLE_ASSISTANTS.includes(e.id)) && !(isGuest(e) && e.leftAt))
+      .map((e) => ({ id: e.id, role: e.role, brain: e.brain, ...(isGuest(e) ? { guest: '파견 직원: 담당만 맡고 검토는 하지 않음' } : {}) }));
     // 프로젝트 채널에서 온 지시면 그 프로젝트 하나만 보여 준다 (6장 PM)
     const projects = listProjects(c)
       .filter((p) => !order.projectId || p.id === order.projectId)

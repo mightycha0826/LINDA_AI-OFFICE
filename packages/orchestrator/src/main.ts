@@ -27,6 +27,7 @@ import { backupHermes } from './retro/hermes-backup.ts';
 import { RetroService } from './retro/service.ts';
 import { loadSecrets } from './secrets.ts';
 import { seedStaff } from './seed.ts';
+import { loadGuestRegistry, syncGuests } from './core/guests.ts';
 import { loadSettingOverrides } from './settings.ts';
 import { createWeb } from './web/research.ts';
 import { ProjectTestRunner } from './workspace/test-runner.ts';
@@ -42,6 +43,12 @@ const config = loadConfig(join(dataDir, 'config.json'));
 const secrets = loadSecrets(dataDir);
 const ctx: Ctx = { db: openDb(join(dataDir, 'office.db')), config, clock: systemClock };
 seedStaff(ctx);
+// 파견 직원(친구 계정, 8장): data/guests.json 명단을 직원 표에 맞춘다. 새 계정은 퇴근 상태로 들어온다
+try {
+  syncGuests(ctx, loadGuestRegistry(dataDir));
+} catch (err) {
+  log(`파견 명단을 읽지 못했어요(파견 직원 없이 시작): ${(err as Error).message}`);
+}
 loadSettingOverrides(ctx);
 
 const { brainFor } = createBrainRegistry(config, { onModelSwitch: (from, to) => emit(ctx, 'model.loaded', { from, to }) });

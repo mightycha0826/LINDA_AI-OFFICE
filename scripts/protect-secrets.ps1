@@ -67,4 +67,21 @@ foreach ($f in $targets) {
   Write-Host '바꾼 뒤:'
   & icacls.exe $f
 }
+# 파견 직원(친구 계정) 로그인 폴더 (8장, 2026-10-21): 폴더째 막는다. CLI가 토큰을 새로 써도 새 파일이 이 권한을 물려받는다
+$guestsDir = Join-Path $DataDir 'guests'
+if (Test-Path $guestsDir) {
+  foreach ($d in Get-ChildItem -LiteralPath $guestsDir -Directory) {
+    $p = $d.FullName
+    Write-Host "`n== $p (파견 직원 로그인 폴더)"
+    Invoke-Icacls @($p, '/grant', "*${ownerSid}:(OI)(CI)(F)", '/grant', '*S-1-5-18:(OI)(CI)(F)', '/grant', '*S-1-5-32-544:(OI)(CI)(F)')
+    Invoke-Icacls @($p, '/inheritance:r')
+    Invoke-Icacls @($p, '/deny', "*${groupSid}:(OI)(CI)(F)")
+    $sddl = (Get-Acl -LiteralPath $p).Sddl
+    if ($sddl -notmatch 'D:P' -or $sddl -notmatch "\(D;[^)]*;;;$([regex]::Escape($groupSid))\)") {
+      Write-Host '확인 실패: 폴더 보호가 걸리지 않았어요. 되돌리려면 unprotect-secrets.ps1을 실행하세요.'
+      exit 1
+    }
+    & icacls.exe $p
+  }
+}
 Write-Host "`n끝: 주인 계정만 읽을 수 있고 $Group 은(는) 거부돼요. 확인: node src/sim/secrets-read-check.ts"

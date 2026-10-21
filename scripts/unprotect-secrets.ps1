@@ -10,6 +10,18 @@ $targets = @((Join-Path $DataDir 'secrets.json'), (Join-Path $DataDir 'secrets.c
 $auth = Join-Path $DataDir 'codex-home\auth.json'
 if ((Test-Path $auth) -and ((Get-Acl -LiteralPath $auth).Sddl -match 'D:P')) { $targets += $auth }
 
+# 파견 직원 로그인 폴더도 막혀 있으면 되돌린다 (폴더째, 안의 파일까지)
+$guestsDir = Join-Path $DataDir 'guests'
+if (Test-Path $guestsDir) {
+  foreach ($d in Get-ChildItem -LiteralPath $guestsDir -Directory) {
+    if ((Get-Acl -LiteralPath $d.FullName).Sddl -match 'D:P') {
+      & icacls.exe $d.FullName /reset /T | Out-Null
+      if ($LASTEXITCODE -ne 0) { throw "icacls /reset 실패 (종료 코드 $LASTEXITCODE): $($d.FullName)" }
+      Write-Host "`n== $($d.FullName) (파견 로그인 폴더, 물려받는 권한으로 돌림)"
+    }
+  }
+}
+
 foreach ($f in $targets) {
   if (-not (Test-Path $f)) { Write-Host "건너뜀: $f 이 없어요"; continue }
   & icacls.exe $f /reset | Out-Null

@@ -17,6 +17,7 @@ import { Connectivity } from './connectivity.ts';
 import { clearState, emit, inTx, isStopped, type Ctx } from './context.ts';
 import { decideApproval, type DecideInput } from './core/approvals.ts';
 import { enforceBudgets, type EmployeeRow } from './core/budget.ts';
+import { enforceGuests } from './core/guests.ts';
 import { recordMessage } from './core/guards.ts';
 import { registerOrder } from './core/orders.ts';
 import { GATE_REVIEWER_ID } from './core/plans.ts';
@@ -179,6 +180,9 @@ export class Engine {
     let actions = (await this.connectivity.refresh()).length;
     const budget = enforceBudgets(this.c);
     actions += budget.paused.length + budget.resumed.length;
+    // 파견 직원(친구 계정): 퇴근·한도 70%면 멈추고, 출근·여유가 생기면 이어간다
+    const guests = enforceGuests(this.c);
+    actions += guests.paused.length + guests.resumed.length;
 
     const jobs: Promise<boolean>[] = [];
     for (const o of this.c.db.select().from(orders).where(eq(orders.status, 'planning')).all()) {

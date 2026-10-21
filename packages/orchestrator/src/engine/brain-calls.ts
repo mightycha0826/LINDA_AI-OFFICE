@@ -10,7 +10,8 @@ import type { BrainFor } from '../brains/registry.ts';
 import { estimatePct } from '../brains/usage-estimate.ts';
 import type { Connectivity } from '../connectivity.ts';
 import { setState, type Ctx } from '../context.ts';
-import { blockBudget, budgetOf, isExhausted, recordUsage, type EmployeeRow } from '../core/budget.ts';
+import { blockBudget, budgetOf, isExhausted, isGuest, recordUsage, type EmployeeRow } from '../core/budget.ts';
+import { blockGuest, guestExhausted, isGuestOn, recordGuestUsage } from '../core/guests.ts';
 import { recordTurn } from '../core/guards.ts';
 import { employees } from '../db/schema.ts';
 import { FormatError, NotFoundError } from '../errors.ts';
@@ -70,6 +71,11 @@ export class BrainCalls {
 
   /** 이 직원이 지금 AI를 부를 수 있는가. 리서치 몫 소진이면 로컬(저정밀)로 바꾼다. */
   spendMode(e: EmployeeRow): SpendMode {
+    // 파견 직원(친구 계정): 퇴근·한도 70% 도달이면 기다린다. 회사 몫과는 따로 잰다 (core/guests.ts)
+    if (isGuest(e)) {
+      if (!this.connectivity.isOnline()) return 'offline';
+      return isGuestOn(e) && !guestExhausted(this.c, e) ? 'ok' : 'wait';
+    }
     const b = budgetOf(e);
     // 인터넷이 끊기면 클라우드 직원(개발자·리뷰어·경영전략)은 멈춘다 (3장)
     if (isCloud(e) && !this.connectivity.isOnline()) return 'offline';
@@ -81,7 +87,9 @@ export class BrainCalls {
   /** 인터넷 끊김은 연결 상태에, 한도 도달은 몫에 기록한다. 티켓 처리는 다음 바퀴의 규칙이 한다. */
   handleQuietFailure(err: BrainError, e: EmployeeRow): void {
     if (err.failure === 'offline') this.connectivity.markOffline(err.message);
-    if (err.failure === 'limit') {
+    if (err.failure === 'limit' && isGuest(e)) {
+      blockGuest(this.c, e, err.resetsAt);
+    } else if (err.failure === 'limit') {
       const b = budgetOf(e);
       if (b && b !== 'local') blockBudget(this.c, b, err.resetsAt);
     }
@@ -129,7 +137,8 @@ export class BrainCalls {
     const lowPrecision = opts.lowPrecision ?? false;
     const brain = this.brainFor(e, { lowPrecision });
     const budget = lowPrecision ? 'local' : (budgetOf(e) ?? 'local');
-    const lane = lowPrecision ? null : laneOf(e);
+    // 파견 직원은 친구 계정이라 회사 차선(동시 실행 수)을 쓰지 않는다
+    const lane = lowPrecision || isGuest(e) ? null : laneOf(e);
     const system = roleCard(this.c, e, task, schema, opts.ticketType);
     // 회고 규칙 효과 측정(14장 6): 규칙이 붙은 채로 일한 대상(티켓, 계획이면 지시)을 센다
     const target = refs.ticketId ?? refs.orderId;
@@ -166,7 +175,9 @@ export class BrainCalls {
       }
       const tokens = res.usage.inputTokens + res.usage.outputTokens;
       const est = estimatePct(this.c.config, budget, tokens);
-      recordUsage(this.c, {
+      if (isGuest(e) && !lowPrecision) {
+        recordGuestUsage(this.c, e, { account: res.usage.account ?? null, pct: res.usage.estimatedPct ?? est.fiveHour, weeklyPct: res.usage.estimatedWeeklyPct ?? est.weekly });
+      } else recordUsage(this.c, {
         budget,
         inputTokens: res.usage.inputTokens,
         outputTokens: res.usage.outputTokens,
@@ -176,7 +187,8 @@ export class BrainCalls {
         ...(refs.ticketId ? { ticketId: refs.ticketId } : {}),
       });
       if (refs.ticketId) recordTurn(this.c, refs.ticketId, tokens);
-      if (res.usage.account) setState(this.c, `account.${res.usage.account.provider}`, { ...res.usage.account, at: this.c.clock.now().toISOString() });
+      // 회사 계정 사용률 표시는 회사 직원 호출로만 바꾼다 (친구 계정 값이 섞이지 않게)
+      if (res.usage.account && !isGuest(e)) setState(this.c, `account.${res.usage.account.provider}`, { ...res.usage.account, at: this.c.clock.now().toISOString() });
 
       const parsed = schema.safeParse(res.output);
       const problems = parsed.success ? ((opts.check as ((o: z.infer<S>) => string[]) | undefined)?.(parsed.data as z.infer<S>) ?? []) : [z.prettifyError(parsed.error)];

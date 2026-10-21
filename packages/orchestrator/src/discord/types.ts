@@ -71,7 +71,7 @@ export interface ModalField {
 export type InteractionReply =
   /** CEO가 아니면 아무것도 하지 않는다 (9장: 무시하고 로그만) */
   | { kind: 'ignore' }
-  | { kind: 'reply'; content: string; ephemeral: boolean }
+  | { kind: 'reply'; content: string; ephemeral: boolean; buttons?: Button[][] }
   | { kind: 'modal'; customId: string; title: string; fields: ModalField[] }
   /** 버튼이 달린 원래 메시지를 고친다 (결정 뒤 버튼 비활성화 등) */
   | { kind: 'update'; content: string; buttons: Button[][] };
