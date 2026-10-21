@@ -128,6 +128,16 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
     parts.push(`## 회사 데이터 (회사 집계)\n\n${String(get(input, 'data') ?? '')}`);
     parts.push('비서실장 대신 정기 보고문을 쓴다. 진행 중·완료·막힘·결재 대기를 짧게 정리하고, 주인이 지금 할 일을 맨 앞에 쓴다. 숫자와 티켓 번호는 위 데이터에 있는 것만 쓴다. 1500자 이내.');
   }
+  // --- 직원 봇 대화 (9장, 2026-10-20) ---
+  if (task === 'chat') {
+    parts.push(`## 내 지금 상태 (회사 집계)\n\n${String(get(input, 'status') ?? '')}`);
+    parts.push(`## 내가 맡은 티켓 (회사 집계)\n\n${dataBlock('맡은 티켓', get(input, 'tickets') ?? [])}`);
+    parts.push(`## 주인이 Discord에서 나를 불러 한 말 (자료)\n\n${dataBlock('주인 메시지', get(input, 'message'))}`);
+    parts.push(
+      '주인에게 내 이름으로 짧게(1~4문장, 800자 이내) 존댓말로 답한다. 내 일과 티켓 상태는 위 회사 집계에 있는 것만 말하고, 없는 사실은 모른다고 한다. ' +
+        '대화로는 지시 등록·결재·푸시·상태 변경을 할 수 없다. 일을 시키려 하면 #비서실이나 /지시로 지시해 달라고 안내하고, 결재는 #결재함 버튼으로 한다고 안내한다.',
+    );
+  }
   if (task === 'commit') {
     parts.push(ticketSection(input));
     parts.push(`## 바뀐 파일 (자료)\n\n${dataBlock('git diff --stat', get(input, 'diffStat') ?? '')}`);

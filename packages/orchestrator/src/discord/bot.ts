@@ -30,6 +30,7 @@ import type { Ctx } from '../context.ts';
 import { SLASH_COMMANDS, type InteractionHandler } from './interactions.ts';
 import { onDiscordMessage } from '../chief/order-message.ts';
 import { STAFF_BOT_IDS, type StaffBotPort } from './staff-bots.ts';
+import type { StaffMention } from './staff-chat.ts';
 import type { Button, ChannelKey, DiscordPort, InteractionReply, MirrorPort, OutgoingMessage, ProjectChannelPort } from './types.ts';
 
 const STYLE: Record<Button['style'], ButtonStyle> = {
@@ -188,17 +189,35 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
 }
 
 /**
- * 직원 봇 9개 (9장, 보여 주기 전용). 인텐트는 Guilds만이고 이벤트 처리기를 하나도 달지 않는다:
- * 직원 봇에게 말하거나 멘션해도 아무 일도 일어나지 않는다. 토큰은 로그에 남기지 않는다.
- * 로그인에 실패한 직원은 빠지고(그 직원 글은 웹훅으로), 나머지는 그대로 뜬다.
+ * 직원 봇 9개 (9장). 거울 글·상태 글, 그리고 주인이 멘션하면 대답(2026-10-20 CEO 결정).
+ * 인텐트는 Guilds, GuildMessages. 메시지 내용(Message Content) 권한은 켜지 않는다:
+ * Discord는 그 봇을 멘션한 글의 내용만 보내 준다. 답할지는 onMention(StaffChat)이 정한다. 명령·버튼·DM 처리기는 없다.
+ * 토큰은 로그에 남기지 않는다. 로그인에 실패한 직원은 빠지고(그 직원 글은 웹훅으로), 나머지는 그대로 뜬다.
  */
-export async function startStaffBots(o: { tokens: Partial<Record<string, string>>; log: (s: string) => void }): Promise<StaffBotPort> {
+export async function startStaffBots(o: {
+  tokens: Partial<Record<string, string>>;
+  log: (s: string) => void;
+  onMention?: (employeeId: string, m: StaffMention) => Promise<string | null>;
+}): Promise<StaffBotPort> {
   const clients = new Map<string, Client<true>>();
   await Promise.all(
     STAFF_BOT_IDS.map(async (id) => {
       const token = o.tokens[id];
       if (!token) return;
-      const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+      const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+      if (o.onMention) {
+        const onMention = o.onMention;
+        client.on(Events.MessageCreate, async (m) => {
+          try {
+            const mentionsMe = !!client.user && m.mentions.users.has(client.user.id);
+            if (!mentionsMe) return;
+            const reply = await onMention(id, { guildId: m.guildId, authorId: m.author.id, authorIsBot: m.author.bot, mentionsMe, content: m.content });
+            if (reply) await m.reply({ content: fit(reply), allowedMentions: { parse: [], repliedUser: false } });
+          } catch (err) {
+            o.log(`직원 봇 대답 실패(${id}): ${(err as Error).message}`);
+          }
+        });
+      }
       try {
         const ready = new Promise<Client<true>>((resolve, reject) => {
           client.once(Events.ClientReady, resolve);

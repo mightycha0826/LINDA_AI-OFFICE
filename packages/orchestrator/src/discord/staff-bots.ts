@@ -1,6 +1,6 @@
-// 직원 봇 9개 (9장, 2026-10-20 CEO 결정: 보여 주기 전용).
-// - 하는 일: ① #사무실-대화 스레드에 자기 거울 글 ② 멤버 목록 상태 글.
-// - 아무것도 받지 않는다: 게이트웨이 권한은 Guilds만, 메시지·명령·버튼·DM 처리기를 달지 않는다.
+// 직원 봇 9개 (9장, 2026-10-20 CEO 결정).
+// - 하는 일: ① #사무실-대화 스레드에 자기 거울 글 ② 멤버 목록 상태 글 ③ 주인이 멘션하면 대답(staff-chat.ts, 같은 날 추가).
+// - 명령·버튼·DM 처리기는 달지 않는다. 대답으로는 상태를 바꾸지 않는다.
 // - 직원 봇이 없거나 실패하면 그 글은 웹훅으로(이름을 붙여) 올린다.
 import { inArray } from 'drizzle-orm';
 import { deriveEmployeeStatus, type DerivedStatus, type ScreenTicket } from '@ai-office/shared';

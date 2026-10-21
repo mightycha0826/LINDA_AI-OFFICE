@@ -9,7 +9,7 @@
 // 이 파일은 바깥(결재 봇, 비서실장, Git 고양이, 회고)이 부르는 입구와 한 바퀴(step)만 둔다.
 import { eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { GateOutputSchema, LOCAL_MODEL } from '@ai-office/shared';
+import { GateOutputSchema, LOCAL_MODEL, StaffChatOutputSchema } from '@ai-office/shared';
 import { BrainError, type BrainTask, type TestRunner } from './brains/brain.ts';
 import { Lanes } from './brains/lanes.ts';
 import type { BrainFor } from './brains/registry.ts';
@@ -142,6 +142,21 @@ export class Engine {
       return await this.calls.call(drafter, 'commit', CommitDraftSchema, { ticket: { id: info.id, title: info.title, type: 'coding', acceptanceCriteria: info.acceptanceCriteria }, diffStat }, {});
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * 직원 봇 대화 (9장, 2026-10-20 CEO 결정). 주인이 멘션한 직원의 이름·역할 카드로, 두뇌는 누구든 로컬 Gemma를 쓴다
+   * (Claude·GPT 한도를 쓰지 않는다). 답은 글뿐이고 상태를 바꾸지 않는다. 실패하면 null.
+   */
+  async chatAs(employeeId: string, input: unknown): Promise<string | null> {
+    const e: EmployeeRow = { ...this.calls.employee(employeeId), brain: { provider: 'ollama', model: LOCAL_MODEL } };
+    try {
+      return (await this.calls.call(e, 'chat', StaffChatOutputSchema, input, {})).text;
+    } catch (err) {
+      if (isQuiet(err)) this.calls.handleQuietFailure(err, e);
+      if (err instanceof BrainError || err instanceof FormatError) return null;
+      throw err;
     }
   }
 

@@ -51,7 +51,7 @@
   - `.env`: 주인만 허용, #비서실이 홈이고 멘션 없이 답한다.
   - 게이트웨이는 작업 스케줄러 `Hermes_Gateway`로 로그인 때 켜진다.
 - **로컬 모델**: Ollama 0.40.5. 7-2부터 로컬 두뇌는 `gemma4:12b-64k` 하나(헤르메스·오케스트레이터 공용, num_ctx 65536). qwen3:14b·gemma4:12b 파일은 아직 디스크에 있음(지울지는 주인 결정). C: 여유 약 62GB. VRAM 12GB(RTX 3060).
-- **테스트**: `npm test` 512개 통과(Windows 기준. 리눅스에서는 Windows 경로 테스트 `workspace.test.ts` 1개가 실패한다), typecheck·lint:ds 깨끗하다.
+- **테스트**: `npm test` 520개(통과 517, 건너뜀 2. Windows 기준. 나머지 1개 `workspace.test.ts`는 Windows 경로 테스트라 리눅스에서만 실패한다), typecheck·lint:ds 깨끗하다.
 - **GitHub**: `6dd991f`까지 푸시했다(주인 승인, gitleaks 통과). 지금은 `origin/main`이 로컬 `main`과 같다(10-20 기준 모두 푸시됨).
 - **캐릭터**: chief-of-staff, pm은 진짜 그림(옆모습과 정면). 나머지는 단색 임시 그림.
 
@@ -68,6 +68,7 @@
 | **조직 개편 7단계** (CEO 지시) | GPT 한도를 회사가 전부 쓰기로(100%/100%), Claude는 그대로. Claude=판단(기획실장·개발팀장), GPT=양(개발자 A·B, 리뷰어·감사관, 전략가, 카피라이터), Gemma=보조 10명. 부서·팀장 구조 | DESIGN 2-0 조직도, 16장 7-1~7-5 |
 | 7-5: 로컬 보조 직원 7명 (주인 부재 중, AUTONOMOUS-LOG 75-A~H) | 막힘 해설가·변경 요약가·거울 통역사·커밋 서기·회고 서기·보고 초안가·초안 작가, 역할 `assistant`(직원 표 다시 만들기 0008, 마이그레이션 동안만 외래 키 끔), GPU 순위(급함·보통·뒤), 화면 부서 배치. 보조 직원은 검토 불가, 초안 작가만 writing·marketing 티켓 | DESIGN 16장 7-5, `staff/assistants.ts`, `test/org-7-5.test.ts` |
 | 7단계 진짜 두뇌 확인 (주인 부재 중) | `smoke --flow`(개발자 A 구현 → 개발팀장 검토, done)와 `smoke --doc`(카피라이터 → 교정 1차 점검 → 기획실장 검토, done) 통과. 문서 티켓이 토큰 상한에 걸려 기획실장 역할 카드에 문서 티켓 토큰 기준 추가 | stage0/RESULTS.md 맨 아래, `sim/smoke.ts` |
+| 직원 봇 주인 멘션 대답 (CEO 결정 10-20, 선택은 모두 추천안) | 주인이 아무 채널에서 직원 봇을 멘션하면 그 직원 이름으로 답글. 두뇌는 누구든 로컬 Gemma(한도 안 씀), 대화·상태 안내만(지시·결재·푸시 길 없음). 인텐트 Guilds·GuildMessages, Message Content는 여전히 끔(멘션한 글은 내용이 온다). 정지 중엔 AI 안 부름, 직원당 한 번에 한 질문. 초대 권한에 Send Messages 추가 | DESIGN 9장, `discord/staff-chat.ts`, `engine.chatAs`, `test/staff-chat.test.ts`, RUNNING 4장 |
 | Claude 두뇌 Opus 5.5 · 노력 medium (CEO 결정 10-20) | `config.claude.model`=`claude-opus-5-5`, `config.claude.effort`=`medium`, `claude -p --effort`. 실제 CLI 응답 확인 | DESIGN 8장, `brains/claude-code.ts`, `test/isolation.test.ts` |
 | 직원 봇 9개 (CEO 결정 10-20, 보여 주기 전용) | 정규 직원 9명이 자기 봇으로 #사무실-대화 거울 글과 상태 글(`T-3 작업 중`). 인텐트 Guilds만, 처리기 없음, 실패하면 웹훅. 토큰은 주인이 `set-secrets.ps1 -WithStaffBots` | DESIGN 9장, `discord/staff-bots.ts`, `test/staff-bots.test.ts`, RUNNING 4장 |
 | 화면을 2-0 조직도에 맞춤 + 엔진 리팩터링 (주인 부재 중, AUTONOMOUS-LOG 76-A~I) | 지도 30×20·부서별 방·인원, 팀장 별·보조 80%, 직원 탭, 자기 색 임시 그림, 기획 몫·GPT 몫 이름. 리뷰어 → 품질보증팀, Git 고양이 → 운영지원. engine.ts를 호출 계층·계획·티켓 단계로 분리(동작 그대로). 14:47 운영 반영 | DESIGN 12장, `office-ui/src/map.ts`, `staff/org.ts`, `src/engine/`, `test/org-screen.test.ts` |
@@ -125,7 +126,7 @@ Discord 명령: `/지시`, `/보고`, `/상태 T-n`, `/push T-n`, `/되돌리기
 5. **재부팅 대비** (주인): 자동 로그인, 업데이트 자동 재시작 막기. pm2(`AI_Office_pm2`)·헤르메스(`Hermes_Gateway`) 작업은 등록됨.
 6. **SearXNG(#10)**: 주인이 `wsl --install`과 재부팅 → Claude가 Docker·SearXNG 설치와 연결. 그전엔 GPT 직원 웹 근거가 비어 있다.
 7. **정리**: Qwen 모델 지우기(`ollama rm qwen3:14b`, 주인 승인), 교정 담당이 대괄호 안 공백 같은 형식 실수를 놓친 것 보완.
-8. **주인**: 직원 봇 9개 만들기(RUNNING 4장 "직원 봇 9개 만들기", 토큰은 `set-secrets.ps1 -WithStaffBots`). 확인 필요: 화면 비서실장 이름 "백서진"이 확정인지(1·3장에서는 이미 이 이름을 쓴다).
+8. **주인**: 직원 봇 9개 만들기(RUNNING 4장 "직원 봇 9개 만들기", 초대 권한에 Send Messages 포함, 토큰은 `set-secrets.ps1 -WithStaffBots`). 만든 뒤 `@직원 지금 뭐 해?`로 대답 확인. 확인 필요: 화면 비서실장 이름 "백서진"이 확정인지(1·3장에서는 이미 이 이름을 쓴다).
 9. 캐릭터 그림(개발자 A·B, 보조 직원 7명 포함), 화면 임시 초안(`point.extra.css`) 결재, #8 밤 재측정, 헤르메스를 켠 상태로 #3 RAM 재측정.
 
 ## 8. 커밋 흐름 (요약)

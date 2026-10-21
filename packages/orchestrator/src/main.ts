@@ -11,6 +11,7 @@ import { emit, type Ctx } from './context.ts';
 import { openDb } from './db/client.ts';
 import { startDiscordBot, startStaffBots, type DiscordBot } from './discord/bot.ts';
 import { routeMirror, StaffPresence, type StaffBotPort } from './discord/staff-bots.ts';
+import { StaffChat } from './discord/staff-chat.ts';
 import { InteractionHandler } from './discord/interactions.ts';
 import { Mirror } from './discord/mirror.ts';
 import { Notifier } from './discord/notifier.ts';
@@ -67,9 +68,10 @@ if (secrets.discordToken && config.discord.guildId) {
   bot = await startDiscordBot({ c: ctx, handler: new InteractionHandler(ctx, engine, log, gitcat, newProjects), token: secrets.discordToken, ...(secrets.mirrorWebhookUrl ? { webhookUrl: secrets.mirrorWebhookUrl } : {}), log });
   // 막힘 해설가·거울 통역사 (16장 7-5). 실패하면 해설·통역 없이 원래대로
   notifier = new Notifier(ctx, bot.port, log, async (notice) => (await engine.callAs('explainer', 'explain', ExplainOutputSchema, { notice }, { workdir: 'explain' }))?.lines ?? null);
-  // 직원 봇 9개 (9장, 보여 주기 전용). 토큰이 있는 직원만 뜨고, 없거나 실패한 직원의 거울 글은 웹훅으로
+  // 직원 봇 9개 (9장). 토큰이 있는 직원만 뜨고, 없거나 실패한 직원의 거울 글은 웹훅으로. 주인이 멘션하면 로컬 Gemma로 대답
   if (secrets.staffBotTokens && Object.keys(secrets.staffBotTokens).length) {
-    staffBots = await startStaffBots({ tokens: secrets.staffBotTokens, log });
+    const chat = new StaffChat(ctx, (id, input) => engine.chatAs(id, input), log);
+    staffBots = await startStaffBots({ tokens: secrets.staffBotTokens, log, onMention: (id, m) => chat.answer(id, m) });
     presence = new StaffPresence(ctx, staffBots);
   }
   mirror = bot.mirror

@@ -131,6 +131,10 @@ export type DiffSummary = z.infer<typeof DiffSummarySchema>;
 export const InterpretOutputSchema = z.object({ text: text.max(600) });
 export type InterpretOutput = z.infer<typeof InterpretOutputSchema>;
 
+/** 직원 봇 대화 (9장, 2026-10-20): 주인이 멘션한 직원 봇의 답. 로컬 Gemma, 참고용 */
+export const StaffChatOutputSchema = z.object({ text: text.max(800) });
+export type StaffChatOutput = z.infer<typeof StaffChatOutputSchema>;
+
 /** 보고 초안가: 비서실장 보고가 없을 때의 정기 보고 본문 (숫자는 회사 데이터에서만) */
 export const ReportDraftSchema = z.object({ text: text.max(1500) });
 export type ReportDraft = z.infer<typeof ReportDraftSchema>;

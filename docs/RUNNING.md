@@ -58,20 +58,20 @@ http://127.0.0.1:8780 을 연다. 메모리 DB와 MockLLM으로 직원들이 천
 
 설정 검사에 실패하면 무엇이 틀렸는지 알려 주고 켜지지 않는다.
 
-### 직원 봇 9개 만들기 (DESIGN 9장, 보여 주기 전용)
+### 직원 봇 9개 만들기 (DESIGN 9장)
 
-정규 직원 9명(기획실장, 개발팀장, 개발자 A, 개발자 B, 리뷰어 · 감사관, 카피라이터, 전략가, 교정 담당, Git 고양이)이 #사무실-대화에 자기 계정으로 글을 올리고, 멤버 목록에 `T-3 작업 중` 같은 상태를 띄운다. 말을 걸어도 답하지 않는다. 지시는 지금처럼 #비서실과 `/지시`로만 한다. 토큰이 없는 직원은 지금처럼 웹훅 이름으로 보이니, 몇 명만 먼저 만들어도 된다.
+정규 직원 9명(기획실장, 개발팀장, 개발자 A, 개발자 B, 리뷰어 · 감사관, 카피라이터, 전략가, 교정 담당, Git 고양이)이 #사무실-대화에 자기 계정으로 글을 올리고, 멤버 목록에 `T-3 작업 중` 같은 상태를 띄운다. 주인이 아무 채널에서나 `@기획실장 지금 뭐 해?`처럼 멘션하면 그 봇이 답글로 대답한다(로컬 Gemma, 대화와 상태 안내만). 지시는 지금처럼 #비서실과 `/지시`로만 하고, 결재는 #결재함 버튼으로 한다. 토큰이 없는 직원은 지금처럼 웹훅 이름으로 보이니, 몇 명만 먼저 만들어도 된다.
 
 직원마다 아래를 한 번씩 한다.
 
 1. https://discord.com/developers/applications 에서 **New Application**을 누르고, 이름을 직원 이름(예: `기획실장`)으로 짓는다. 아이콘은 원하면 캐릭터 그림으로 바꾼다.
 2. 왼쪽 **Bot** 메뉴에서:
    - **Public Bot**은 끈다.
-   - **Privileged Gateway Intents** 세 개(Presence, Server Members, Message Content)는 모두 **꺼 둔다**.
+   - **Privileged Gateway Intents** 세 개(Presence, Server Members, Message Content)는 모두 **꺼 둔다**. Message Content를 꺼도 그 봇을 멘션한 글의 내용은 받는다.
    - **Reset Token**을 눌러 토큰을 복사한다. 바로 4번에서 붙여 넣고, 채팅이나 메모장 같은 다른 곳에는 붙이지 않는다.
 3. 왼쪽 **OAuth2 → URL Generator**에서:
    - Scopes는 `bot` 하나만 고른다.
-   - Bot Permissions는 **View Channels**, **Send Messages in Threads**, **Read Message History** 세 개만 고른다. Administrator나 Send Messages는 고르지 않는다.
+   - Bot Permissions는 **View Channels**, **Send Messages**, **Send Messages in Threads**, **Read Message History** 네 개만 고른다. Administrator는 고르지 않는다. (Send Messages는 멘션에 답하려고 2026-10-20에 더했다. 이미 세 개로 초대했다면 서버 설정 → 역할에서 그 봇 역할에 Send Messages를 켠다.)
    - 아래 생긴 URL을 열어 회사 서버에 초대한다.
 4. 9명을 다 만들었거나 일부만 만들었으면, 아래 명령으로 토큰을 넣는다. 직원 이름이 차례로 나오니 해당 토큰을 붙여 넣고, 없는 직원은 그냥 Enter를 누른다.
    ```
