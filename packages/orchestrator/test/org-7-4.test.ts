@@ -63,6 +63,11 @@ describe('7-4 교정 1차 점검', () => {
     expect(s.mock.callsFor('proofread')[0]!.employee.id).toBe('qa-local');
     const reviewInput = s.mock.callsFor('review')[0]!.input as { proofread: { issues: unknown[] } };
     expect(reviewInput.proofread).toMatchObject({ issues: expect.any(Array) });
+    // 두뇌가 읽는 프롬프트에도 자료 블록으로 실린다 (2026-10-21: 입력에만 있고 프롬프트에 빠져 있던 문제)
+    const prompt = s.mock.callsFor('review')[0]!.prompt.user;
+    expect(prompt).toContain('## 교정 담당 1차 점검 (자료)');
+    expect(prompt).toContain('<data source="교정 담당 지적 목록">');
+    expect(prompt).toContain('판정은 완료 조건으로만');
     const note = s.db.select().from(messages).where(eq(messages.ticketId, tk!.id)).all().find((m) => m.fromId === 'qa-local' && m.content.includes('교정'));
     expect(note).toBeDefined();
   });
@@ -80,6 +85,7 @@ describe('7-4 교정 1차 점검', () => {
     await s.engine.runUntilIdle();
     expect(ticket(s, tk!.id).status).toBe('done');
     expect((s.mock.callsFor('review')[0]!.input as { proofread?: unknown }).proofread).toBeUndefined();
+    expect(s.mock.callsFor('review')[0]!.prompt.user).not.toContain('교정 담당 1차 점검');
   });
 
   it('코딩 티켓과 교정 담당 자신이 쓴 문서는 교정하지 않는다', async () => {

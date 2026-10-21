@@ -53,4 +53,15 @@ describe('7-1 한도와 기획실장', () => {
     );
     expect(input.staffModels.map((x) => x.id)).not.toContain('git-cat'); // AI가 아닌 직원은 빼고
   });
+
+  it('모델 표가 두뇌가 읽는 프롬프트에 실린다 (2026-10-21: 입력에만 있고 프롬프트에 빠져 첫 판이 매번 반려되던 문제)', async () => {
+    const s = setup();
+    await orderUntilPlanApproval(s);
+    const prompt = s.mock.callsFor('gate')[0]!.prompt.user;
+    expect(prompt).toContain('## 직원별 모델 (회사 집계)');
+    expect(prompt).toMatch(/"id": "reviewer",\s+"role": "reviewer",\s+"model": "gpt"/);
+    expect(prompt).toMatch(/"id": "developer",\s+"role": "developer",\s+"model": "claude"/);
+    // 회사 집계라 <data>로 감싸지 않는다 (계획서만 자료 블록)
+    expect(prompt.match(/<data /g)).toHaveLength(1);
+  });
 });

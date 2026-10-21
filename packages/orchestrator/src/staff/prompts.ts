@@ -57,6 +57,14 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
         break;
       }
       parts.push(`## 검사할 계획서\n\n${dataBlock('PM 계획서', get(input, 'plan'))}`);
+      // 직원별 모델 표 (회사 코드가 DB에서 만든 값이라 감싸지 않는다). 2026-10-21 고침: 입력에만 있고 프롬프트에 실리지 않아
+      // 관문이 "모델을 알 수 없다"며 계획서 첫 판을 매번 반려했다
+      {
+        const models = get(input, 'staffModels');
+        if (Array.isArray(models) && models.length) {
+          parts.push(`## 직원별 모델 (회사 집계)\n\n담당자와 검토자가 다른 모델인지는 이 표로 확인한다. 계획서에 모델 이름이 적혀 있지 않은 것은 반려 사유가 아니다.\n\n${JSON.stringify(models, null, 2)}`);
+        }
+      }
       parts.push(
         '완료 조건이 확인 가능한 문장인지, 담당자와 검토자가 다른 모델인지, 범위가 지시와 맞는지 검사한다. ' +
           '권한을 늘리거나 결재를 건너뛰는 내용이 있으면 무조건 반려한다. 반려가 3번째면 objection에 반대 의견을 한 줄로 쓴다.',
@@ -80,6 +88,12 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       const diff = get(input, 'diff');
       if (typeof diff === 'string' && diff) parts.push(`## 변경 내용 (자료)\n\n${dataBlock('git diff', diff)}`);
       parts.push(`## 담당자가 낸 결과 (자료)\n\n${dataBlock('담당자 제출물', get(input, 'submission'))}`);
+      // 교정 1차 점검 (16장 7-4: 검토자 입력에 자료로 붙는다). 2026-10-21 고침: 입력에만 있고 프롬프트에 실리지 않았다
+      const proofread = get(input, 'proofread');
+      if (proofread) {
+        parts.push(`## 교정 담당 1차 점검 (자료)\n\n${dataBlock('교정 담당 지적 목록', proofread)}`);
+        parts.push('교정 지적은 참고 자료다. 판정은 완료 조건으로만 하고, 지적이 완료 조건과 관계있을 때만 근거로 쓴다.');
+      }
       const sources = get(input, 'sources');
       if (Array.isArray(sources) && sources.length) {
         parts.push(`## 근거 링크 본문 (자료, 오케스트레이터가 가져옴)\n\n${dataBlock('근거 링크 본문', sources)}`);
