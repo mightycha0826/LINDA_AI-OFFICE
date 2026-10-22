@@ -1,3 +1,7 @@
 # 실제 비밀이 아닌 것 (gitleaks 지문). 새로 넣을 때는 이유를 적는다.
 # Git 고양이 테스트의 가짜 AWS 키 모양 "AKIAABCDEFGHIJKLMNOP" (커밋 7825dd6, 지금은 실행 중에 이어 붙임)
 7825dd631b80a0fa692335dded35f2db4b10520c:packages/orchestrator/test/gitcat.test.ts:aws-access-token:167
+# PM 요구사항 대화 테스트의 가짜 Discord 메시지 ID "1234567890123456xx" (커밋 cebcd73)
+cebcd7318a2e8a3a56de44e311c5b7c727c39b82:packages/orchestrator/test/clarifications.test.ts:discord-client-id:14
+cebcd7318a2e8a3a56de44e311c5b7c727c39b82:packages/orchestrator/test/clarifications.test.ts:discord-client-id:46
+cebcd7318a2e8a3a56de44e311c5b7c727c39b82:packages/orchestrator/test/clarifications.test.ts:discord-client-id:61
