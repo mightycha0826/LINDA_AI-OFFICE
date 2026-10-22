@@ -26,6 +26,10 @@ import type { Button, Interaction, InteractionReply } from './types.ts';
 
 const TICKET_ID = /^T-\d+$/;
 
+type CommandOptions = Record<string, string | number | undefined>;
+type CommandHandler = (o: CommandOptions, interactionId?: string, channelId?: string) => InteractionReply;
+type ButtonHandler = (target: string, action: string) => InteractionReply | Promise<InteractionReply>;
+
 /** Git 고양이 중 결재 봇이 쓰는 부분 (4단계) */
 export interface GitCatPort {
   preparePush(ticketId: string, kind: 'push' | 'revert', origin: string): Promise<{ ok: boolean; message: string }>;
@@ -38,6 +42,35 @@ export class InteractionHandler {
   private readonly log: (s: string) => void;
   private readonly gitcat: GitCatPort | null;
   private readonly projects: NewProjectService | null;
+
+  /** 버튼 ID(종류:대상:동작)의 종류 → 처리 */
+  private readonly buttons = new Map<string, ButtonHandler>([
+    ['cq', (target, action) => this.clarifyButton(target, action)],
+    ['ap', (target, action) => this.approvalButton(target, action)],
+    ['bk', (target, action) => this.blockedButton(target, action)],
+    ['pb', (target, action) => this.planBlockedButton(target, action)],
+    ['push', (target, action) => this.pushButton(target, action)],
+    ['pushc', (target, action) => (action === 'merge' ? this.decide(target, 'approved', 'main') : this.decide(target, 'rejected'))],
+    ['dp', (target, action) => this.direct('dp', target, action)],
+    ['rv', (target, action) => this.direct('rv', target, action)],
+    ['gs', (target, action) => this.guestButton(target, action)],
+  ]);
+
+  /** 슬래시 명령 이름 → 처리. 이름은 SLASH_COMMANDS와 같다 */
+  private readonly commands = new Map<string, CommandHandler>([
+    ['지시', (o, interactionId, channelId) => this.orderCommand(o, interactionId, channelId)],
+    ['파견', () => ({ kind: 'reply', ephemeral: false, ...this.guestBoard() })],
+    ['보고', () => this.reportCommand()],
+    ['상태', (o) => this.statusCommand(o)],
+    ['push', (o) => this.pushCommand('push', o)],
+    ['되돌리기', (o) => this.pushCommand('되돌리기', o)],
+    ['한도', () => this.budgetCommand()],
+    ['정지', () => ({ kind: 'reply', content: `모든 직원을 멈췄어요. 멈춘 티켓 ${this.engine.stop(this.c.config.ceoDiscordId).length}개. /재개로 다시 시작해요`, ephemeral: false })],
+    ['재개', () => ({ kind: 'reply', content: `다시 시작해요. 이어간 티켓 ${this.engine.resume(this.c.config.ceoDiscordId).length}개. 한도 때문에 멈춘 티켓은 한도가 다시 차면 이어가요`, ephemeral: false })],
+    ['프로젝트', (o) => this.projectCommand(o)],
+    ['새프로젝트', (o) => this.newProjectCommand(o)],
+    ['설정', (o) => this.settingCommand(o)],
+  ]);
 
   constructor(c: Ctx, engine: Engine, log: (s: string) => void = () => {}, gitcat: GitCatPort | null = null, projects: NewProjectService | null = null) {
     this.c = c;
@@ -67,61 +100,70 @@ export class InteractionHandler {
 
   private async button(id: string): Promise<InteractionReply> {
     const [kind, target, action] = id.split(':') as [string, string, string];
-    if (kind === 'cq') {
-      const state = clarificationOf(this.c, target);
-      const order = this.c.db.select().from(orders).where(eq(orders.id, target)).get();
-      if (order?.status !== 'planning' || Number(action) !== state.rounds.length || state.rounds.at(-1)?.answer !== null) throw new OfficeError('stale-question', '이미 답했거나 이전 질문이에요. 최신 질문을 확인해 주세요');
-      return { kind: 'modal', customId: `cqm:${target}:${action}`, title: `PM 질문 답변 · ${target}`, fields: [{ id: 'note', label: '번호별 답변 (모르는 항목은 적어 주세요)', style: 'paragraph', required: true }] };
+    const run = this.buttons.get(kind);
+    return run ? run(target, action) : { kind: 'reply', content: '모르는 버튼이에요', ephemeral: true };
+  }
+
+  /** PM 질문 [답변하기]: 최신 질문일 때만 입력창 */
+  private clarifyButton(orderId: string, action: string): InteractionReply {
+    const state = clarificationOf(this.c, orderId);
+    const order = this.c.db.select().from(orders).where(eq(orders.id, orderId)).get();
+    if (order?.status !== 'planning' || Number(action) !== state.rounds.length || state.rounds.at(-1)?.answer !== null) throw new OfficeError('stale-question', '이미 답했거나 이전 질문이에요. 최신 질문을 확인해 주세요');
+    return { kind: 'modal', customId: `cqm:${orderId}:${action}`, title: `PM 질문 답변 · ${orderId}`, fields: [{ id: 'note', label: '번호별 답변 (모르는 항목은 적어 주세요)', style: 'paragraph', required: true }] };
+  }
+
+  /** 결재 [승인] [수정 요청] [반려] */
+  private approvalButton(approvalId: string, action: string): InteractionReply {
+    if (action === 'revision') {
+      return {
+        kind: 'modal',
+        customId: `apm:${approvalId}`,
+        title: '수정 요청',
+        fields: [{ id: 'note', label: '계획서에서 고칠 내용', style: 'paragraph', required: true }],
+      };
     }
-    if (kind === 'ap') {
-      if (action === 'revision') {
-        return {
-          kind: 'modal',
-          customId: `apm:${target}`,
-          title: '수정 요청',
-          fields: [{ id: 'note', label: '계획서에서 고칠 내용', style: 'paragraph', required: true }],
-        };
-      }
-      return this.decide(target, action as ApprovalDecision);
+    return this.decide(approvalId, action as ApprovalDecision);
+  }
+
+  /** #막힘 티켓 [다시 시도] [방향 지시] [취소] */
+  private blockedButton(ticketId: string, action: string): InteractionReply {
+    if (action === 'direct') {
+      return { kind: 'modal', customId: `bkm:${ticketId}`, title: `방향 지시 · ${ticketId}`, fields: [{ id: 'note', label: '어떻게 진행할지', style: 'paragraph', required: true }] };
     }
-    if (kind === 'bk') {
-      if (action === 'direct') {
-        return { kind: 'modal', customId: `bkm:${target}`, title: `방향 지시 · ${target}`, fields: [{ id: 'note', label: '어떻게 진행할지', style: 'paragraph', required: true }] };
-      }
-      this.engine.ceoTicketAction(target, this.c.config.ceoDiscordId, action === 'retry' ? 'retry' : 'cancel');
-      return { kind: 'update', content: `${this.ticketLine(target)}\n\n**${action === 'retry' ? '다시 시도해요' : '취소했어요'}**`, buttons: [] };
+    this.engine.ceoTicketAction(ticketId, this.c.config.ceoDiscordId, action === 'retry' ? 'retry' : 'cancel');
+    return { kind: 'update', content: `${this.ticketLine(ticketId)}\n\n**${action === 'retry' ? '다시 시도해요' : '취소했어요'}**`, buttons: [] };
+  }
+
+  /** 계획 작성 멈춤 (#막힘): [다시 시도] [취소] */
+  private planBlockedButton(orderId: string, action: string): InteractionReply {
+    const order = this.c.db.select().from(orders).where(eq(orders.id, orderId)).get();
+    if (!order) return { kind: 'reply', content: `${orderId} 지시를 찾지 못했어요`, ephemeral: true };
+    if (order.status !== 'planning') return { kind: 'update', content: `**${order.id}**는 이미 계획 단계가 아니에요(${order.status})`, buttons: [] };
+    const head = `**계획 작성 멈춤 · ${order.projectId ? `[${order.projectId}] ` : ''}${order.id}**\n> ${order.rawText.slice(0, 200)}`;
+    if (action === 'cancel') {
+      this.engine.cancelBlockedOrder(order.id, this.c.config.ceoDiscordId);
+      return { kind: 'update', content: `${head}\n\n**취소했어요**`, buttons: [] };
     }
-    if (kind === 'pb') {
-      // 계획 작성 멈춤 (#막힘): [다시 시도] [취소]
-      const order = this.c.db.select().from(orders).where(eq(orders.id, target)).get();
-      if (!order) return { kind: 'reply', content: `${target} 지시를 찾지 못했어요`, ephemeral: true };
-      if (order.status !== 'planning') return { kind: 'update', content: `**${order.id}**는 이미 계획 단계가 아니에요(${order.status})`, buttons: [] };
-      const head = `**계획 작성 멈춤 · ${order.projectId ? `[${order.projectId}] ` : ''}${order.id}**\n> ${order.rawText.slice(0, 200)}`;
-      if (action === 'cancel') {
-        this.engine.cancelBlockedOrder(order.id, this.c.config.ceoDiscordId);
-        return { kind: 'update', content: `${head}\n\n**취소했어요**`, buttons: [] };
-      }
-      this.engine.retryPlanning(order.id, this.c.config.ceoDiscordId);
-      return { kind: 'update', content: `${head}\n\n**다시 시도해요** · PM이 계획서를 다시 써요. 결과는 결재함이나 여기에 올라와요`, buttons: [] };
+    this.engine.retryPlanning(order.id, this.c.config.ceoDiscordId);
+    return { kind: 'update', content: `${head}\n\n**다시 시도해요** · PM이 계획서를 다시 써요. 결과는 결재함이나 여기에 올라와요`, buttons: [] };
+  }
+
+  /** 푸시 확인 [feature/…] [main] [취소] */
+  private pushButton(approvalId: string, action: string): InteractionReply {
+    const a = this.approval(approvalId);
+    if (action === 'main' && a.kind !== 'revert') {
+      // main 병합은 한 번 더 확인한다 (9장 ③)
+      const ticket = this.c.db.select().from(tickets).where(eq(tickets.id, a.targetId)).get() ?? null;
+      return { kind: 'update', ...mainMergeConfirm(a, approvalMessageFor(a, null, ticket).content) };
     }
-    if (kind === 'push') {
-      const a = this.approval(target);
-      if (action === 'main' && a.kind !== 'revert') {
-        // main 병합은 한 번 더 확인한다 (9장 ③)
-        const ticket = this.c.db.select().from(tickets).where(eq(tickets.id, a.targetId)).get() ?? null;
-        return { kind: 'update', ...mainMergeConfirm(a, approvalMessageFor(a, null, ticket).content) };
-      }
-      if (action === 'cancel') return this.decide(target, 'rejected');
-      return this.decide(target, 'approved', action === 'feature' ? 'feature' : 'main');
-    }
-    if (kind === 'pushc') return action === 'merge' ? this.decide(target, 'approved', 'main') : this.decide(target, 'rejected');
-    if (kind === 'dp' || kind === 'rv') return this.direct(kind, target, action);
-    if (kind === 'gs') {
-      // 파견 직원 [출근]·[퇴근] (8장 2026-10-21). 규칙은 core/guests.ts가 집행한다
-      setGuestOn(this.c, target, action === 'on', this.c.config.ceoDiscordId);
-      return { kind: 'update', ...this.guestBoard() };
-    }
-    return { kind: 'reply', content: '모르는 버튼이에요', ephemeral: true };
+    if (action === 'cancel') return this.decide(approvalId, 'rejected');
+    return this.decide(approvalId, 'approved', action === 'feature' ? 'feature' : 'main');
+  }
+
+  /** 파견 직원 [출근]·[퇴근] (8장 2026-10-21). 규칙은 core/guests.ts가 집행한다 */
+  private guestButton(guestId: string, action: string): InteractionReply {
+    setGuestOn(this.c, guestId, action === 'on', this.c.config.ceoDiscordId);
+    return { kind: 'update', ...this.guestBoard() };
   }
 
   /** 직원 직접 지시 [맡기고 시작]·진행 중 수정 [수정 반영]·[그냥 대화] (9장, 2026-10-21). 규칙은 core/direct.ts가 집행한다 */
@@ -193,113 +235,115 @@ export class InteractionHandler {
 
   // --- 슬래시 명령 -------------------------------------------------------------
 
-  private async command(name: string, o: Record<string, string | number | undefined>, interactionId?: string, channelId?: string): Promise<InteractionReply> {
+  private async command(name: string, o: CommandOptions, interactionId?: string, channelId?: string): Promise<InteractionReply> {
+    const run = this.commands.get(name);
+    return run ? run(o, interactionId, channelId) : { kind: 'reply', content: '모르는 명령이에요', ephemeral: true };
+  }
+
+  /** '티켓' 칸의 번호(T-12)로 티켓을 찾는다 */
+  private ticketArg(o: CommandOptions) {
+    const id = String(o['티켓'] ?? '').toUpperCase().trim();
+    if (!TICKET_ID.test(id)) throw new OfficeError('arg', '티켓 번호를 T-12 형식으로 적어 주세요');
+    const t = this.c.db.select().from(tickets).where(eq(tickets.id, id)).get();
+    if (!t) throw new OfficeError('arg', `${id} 티켓이 없어요`);
+    return t;
+  }
+
+  /**
+   * /지시: 헤르메스(비서실장) 없이 CEO가 직접 지시한다. PM이 요구사항부터 확인한다.
+   * 상호작용 ID가 지시의 discordMessageId라, 같은 명령이 두 번 처리돼도 지시는 하나만 생긴다.
+   */
+  private orderCommand(o: CommandOptions, interactionId?: string, channelId?: string): InteractionReply {
     const c = this.c;
-    const ticketArg = () => {
-      const id = String(o['티켓'] ?? '').toUpperCase().trim();
-      if (!TICKET_ID.test(id)) throw new OfficeError('arg', '티켓 번호를 T-12 형식으로 적어 주세요');
-      const t = c.db.select().from(tickets).where(eq(tickets.id, id)).get();
-      if (!t) throw new OfficeError('arg', `${id} 티켓이 없어요`);
-      return t;
-    };
-    switch (name) {
-      case '지시': {
-        // 헤르메스(비서실장) 없이 CEO가 직접 지시한다. PM이 요구사항부터 확인한다.
-        // 상호작용 ID가 지시의 discordMessageId라, 같은 명령이 두 번 처리돼도 지시는 하나만 생긴다.
-        const text = String(o['내용'] ?? '').trim();
-        if (text.length < 4) throw new OfficeError('arg', '지시 내용을 조금 더 자세히 적어 주세요');
-        if (!interactionId || !/^\d{17,20}$/.test(interactionId)) throw new OfficeError('arg', '지시 번호를 만들 수 없어요. 다시 시도해 주세요');
-        // 프로젝트 #작업 채널에서 쓴 지시는 그 프로젝트 일로 고정된다 (9장, 6장 PM)
-        const project = projectByChannel(c, channelId);
-        const { order, created } = this.engine.submitOrder({ discordMessageId: interactionId, rawText: text, ...(channelId ? { channelId } : {}), ...(project ? { projectId: project.id } : {}) });
-        if (!created) return { kind: 'reply', content: `이미 받은 지시예요 (${order.id})`, ephemeral: true };
-        const planningChannel = projectChannel(c, project?.id, 'planning');
-        return { kind: 'reply', content: `지시를 받았어요 (**${order.id}**${project ? ` · ${project.id} 프로젝트` : ''}). PM이 요구사항부터 확인해요. 모호한 점은 ${planningChannel ? `<#${planningChannel}>` : '이 채널'}에서 따로 질문하고, 답변을 반영한 계획서를 결재함에 올려요.
+    const text = String(o['내용'] ?? '').trim();
+    if (text.length < 4) throw new OfficeError('arg', '지시 내용을 조금 더 자세히 적어 주세요');
+    if (!interactionId || !/^\d{17,20}$/.test(interactionId)) throw new OfficeError('arg', '지시 번호를 만들 수 없어요. 다시 시도해 주세요');
+    // 프로젝트 #작업 채널에서 쓴 지시는 그 프로젝트 일로 고정된다 (9장, 6장 PM)
+    const project = projectByChannel(c, channelId);
+    const { order, created } = this.engine.submitOrder({ discordMessageId: interactionId, rawText: text, ...(channelId ? { channelId } : {}), ...(project ? { projectId: project.id } : {}) });
+    if (!created) return { kind: 'reply', content: `이미 받은 지시예요 (${order.id})`, ephemeral: true };
+    const planningChannel = projectChannel(c, project?.id, 'planning');
+    return { kind: 'reply', content: `지시를 받았어요 (**${order.id}**${project ? ` · ${project.id} 프로젝트` : ''}). PM이 요구사항부터 확인해요. 모호한 점은 ${planningChannel ? `<#${planningChannel}>` : '이 채널'}에서 따로 질문하고, 답변을 반영한 계획서를 결재함에 올려요.
 > ${text.slice(0, 300)}`, ephemeral: false };
-      }
-      case '파견': {
-        const board = this.guestBoard();
-        return { kind: 'reply', content: board.content, ephemeral: false, buttons: board.buttons };
-      }
-      case '보고': {
-        const since = new Date(c.clock.now().getTime() - 24 * 3_600_000).toISOString();
-        return { kind: 'reply', content: `**지금 상태** (최근 24시간)\n${formatReportData(buildReportData(c, since))}`, ephemeral: false };
-      }
-      case '상태': {
-        const t = ticketArg();
-        const recent = c.db.select().from(messages).where(eq(messages.ticketId, t.id)).all().slice(-3);
-        return {
-          kind: 'reply',
-          ephemeral: false,
-          content: [
-            `**${t.id} ${t.title}** · ${t.status}${t.pauseReason ? `(${t.pauseReason})` : ''}`,
-            `담당 ${t.assigneeId} · 검토 ${t.reviewerId} · 반려 ${t.reworkCount}회 · 턴 ${t.turnsUsed}${ticketCapsEnabled(c,t) ? `/${t.turnCap}` : ''} · 토큰 ${t.tokensUsed}${ticketCapsEnabled(c,t) ? `/${t.tokenCap}` : ' · 자체 제한 없음'}`,
-            `완료 조건: ${t.acceptanceCriteria.join(' / ')}`,
-            ...recent.map((m) => `- ${m.fromId}:\n${readableDiscordText(m.content)}`),
-          ].join('\n'),
-        };
-      }
-      case 'push':
-      case '되돌리기': {
-        const t = ticketArg();
-        if (!t.branch) return { kind: 'reply', content: `${t.id}에는 아직 작업 브랜치가 없어요`, ephemeral: true };
-        const kind = name === 'push' ? 'push' : 'revert';
-        const exists = pendingApprovals(c).find((a) => a.kind === kind && a.targetId === t.id);
-        if (exists) return { kind: 'reply', content: '이미 결재함에 확인 버튼이 있어요', ephemeral: true };
-        if (this.gitcat) {
-          // 검사(테스트 재실행 등)는 오래 걸릴 수 있어 먼저 답하고 뒤에서 돌린다. 결과는 결재함이나 #막힘에 올라간다
-          void this.gitcat.preparePush(t.id, kind, `CEO /${name}`).catch((err: Error) => this.log(`푸시 준비 실패: ${err.message}`));
-          return { kind: 'reply', content: 'Git 고양이가 푸시 전 검사를 시작했어요. 끝나면 결재함에 확인 버튼을 올려요', ephemeral: true };
-        }
-        requestApproval(c, {
-          kind,
-          targetId: t.id,
-          reversible: kind === 'push' ? 'partial' : 'reversible',
-          summary: kind === 'push' ? `${t.id} ${t.title} 푸시 (${t.branch})` : `${t.id} ${t.title} 되돌리기 (revert 커밋)`,
-        });
-        return { kind: 'reply', content: '결재함에 확인 버튼을 올렸어요. 버튼을 눌러야 실행돼요', ephemeral: true };
-      }
-      case '한도': {
-        const name_ = { dev: 'Claude 개발', research: 'Claude 리서치', review: 'GPT 리뷰' } as const;
-        const lines = (['dev', 'research', 'review'] as const).map((b) => {
-          const s = budgetStatus(c, b);
-          return `${name_[b]}: 5시간 ${s.fiveHour.used.toFixed(1)}/${s.fiveHour.limit === null ? '자체 제한 없음' : `${s.fiveHour.limit}%`} · 주간 ${s.weekly.used.toFixed(1)}/${s.weekly.limit === null ? '자체 제한 없음' : `${s.weekly.limit}%`}${s.blockedUntil ? ` · ${s.blockedUntil}까지 막힘` : ''}`;
-        });
-        return { kind: 'reply', content: `**몫별 사용량** (추정치)\n${lines.join('\n')}`, ephemeral: false };
-      }
-      case '정지': {
-        const ids = this.engine.stop(c.config.ceoDiscordId);
-        return { kind: 'reply', content: `모든 직원을 멈췄어요. 멈춘 티켓 ${ids.length}개. /재개로 다시 시작해요`, ephemeral: false };
-      }
-      case '재개': {
-        const ids = this.engine.resume(c.config.ceoDiscordId);
-        return { kind: 'reply', content: `다시 시작해요. 이어간 티켓 ${ids.length}개. 한도 때문에 멈춘 티켓은 한도가 다시 차면 이어가요`, ephemeral: false };
-      }
-      case '프로젝트': {
-        if (!this.gitcat) return { kind: 'reply', content: 'Git 고양이가 연결되지 않았어요', ephemeral: true };
-        const p = { id: String(o['아이디'] ?? ''), repoUrl: String(o['주소'] ?? ''), testCommand: String(o['테스트'] ?? ''), ...(o['브랜치'] ? { defaultBranch: String(o['브랜치']) } : {}) };
-        void this.gitcat
-          .registerAndClone(p)
-          .then((m) => this.log(m))
-          .catch((err: Error) => this.log(`프로젝트 등록 실패: ${err.message}`));
-        return { kind: 'reply', content: `${p.id} 저장소를 받아 등록하는 중이에요`, ephemeral: false };
-      }
-      case '새프로젝트': {
-        // GitHub 비공개 저장소 + Discord 카테고리 <아이디> › #작업 (11장). 오래 걸려 먼저 답하고 뒤에서 돌린다. 실패는 #막힘에
-        if (!this.projects) return { kind: 'reply', content: 'Git 고양이나 Discord가 연결되지 않았어요', ephemeral: true };
-        const id = String(o['아이디'] ?? '').trim();
-        void this.projects.run({ id, ...(o['테스트'] ? { testCommand: String(o['테스트']) } : {}), ...(o['설명'] ? { description: String(o['설명']) } : {}) });
-        return { kind: 'reply', content: `**${id}** 저장소와 작업 채널을 만드는 중이에요. 끝나면 새 #작업 채널에 안내가 올라와요`, ephemeral: false };
-      }
-      case '설정': {
-        const key = String(o['항목'] ?? '');
-        const value = o['값'];
-        if (value === undefined || value === '') return { kind: 'reply', content: `${SETTINGS[key]?.label ?? key}: 바꿀 값을 적어 주세요`, ephemeral: true };
-        return { kind: 'reply', content: applySetting(c, key, String(value)), ephemeral: false };
-      }
-      default:
-        return { kind: 'reply', content: '모르는 명령이에요', ephemeral: true };
+  }
+
+  private reportCommand(): InteractionReply {
+    const c = this.c;
+    const since = new Date(c.clock.now().getTime() - 24 * 3_600_000).toISOString();
+    return { kind: 'reply', content: `**지금 상태** (최근 24시간)\n${formatReportData(buildReportData(c, since))}`, ephemeral: false };
+  }
+
+  private statusCommand(o: CommandOptions): InteractionReply {
+    const c = this.c;
+    const t = this.ticketArg(o);
+    const recent = c.db.select().from(messages).where(eq(messages.ticketId, t.id)).all().slice(-3);
+    return {
+      kind: 'reply',
+      ephemeral: false,
+      content: [
+        `**${t.id} ${t.title}** · ${t.status}${t.pauseReason ? `(${t.pauseReason})` : ''}`,
+        `담당 ${t.assigneeId} · 검토 ${t.reviewerId} · 반려 ${t.reworkCount}회 · 턴 ${t.turnsUsed}${ticketCapsEnabled(c,t) ? `/${t.turnCap}` : ''} · 토큰 ${t.tokensUsed}${ticketCapsEnabled(c,t) ? `/${t.tokenCap}` : ' · 자체 제한 없음'}`,
+        `완료 조건: ${t.acceptanceCriteria.join(' / ')}`,
+        ...recent.map((m) => `- ${m.fromId}:\n${readableDiscordText(m.content)}`),
+      ].join('\n'),
+    };
+  }
+
+  /** /push·/되돌리기: 결재함에 확인 버튼을 올린다. 실행은 버튼을 눌러야 한다 */
+  private pushCommand(name: 'push' | '되돌리기', o: CommandOptions): InteractionReply {
+    const c = this.c;
+    const t = this.ticketArg(o);
+    if (!t.branch) return { kind: 'reply', content: `${t.id}에는 아직 작업 브랜치가 없어요`, ephemeral: true };
+    const kind = name === 'push' ? 'push' : 'revert';
+    const exists = pendingApprovals(c).find((a) => a.kind === kind && a.targetId === t.id);
+    if (exists) return { kind: 'reply', content: '이미 결재함에 확인 버튼이 있어요', ephemeral: true };
+    if (this.gitcat) {
+      // 검사(테스트 재실행 등)는 오래 걸릴 수 있어 먼저 답하고 뒤에서 돌린다. 결과는 결재함이나 #막힘에 올라간다
+      void this.gitcat.preparePush(t.id, kind, `CEO /${name}`).catch((err: Error) => this.log(`푸시 준비 실패: ${err.message}`));
+      return { kind: 'reply', content: 'Git 고양이가 푸시 전 검사를 시작했어요. 끝나면 결재함에 확인 버튼을 올려요', ephemeral: true };
     }
+    requestApproval(c, {
+      kind,
+      targetId: t.id,
+      reversible: kind === 'push' ? 'partial' : 'reversible',
+      summary: kind === 'push' ? `${t.id} ${t.title} 푸시 (${t.branch})` : `${t.id} ${t.title} 되돌리기 (revert 커밋)`,
+    });
+    return { kind: 'reply', content: '결재함에 확인 버튼을 올렸어요. 버튼을 눌러야 실행돼요', ephemeral: true };
+  }
+
+  private budgetCommand(): InteractionReply {
+    const c = this.c;
+    const name_ = { dev: 'Claude 개발', research: 'Claude 리서치', review: 'GPT 리뷰' } as const;
+    const lines = (['dev', 'research', 'review'] as const).map((b) => {
+      const s = budgetStatus(c, b);
+      return `${name_[b]}: 5시간 ${s.fiveHour.used.toFixed(1)}/${s.fiveHour.limit === null ? '자체 제한 없음' : `${s.fiveHour.limit}%`} · 주간 ${s.weekly.used.toFixed(1)}/${s.weekly.limit === null ? '자체 제한 없음' : `${s.weekly.limit}%`}${s.blockedUntil ? ` · ${s.blockedUntil}까지 막힘` : ''}`;
+    });
+    return { kind: 'reply', content: `**몫별 사용량** (추정치)\n${lines.join('\n')}`, ephemeral: false };
+  }
+
+  private projectCommand(o: CommandOptions): InteractionReply {
+    if (!this.gitcat) return { kind: 'reply', content: 'Git 고양이가 연결되지 않았어요', ephemeral: true };
+    const p = { id: String(o['아이디'] ?? ''), repoUrl: String(o['주소'] ?? ''), testCommand: String(o['테스트'] ?? ''), ...(o['브랜치'] ? { defaultBranch: String(o['브랜치']) } : {}) };
+    void this.gitcat
+      .registerAndClone(p)
+      .then((m) => this.log(m))
+      .catch((err: Error) => this.log(`프로젝트 등록 실패: ${err.message}`));
+    return { kind: 'reply', content: `${p.id} 저장소를 받아 등록하는 중이에요`, ephemeral: false };
+  }
+
+  /** /새프로젝트: GitHub 비공개 저장소 + Discord 카테고리 <아이디> › #작업 (11장). 오래 걸려 먼저 답하고 뒤에서 돌린다. 실패는 #막힘에 */
+  private newProjectCommand(o: CommandOptions): InteractionReply {
+    if (!this.projects) return { kind: 'reply', content: 'Git 고양이나 Discord가 연결되지 않았어요', ephemeral: true };
+    const id = String(o['아이디'] ?? '').trim();
+    void this.projects.run({ id, ...(o['테스트'] ? { testCommand: String(o['테스트']) } : {}), ...(o['설명'] ? { description: String(o['설명']) } : {}) });
+    return { kind: 'reply', content: `**${id}** 저장소와 작업 채널을 만드는 중이에요. 끝나면 새 #작업 채널에 안내가 올라와요`, ephemeral: false };
+  }
+
+  private settingCommand(o: CommandOptions): InteractionReply {
+    const key = String(o['항목'] ?? '');
+    const value = o['값'];
+    if (value === undefined || value === '') return { kind: 'reply', content: `${SETTINGS[key]?.label ?? key}: 바꿀 값을 적어 주세요`, ephemeral: true };
+    return { kind: 'reply', content: applySetting(this.c, key, String(value)), ephemeral: false };
   }
 }
 

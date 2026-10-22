@@ -6,6 +6,7 @@
 import { eq, gt, like } from 'drizzle-orm';
 import { staffUpdate } from '../staff/voice.ts';
 import { getState, inTx, setState, type Ctx } from '../context.ts';
+import type { ApprovalRow } from '../core/approvals.ts';
 import { budgetStatus } from '../core/budget.ts';
 import { approvals, events, meetingMinutes, messages, orders, plans, projects, systemState, tickets } from '../db/schema.ts';
 import { approvalLink } from '../reports.ts';
@@ -13,7 +14,7 @@ import { approvalMessageFor, blockedMessage, blockedPlanMessage, clarificationMe
 import { clarificationOf, orderChannelKey } from '../core/clarifications.ts';
 import { isCeoPresent } from './presence.ts';
 import { isInCheckWindow } from './schedule.ts';
-import type { ChannelKey, DiscordPort } from './types.ts';
+import type { Button, ChannelKey, DiscordPort } from './types.ts';
 import { projectChannel, type ProjectChannelKind } from './project-channels.ts';
 import { roleBotFor } from './staff-bots.ts';
 import type { TicketRow } from '../core/tickets.ts';
@@ -24,6 +25,7 @@ const MENTIONS = 'discord.mentions';
 const NEAR = 'discord.nearLimit';
 /** #막힘에 이미 올린 "계획 작성 멈춤" 지시 */
 const PLAN_NOTICED = 'discord.planBlockedNoticed';
+const BUDGET_NAME: Readonly<Record<string, string>> = { dev: 'Claude 개발 몫', research: 'Claude 리서치 몫', review: 'GPT 리뷰어 몫' };
 
 interface Held {
   kind: 'approval' | 'blocked' | 'alert';
@@ -100,7 +102,7 @@ export class Notifier {
    * 알려야 하는 메시지를 올린다. 지금 멘션해도 되고 시간당 상한 안이면 멘션을 붙이고,
    * 아니면 조용히 올리고 다음 점검 때 묶어서 알린다.
    */
-  private async sendImmediate(channel: ChannelKey, msg: { content: string; channelId?: string; employeeId?: string; buttons?: import('./types.ts').Button[][] }, held: Omit<Held, 'link'>): Promise<string> {
+  private async sendImmediate(channel: ChannelKey, msg: { content: string; channelId?: string; employeeId?: string; buttons?: Button[][] }, held: Omit<Held, 'link'>): Promise<string> {
     const loud = this.allowedNow() && this.mentionBudgetLeft();
     const sent = await this.port.send({ channel, ...(msg.channelId ? { channelId: msg.channelId } : {}), ...(msg.employeeId ? { employeeId: msg.employeeId } : {}), content: loud ? this.mention() + msg.content : msg.content, ...(msg.buttons ? { buttons: msg.buttons } : {}), silent: !loud });
     if (loud) this.useMention();
@@ -167,107 +169,141 @@ export class Notifier {
     return posts;
   }
 
+  /** 이벤트 종류 → 알림. 올린 수를 돌려준다(올릴 것이 없으면 0) */
+  private readonly handlers = new Map<string, (p: Payload) => Promise<number>>([
+    ['plan.status', (p) => this.onPlanStatus(p)],
+    ['approval.requested', (p) => this.onApprovalRequested(p)],
+    ['approval.decided', (p) => this.onApprovalDecided(p)],
+    ['ticket.status', (p) => this.onTicketStatus(p)],
+    ['system.paused', (p) => this.onSystemPaused(p)],
+    ['system.resumed', (p) => this.onSystemResumed(p)],
+    ['git.push', (p) => this.onGitPush(p)],
+    ['usage.updated', (p) => this.onUsageUpdated(p)],
+  ]);
+
   private async handle(type: string, p: Payload): Promise<number> {
+    return (await this.handlers.get(type)?.(p)) ?? 0;
+  }
+
+  /** PM 질문 답변 대기: 프로젝트 기획 채널(없으면 지시한 채널)에 질문을 올린다 */
+  private async onPlanStatus(p: Payload): Promise<number> {
+    if (p.status !== 'awaiting-answers') return 0;
     const c = this.c;
-    if (type === 'plan.status' && p.status === 'awaiting-answers') {
-      const orderId = String(p.orderId);
-      const order = c.db.select().from(orders).where(eq(orders.id, orderId)).get();
-      const state = clarificationOf(c, orderId);
-      if (!order || order.status !== 'planning' || state.rounds.length !== p.round || state.rounds.at(-1)?.answer !== null) return 0;
-      const legacyProjectChannel = order.projectId ? c.db.select().from(projects).where(eq(projects.id, order.projectId)).get()?.discordChannelId : null;
-      const channelId = projectChannel(c, order.projectId, 'planning') ?? getState<string | null>(c, orderChannelKey(orderId), null) ?? legacyProjectChannel;
-      const messageId = await this.sendImmediate('secretary', { ...clarificationMessage(order, state), employeeId: 'pm', ...(channelId ? { channelId } : {}) }, { kind: 'alert', text: `${orderId} PM 질문 답변 대기` });
-      setState(c, `discord.pmQuestion:${messageId}`, { orderId, round: state.rounds.length });
+    const orderId = String(p.orderId);
+    const order = c.db.select().from(orders).where(eq(orders.id, orderId)).get();
+    const state = clarificationOf(c, orderId);
+    if (!order || order.status !== 'planning' || state.rounds.length !== p.round || state.rounds.at(-1)?.answer !== null) return 0;
+    const legacyProjectChannel = order.projectId ? c.db.select().from(projects).where(eq(projects.id, order.projectId)).get()?.discordChannelId : null;
+    const channelId = projectChannel(c, order.projectId, 'planning') ?? getState<string | null>(c, orderChannelKey(orderId), null) ?? legacyProjectChannel;
+    const messageId = await this.sendImmediate('secretary', { ...clarificationMessage(order, state), employeeId: 'pm', ...(channelId ? { channelId } : {}) }, { kind: 'alert', text: `${orderId} PM 질문 답변 대기` });
+    setState(c, `discord.pmQuestion:${messageId}`, { orderId, round: state.rounds.length });
+    return 1;
+  }
+
+  /** 결재 메시지 (계획서면 계획서, 티켓 결재면 티켓을 함께 보여 준다) */
+  private approvalMessage(a: ApprovalRow) {
+    const plan = a.kind === 'plan' ? (this.c.db.select().from(plans).where(eq(plans.id, a.targetId)).get() ?? null) : null;
+    const ticket = this.c.db.select().from(tickets).where(eq(tickets.id, a.targetId)).get() ?? null;
+    return { plan, ticket, msg: approvalMessageFor(a, plan, ticket) };
+  }
+
+  private async onApprovalRequested(p: Payload): Promise<number> {
+    const c = this.c;
+    const a = c.db.select().from(approvals).where(eq(approvals.id, String(p.approvalId))).get();
+    if (!a || a.discordMessageId || a.status !== 'pending') return 0; // 이미 올렸거나 그사이 끝남
+    const { plan, ticket, msg } = this.approvalMessage(a);
+    const employeeId = a.kind === 'plan' ? 'pm' : ['push', 'main-merge', 'revert'].includes(a.kind) ? 'git-cat' : ticket?.assigneeId ?? 'qa-local';
+    const route = this.route(plan?.projectId ?? (ticket ? this.projectOf(ticket) : null), 'approvals', employeeId);
+    const id = await this.sendImmediate('approvals', { ...msg, ...route }, { kind: 'approval', text: a.summary });
+    c.db.update(approvals).set({ discordMessageId: id }).where(eq(approvals.id, a.id)).run();
+    return 1;
+  }
+
+  /** 결정된 결재는 원래 메시지를 고쳐 버튼을 없앤다 */
+  private async onApprovalDecided(p: Payload): Promise<number> {
+    const c = this.c;
+    const a = c.db.select().from(approvals).where(eq(approvals.id, String(p.approvalId))).get();
+    if (!a?.discordMessageId) return 0;
+    const msg = decidedMessage(this.approvalMessage(a).msg, a.status, a.choice, a.decidedAt ?? c.clock.now().toISOString());
+    await this.port.edit('approvals', a.discordMessageId, msg);
+    return 1;
+  }
+
+  private async onTicketStatus(p: Payload): Promise<number> {
+    const c = this.c;
+    const ticket = c.db.select().from(tickets).where(eq(tickets.id, String(p.ticketId))).get();
+    if (!ticket || p.from === p.to) return 0;
+    const projectId = this.projectOf(ticket);
+    if ((p.to === 'in_progress' && p.from === 'planned') || p.to === 'in_review' || p.to === 'rework' || p.to === 'meeting') {
+      const reviewing = p.to === 'in_review' || p.to === 'meeting';
+      const route = this.route(projectId, 'todo', reviewing ? ticket.reviewerId : ticket.assigneeId);
+      const status = staffUpdate(reviewing ? ticket.reviewerId : ticket.assigneeId, String(p.to));
+      await this.port.send({ channel: 'reports', ...route, content: `**${ticket.id} ${ticket.title}**\n\n${status}\n\n**마무리할 때 확인할 내용**\n${ticket.acceptanceCriteria.map((criterion) => `- ${criterion}`).join('\n')}`, silent: true });
       return 1;
     }
-    if (type === 'approval.requested') {
-      const a = c.db.select().from(approvals).where(eq(approvals.id, String(p.approvalId))).get();
-      if (!a || a.discordMessageId || a.status !== 'pending') return 0; // 이미 올렸거나 그사이 끝남
-      const plan = a.kind === 'plan' ? (c.db.select().from(plans).where(eq(plans.id, a.targetId)).get() ?? null) : null;
-      const ticket = c.db.select().from(tickets).where(eq(tickets.id, a.targetId)).get() ?? null;
-      const msg = approvalMessageFor(a, plan, ticket);
-      const employeeId = a.kind === 'plan' ? 'pm' : ['push', 'main-merge', 'revert'].includes(a.kind) ? 'git-cat' : ticket?.assigneeId ?? 'qa-local';
-      const route = this.route(plan?.projectId ?? (ticket ? this.projectOf(ticket) : null), 'approvals', employeeId);
-      const id = await this.sendImmediate('approvals', { ...msg, ...route }, { kind: 'approval', text: a.summary });
-      c.db.update(approvals).set({ discordMessageId: id }).where(eq(approvals.id, a.id)).run();
+    if (p.to === 'blocked' && p.from !== 'paused') {
+      const minutes = c.db.select().from(meetingMinutes).where(eq(meetingMinutes.ticketId, ticket.id)).all().at(-1) ?? null;
+      const msg = blockedMessage(ticket, minutes);
+      const route = this.route(projectId, 'blocked', ticket.assigneeId);
+      await this.sendImmediate('blocked', { ...msg, ...route }, { kind: 'blocked', text: `${ticket.id} ${ticket.title}` });
+      await this.explainAfter('blocked', msg.content, route.channelId);
       return 1;
     }
-    if (type === 'approval.decided') {
-      const a = c.db.select().from(approvals).where(eq(approvals.id, String(p.approvalId))).get();
-      if (!a?.discordMessageId) return 0;
-      const plan = a.kind === 'plan' ? (c.db.select().from(plans).where(eq(plans.id, a.targetId)).get() ?? null) : null;
-      const ticket = c.db.select().from(tickets).where(eq(tickets.id, a.targetId)).get() ?? null;
-      const msg = decidedMessage(approvalMessageFor(a, plan, ticket), a.status, a.choice, a.decidedAt ?? c.clock.now().toISOString());
-      await this.port.edit('approvals', a.discordMessageId, msg);
+    if (p.to === 'done') {
+      // 조용히 기록 (멘션 없음)
+      await this.port.send({ channel: 'reports', ...this.route(projectId, 'completed', ticket.assigneeId), content: `**완료 · ${ticket.id} ${ticket.title}**${ticket.reworkCount ? ` (반려 ${ticket.reworkCount}회)` : ''}\n\n${staffUpdate(ticket.assigneeId, 'done')}\n\n**확인한 내용**\n${ticket.acceptanceCriteria.map((criterion) => `- ${criterion}`).join('\n')}`, silent: true });
       return 1;
     }
-    if (type === 'ticket.status') {
-      const ticket = c.db.select().from(tickets).where(eq(tickets.id, String(p.ticketId))).get();
-      if (!ticket || p.from === p.to) return 0;
-      const projectId = this.projectOf(ticket);
-      if ((p.to === 'in_progress' && p.from === 'planned') || p.to === 'in_review' || p.to === 'rework' || p.to === 'meeting') {
-        const reviewing = p.to === 'in_review' || p.to === 'meeting';
-        const route = this.route(projectId, 'todo', reviewing ? ticket.reviewerId : ticket.assigneeId);
-        const status = staffUpdate(reviewing ? ticket.reviewerId : ticket.assigneeId, String(p.to));
-        await this.port.send({ channel: 'reports', ...route, content: `**${ticket.id} ${ticket.title}**\n\n${status}\n\n**마무리할 때 확인할 내용**\n${ticket.acceptanceCriteria.map((criterion) => `- ${criterion}`).join('\n')}`, silent: true });
-        return 1;
-      }
-      if (p.to === 'blocked' && p.from !== 'paused') {
-        const minutes = c.db.select().from(meetingMinutes).where(eq(meetingMinutes.ticketId, ticket.id)).all().at(-1) ?? null;
-        const msg = blockedMessage(ticket, minutes);
-        const route = this.route(projectId, 'blocked', ticket.assigneeId);
-        await this.sendImmediate('blocked', { ...msg, ...route }, { kind: 'blocked', text: `${ticket.id} ${ticket.title}` });
-        await this.explainAfter('blocked', msg.content, route.channelId);
-        return 1;
-      }
-      if (p.to === 'done') {
-        // 조용히 기록 (멘션 없음)
-        await this.port.send({ channel: 'reports', ...this.route(projectId, 'completed', ticket.assigneeId), content: `**완료 · ${ticket.id} ${ticket.title}**${ticket.reworkCount ? ` (반려 ${ticket.reworkCount}회)` : ''}\n\n${staffUpdate(ticket.assigneeId, 'done')}\n\n**확인한 내용**\n${ticket.acceptanceCriteria.map((criterion) => `- ${criterion}`).join('\n')}`, silent: true });
-        return 1;
-      }
-      if (p.to === 'paused' && p.reason === 'system-error') {
-        await this.sendImmediate('reports', { ...this.route(projectId, 'blocked', ticket.assigneeId), content: `시스템 이상 · ${ticket.id} ${ticket.title} 작업을 멈췄어요. 사무실 화면의 티켓 기록을 확인해 주세요` }, { kind: 'alert', text: `시스템 이상: ${ticket.id}` });
-        // 해설에는 마지막 시스템 기록(멈춘 이유)을 함께 준다
-        const last = c.db.select().from(messages).where(eq(messages.ticketId, ticket.id)).all().filter((m) => m.kind === 'system').at(-1);
-        await this.explainAfter('reports', `시스템 이상 · ${ticket.id} ${ticket.title} 작업을 멈춤${last ? `\n이유: ${last.content.slice(0, 500)}` : ''}`);
-        return 1;
-      }
-      return 0;
-    }
-    if (type === 'system.paused' && p.by === 'connectivity') {
-      await this.sendImmediate('reports', { content: '인터넷이 끊겨 Claude·GPT 직원의 티켓을 멈췄어요. 로컬 직원은 계속 일해요' }, { kind: 'alert', text: '인터넷 끊김' });
-      return 1;
-    }
-    if (type === 'system.paused' && p.by === 'ceo') {
-      await this.port.send({ channel: 'reports', content: `모든 직원을 멈췄어요 (/정지). 멈춘 티켓 ${(p.tickets as string[] | undefined)?.length ?? 0}개`, silent: true });
-      return 1;
-    }
-    if (type === 'system.resumed' && p.by === 'ceo') {
-      await this.port.send({ channel: 'reports', content: '다시 일을 시작해요 (/재개)', silent: true });
-      return 1;
-    }
-    if (type === 'git.push') {
-      const t = String(p.ticketId ?? '');
-      const ticket = c.db.select().from(tickets).where(eq(tickets.id, t)).get();
-      const projectId = ticket ? this.projectOf(ticket) : null;
-      if (p.ok) {
-        // 조용히 기록: 우체통 발송 완료 (11장 화면 연출과 같은 이벤트)
-        const extra = p.backup ? ` · 백업 ${String(p.backup)} · 합친 상태 테스트 통과` : p.revert ? ` · ${String(p.revert)} 되돌림` : '';
-        await this.port.send({ channel: 'reports', ...this.route(projectId, 'completed', 'git-cat'), content: `Git 고양이 · ${t} → ${String(p.target)} 푸시 완료 (${String(p.sha)})${extra}`, silent: true });
-        return 1;
-      }
-      const failure = `Git 고양이 · ${t} ${String(p.stage)} 실패\n${String(p.reason)}`;
-      const route = this.route(projectId, 'blocked', 'git-cat');
-      await this.sendImmediate('blocked', { content: failure, ...route }, { kind: 'blocked', text: `${t} 푸시 실패` });
-      await this.explainAfter('blocked', failure, route.channelId);
-      return 1;
-    }
-    if (type === 'usage.updated' && p.reason === 'provider-limit') {
-      const name = { dev: 'Claude 개발 몫', research: 'Claude 리서치 몫', review: 'GPT 리뷰어 몫' }[String(p.budget)] ?? String(p.budget);
-      await this.sendImmediate('reports', { content: `예산 · ${name}이 제공자 한도에 닿아 ${String(p.blockedUntil).slice(0, 16).replace('T', ' ')}까지 멈춰요` }, { kind: 'alert', text: `${name} 한도 도달` });
+    if (p.to === 'paused' && p.reason === 'system-error') {
+      await this.sendImmediate('reports', { ...this.route(projectId, 'blocked', ticket.assigneeId), content: `시스템 이상 · ${ticket.id} ${ticket.title} 작업을 멈췄어요. 사무실 화면의 티켓 기록을 확인해 주세요` }, { kind: 'alert', text: `시스템 이상: ${ticket.id}` });
+      // 해설에는 마지막 시스템 기록(멈춘 이유)을 함께 준다
+      const last = c.db.select().from(messages).where(eq(messages.ticketId, ticket.id)).all().filter((m) => m.kind === 'system').at(-1);
+      await this.explainAfter('reports', `시스템 이상 · ${ticket.id} ${ticket.title} 작업을 멈춤${last ? `\n이유: ${last.content.slice(0, 500)}` : ''}`);
       return 1;
     }
     return 0;
+  }
+
+  private async onSystemPaused(p: Payload): Promise<number> {
+    if (p.by === 'connectivity') {
+      await this.sendImmediate('reports', { content: '인터넷이 끊겨 Claude·GPT 직원의 티켓을 멈췄어요. 로컬 직원은 계속 일해요' }, { kind: 'alert', text: '인터넷 끊김' });
+      return 1;
+    }
+    if (p.by === 'ceo') {
+      await this.port.send({ channel: 'reports', content: `모든 직원을 멈췄어요 (/정지). 멈춘 티켓 ${(p.tickets as string[] | undefined)?.length ?? 0}개`, silent: true });
+      return 1;
+    }
+    return 0;
+  }
+
+  private async onSystemResumed(p: Payload): Promise<number> {
+    if (p.by !== 'ceo') return 0;
+    await this.port.send({ channel: 'reports', content: '다시 일을 시작해요 (/재개)', silent: true });
+    return 1;
+  }
+
+  private async onGitPush(p: Payload): Promise<number> {
+    const t = String(p.ticketId ?? '');
+    const ticket = this.c.db.select().from(tickets).where(eq(tickets.id, t)).get();
+    const projectId = ticket ? this.projectOf(ticket) : null;
+    if (p.ok) {
+      // 조용히 기록: 우체통 발송 완료 (11장 화면 연출과 같은 이벤트)
+      const extra = p.backup ? ` · 백업 ${String(p.backup)} · 합친 상태 테스트 통과` : p.revert ? ` · ${String(p.revert)} 되돌림` : '';
+      await this.port.send({ channel: 'reports', ...this.route(projectId, 'completed', 'git-cat'), content: `Git 고양이 · ${t} → ${String(p.target)} 푸시 완료 (${String(p.sha)})${extra}`, silent: true });
+      return 1;
+    }
+    const failure = `Git 고양이 · ${t} ${String(p.stage)} 실패\n${String(p.reason)}`;
+    const route = this.route(projectId, 'blocked', 'git-cat');
+    await this.sendImmediate('blocked', { content: failure, ...route }, { kind: 'blocked', text: `${t} 푸시 실패` });
+    await this.explainAfter('blocked', failure, route.channelId);
+    return 1;
+  }
+
+  private async onUsageUpdated(p: Payload): Promise<number> {
+    if (p.reason !== 'provider-limit') return 0;
+    const name = BUDGET_NAME[String(p.budget)] ?? String(p.budget);
+    await this.sendImmediate('reports', { content: `예산 · ${name}이 제공자 한도에 닿아 ${String(p.blockedUntil).slice(0, 16).replace('T', ' ')}까지 멈춰요` }, { kind: 'alert', text: `${name} 한도 도달` });
+    return 1;
   }
 
   /** 예산 상한 근접(90%) 알림. 몫마다 5시간에 한 번 */
@@ -280,7 +316,7 @@ export class Notifier {
       const near = s.fiveHour.limit && s.fiveHour.used >= s.fiveHour.limit * 0.9;
       const last = sent[b] ? new Date(sent[b]).getTime() : 0;
       if (!near || now - last < 5 * 3_600_000) continue;
-      const name = { dev: 'Claude 개발 몫', research: 'Claude 리서치 몫', review: 'GPT 리뷰어 몫' }[b];
+      const name = BUDGET_NAME[b];
       await this.sendImmediate('reports', { content: `예산 · ${name}을 5시간 한도의 ${s.fiveHour.used.toFixed(0)}% 썼어요 (상한 ${s.fiveHour.limit}%, 추정치)` }, { kind: 'alert', text: `${name} 상한 근접` });
       sent[b] = new Date(now).toISOString();
       setState(this.c, NEAR, sent);
