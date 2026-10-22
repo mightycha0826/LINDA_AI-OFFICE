@@ -1,6 +1,6 @@
 // 사무실 화면 스냅샷 (12장 데이터 흐름 1). 화면을 열면 이것으로 현재 전체 상태를 받고, 그다음 SSE로 바뀐 것만 받는다.
 import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
-import type { Brain, ScreenAccountUsage, ScreenEmployee, ScreenLogEntry, ScreenTicket, Snapshot } from '@ai-office/shared';
+import { MEETING_OUTCOME_LABEL, type Brain, type ScreenAccountUsage, type ScreenEmployee, type ScreenLogEntry, type ScreenTicket, type Snapshot } from '@ai-office/shared';
 import { getState, isStopped, type Ctx } from '../context.ts';
 import { budgetStatus } from '../core/budget.ts';
 import { ticketCapsEnabled } from '../core/guards.ts';
@@ -121,7 +121,7 @@ export function buildSnapshot(c: Ctx, extras: SnapshotExtras): Snapshot {
       fromId: 'orchestrator',
       toId: null,
       kind: 'minutes',
-      text: `${m.kind === 'gate-review' ? 'GPT 관문' : '회의'} ${m.outcome === 'agreed' ? '합의' : '불합의'} · ${m.rounds.length}라운드 · 다음 할 일 ${m.nextActions.join(', ') || '없음'}`,
+      text: `${m.kind === 'gate-review' ? 'GPT 관문' : '회의'} ${MEETING_OUTCOME_LABEL[m.outcome]} · ${m.rounds.length}라운드 · 다음 할 일 ${m.nextActions.join(', ') || '없음'}`,
       minutes: true,
     })),
   ].sort((a, b) => (a.at < b.at ? 1 : -1));

@@ -118,6 +118,12 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       parts.push(`## 안건: 반려된 완료 조건과 이유 (자료)\n\n${dataBlock('반려 기록', get(input, 'agenda'))}`);
       parts.push(`## 앞 라운드 발언 (자료)\n\n${dataBlock('회의 기록', get(input, 'previousRounds') ?? [])}`);
       parts.push('완료 조건을 기준으로 입장과 다음 할 일을 말한다. 상대 주장에 동의하면 agree: true.');
+      // 사장님 판단 요청 (5장, 2026-10-23): 한 명이라도 적으면 티켓은 막힘으로 가고 사장님이 정한다
+      parts.push(
+        '담당자가 이 티켓 안에서 다시 작업해도 완료 조건을 채울 수 없을 때만 needsCeo에 종류(kind)와 사장님께 드릴 질문 한 줄(question)을 적는다. ' +
+          '종류: 필요한 자료가 없음(missing-input), 작업 폴더에 필요한 파일이나 선행 결과물이 없음(workspace), 직원 권한 밖의 일(authority), 완료 조건을 확인할 방법이 없거나 서로 모순됨(criteria). ' +
+          '다시 작업해서 고칠 수 있으면 needsCeo를 비워 둔다.',
+      );
       break;
   }
   if (task === 'proofread') {

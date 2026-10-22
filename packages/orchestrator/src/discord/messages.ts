@@ -1,9 +1,10 @@
 // Discord 메시지 형식 (9장 ①~⑦). 말투는 포인트 디자인 시스템의 해요체(17장).
+import { CEO_NEED_LABEL, MEETING_OUTCOME_LABEL } from '@ai-office/shared';
 import type { ApprovalRow } from '../core/approvals.ts';
 import type { DirectProposal } from '../core/direct.ts';
 import type { PlanRow } from '../core/plans.ts';
 import type { TicketRow } from '../core/tickets.ts';
-import type { MinutesRow } from '../core/meeting.ts';
+import { ceoRequestsOf, type MinutesRow } from '../core/meeting.ts';
 import type { Button } from './types.ts';
 import type { OrderRow } from '../core/orders.ts';
 import type { Clarification } from '../core/clarifications.ts';
@@ -109,11 +110,20 @@ export function mainMergeConfirm(a: ApprovalRow, original: string): { content: s
   };
 }
 
-/** ④ 막힘 */
-export function blockedMessage(ticket: TicketRow, minutes: MinutesRow | null): { content: string; buttons: Button[][] } {
-  const lines = [`**막힘 · ${ticket.id} ${ticket.title}**`, `반려 ${ticket.reworkCount}회 · 완료 조건: ${ticket.acceptanceCriteria.join(' / ')}`];
+/**
+ * ④ 막힘. event는 막힘으로 보낸 전환 이벤트다. 같은 반려 반복이나 회의의 사장님 판단 요청이면 맨 위에 이유를 붙인다 (2026-10-23).
+ */
+export function blockedMessage(ticket: TicketRow, minutes: MinutesRow | null, event?: string): { content: string; buttons: Button[][] } {
+  const lines = [`**막힘 · ${ticket.id} ${ticket.title}**`];
+  if (event === 'review.failed' || event === 'guard.repeat') {
+    lines.push(`**막힌 이유**: 같은 완료 조건이 ${ticket.sameFailCount}번 연속 반려됐어요`, ...(ticket.lastFailedCriteria ?? []).map((x) => `- ${x}`));
+  }
+  if (event === 'meeting.escalated' && minutes) {
+    lines.push('**막힌 이유**: 회의에서 사장님 판단을 요청했어요', ...ceoRequestsOf(minutes).map((r) => `- [${CEO_NEED_LABEL[r.kind]}] ${r.employeeId}: ${r.question}`));
+  }
+  lines.push(`반려 ${ticket.reworkCount}회 · 완료 조건: ${ticket.acceptanceCriteria.join(' / ')}`);
   if (minutes) {
-    lines.push('', `**회의 결론**: ${minutes.outcome === 'agreed' ? '합의' : '불합의'}`);
+    lines.push('', `**회의 결론**: ${MEETING_OUTCOME_LABEL[minutes.outcome]}`);
     for (const r of minutes.rounds) lines.push(`${r.round}라운드 — ${r.positions.map((p) => `${p.employeeId}: ${p.claim}`).join(' / ')}`);
     if (minutes.agenda.length) lines.push(`안건: ${minutes.agenda.map((x) => `${x.criterion}(${x.reason})`).join(' / ')}`);
   }
@@ -178,10 +188,11 @@ export function clip(text: string, max: number, screenUrl: string, ticketId: str
 /** ⑦ 회의록을 스레드 끝에 올리는 형식 */
 export function minutesText(m: MinutesRow): string {
   return [
-    `**회의록 · ${m.kind === 'gate-review' ? 'GPT 관문' : '티켓 회의'} · ${m.outcome === 'agreed' ? '합의' : '불합의'}**`,
+    `**회의록 · ${m.kind === 'gate-review' ? 'GPT 관문' : '티켓 회의'} · ${MEETING_OUTCOME_LABEL[m.outcome]}**`,
     `참석: ${m.participants.join(', ')}`,
     ...m.agenda.map((a) => `안건: ${a.criterion} — ${a.reason} (${a.reasonCategory})`),
     ...m.rounds.map((r) => `${r.round}라운드: ${r.positions.map((p) => `${p.employeeId} "${p.claim}"`).join(' / ')}`),
+    ...ceoRequestsOf(m).map((r) => `사장님 판단 요청 [${CEO_NEED_LABEL[r.kind]}] ${r.employeeId}: ${r.question}`),
     `다음 할 일: ${m.nextActions.join(', ') || '없음'}`,
   ].join('\n');
 }

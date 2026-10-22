@@ -7,10 +7,12 @@ export type TicketEvent =
   | { type: 'plan.approved' }
   | { type: 'ticket.submitted' }
   | { type: 'review.passed' }
-  | { type: 'review.failed'; reasonCategory: ReasonCategory }
+  /** failedCriteria: 통과하지 못한 완료 조건 문구. 오케스트레이터가 검토 출력에서 뽑는다 */
+  | { type: 'review.failed'; reasonCategory: ReasonCategory; failedCriteria: string[] }
   | { type: 'rework.started' }
   | { type: 'meeting.agreed' }
   | { type: 'meeting.failed' }
+  | { type: 'meeting.escalated' }
   | { type: 'approval.approved' }
   | { type: 'approval.rejected' }
   | { type: 'ceo.retry' }
@@ -18,6 +20,7 @@ export type TicketEvent =
   | { type: 'ceo.cancel' }
   | { type: 'ceo.revise' }
   | { type: 'guard.pingpong' }
+  | { type: 'guard.repeat' }
   | { type: 'system.pause'; reason: PauseReason }
   | { type: 'system.resume'; cause: ResumeCause };
 export type TicketEventType = TicketEvent['type'];
@@ -38,6 +41,10 @@ export interface TicketSnapshot {
   reviewerId: string;
   pausedFrom: TicketStatus | null;
   pauseReason: PauseReason | null;
+  /** 직전 반려에서 통과하지 못한 완료 조건 (정렬됨) */
+  lastFailedCriteria: string[] | null;
+  /** 같은 완료 조건 묶음이 연속으로 반려된 횟수 */
+  sameFailCount: number;
 }
 
 export interface TransitionContext {
@@ -50,6 +57,8 @@ export interface TicketPatch {
   reworkCount?: number;
   pausedFrom?: TicketStatus | null;
   pauseReason?: PauseReason | null;
+  lastFailedCriteria?: string[] | null;
+  sameFailCount?: number;
 }
 
 export interface Decision {
@@ -83,11 +92,50 @@ interface Rule {
 
 const failedCount = (t: TicketSnapshot) => t.reworkCount + 1; // 반려 횟수는 먼저 올리고 판정한다
 
+/**
+ * 같은 완료 조건 묶음이 이 횟수만큼 연속으로 반려되면 회의를 더 열지 않고 막힘 (5장, 2026-10-23 CEO 결정).
+ * 1회 재작업 → 2회 회의 → 3회 회의 → 4회 막힘. 회의를 두 번 하고도 같은 조건에서 같은 결과면 사장님께 넘긴다.
+ */
+export const SAME_FAIL_LIMIT = 4;
+
+/** 비교용 완료 조건 묶음: 중복을 빼고 정렬한다. 문구는 검토 출력 검사가 원문과 같게 강제한다 */
+export function failedCriteriaKey(criteria: readonly string[]): string[] {
+  return [...new Set(criteria)].sort();
+}
+
+function sameCriteria(a: readonly string[] | null, b: readonly string[]): boolean {
+  return !!a && a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
+/** 이번 반려를 넣은 연속 횟수. 직전 반려와 묶음이 같으면 +1, 다르면 1 */
+function sameFailAfter(t: TicketSnapshot, ev: TicketEvent): number {
+  const failed = failedCriteriaKey((ev as Extract<TicketEvent, { type: 'review.failed' }>).failedCriteria);
+  return sameCriteria(t.lastFailedCriteria, failed) ? t.sameFailCount + 1 : 1;
+}
+
+const failPatch = (t: TicketSnapshot, ev: TicketEvent): TicketPatch => ({
+  reworkCount: failedCount(t),
+  lastFailedCriteria: failedCriteriaKey((ev as Extract<TicketEvent, { type: 'review.failed' }>).failedCriteria),
+  sameFailCount: sameFailAfter(t, ev),
+});
+
+/** 통과하거나 사장님이 손대면 같은 반려 횟수는 처음부터 다시 센다 */
+const clearRepeat = (): TicketPatch => ({ lastFailedCriteria: null, sameFailCount: 0 });
+
 export const TRANSITIONS: readonly Rule[] = [
   { name: '계획 승인', from: ['planned'], event: 'plan.approved', to: 'in_progress', by: ['ceo'] },
   { name: '제출', from: ['in_progress'], event: 'ticket.submitted', to: 'in_review', by: ['assignee'] },
-  { name: '통과·결재 불필요', from: ['in_review'], event: 'review.passed', to: 'done', by: ['reviewer'], when: (t) => !t.needsCeoApproval },
-  { name: '통과·결재 필요', from: ['in_review'], event: 'review.passed', to: 'awaiting_approval', by: ['reviewer'], when: (t) => t.needsCeoApproval },
+  { name: '통과·결재 불필요', from: ['in_review'], event: 'review.passed', to: 'done', by: ['reviewer'], when: (t) => !t.needsCeoApproval, patch: clearRepeat },
+  { name: '통과·결재 필요', from: ['in_review'], event: 'review.passed', to: 'awaiting_approval', by: ['reviewer'], when: (t) => t.needsCeoApproval, patch: clearRepeat },
+  {
+    name: '같은 조건 반복 반려 → 막힘',
+    from: ['in_review'],
+    event: 'review.failed',
+    to: 'blocked',
+    by: ['reviewer'],
+    when: (t, ev) => sameFailAfter(t, ev) >= SAME_FAIL_LIMIT,
+    patch: failPatch,
+  },
   {
     name: '반려(2회 미만)',
     from: ['in_review'],
@@ -95,7 +143,7 @@ export const TRANSITIONS: readonly Rule[] = [
     to: 'rework',
     by: ['reviewer'],
     when: (t) => failedCount(t) < 2,
-    patch: (t) => ({ reworkCount: failedCount(t) }),
+    patch: failPatch,
   },
   {
     name: '반려(2회째 이상)',
@@ -104,21 +152,31 @@ export const TRANSITIONS: readonly Rule[] = [
     to: 'meeting',
     by: ['reviewer'],
     when: (t) => failedCount(t) >= 2,
-    patch: (t) => ({ reworkCount: failedCount(t) }),
+    patch: failPatch,
   },
   { name: '재작업 시작', from: ['rework'], event: 'rework.started', to: 'in_progress', by: ['orchestrator'] },
   { name: '회의 합의', from: ['meeting'], event: 'meeting.agreed', to: 'in_progress', by: ['orchestrator'] },
   { name: '회의 불합의', from: ['meeting'], event: 'meeting.failed', to: 'blocked', by: ['orchestrator'] },
+  { name: '회의 사장님 판단 요청', from: ['meeting'], event: 'meeting.escalated', to: 'blocked', by: ['orchestrator'] },
   { name: 'CEO 승인', from: ['awaiting_approval'], event: 'approval.approved', to: 'done', by: ['ceo'] },
   // CEO 결재 반려는 반려 횟수에 넣지 않는다
-  { name: 'CEO 반려', from: ['awaiting_approval'], event: 'approval.rejected', to: 'rework', by: ['ceo'] },
-  { name: 'CEO 다시 시도', from: ['blocked'], event: 'ceo.retry', to: 'in_progress', by: ['ceo'] },
-  { name: 'CEO 방향 지시', from: ['blocked'], event: 'ceo.direct', to: 'in_progress', by: ['ceo'] },
+  { name: 'CEO 반려', from: ['awaiting_approval'], event: 'approval.rejected', to: 'rework', by: ['ceo'], patch: clearRepeat },
+  { name: 'CEO 다시 시도', from: ['blocked'], event: 'ceo.retry', to: 'in_progress', by: ['ceo'], patch: clearRepeat },
+  { name: 'CEO 방향 지시', from: ['blocked'], event: 'ceo.direct', to: 'in_progress', by: ['ceo'], patch: clearRepeat },
   { name: 'CEO 취소', from: ['blocked'], event: 'ceo.cancel', to: 'cancelled', by: ['ceo'] },
   // 직원 직접 지시의 진행 중 수정 (9장, 2026-10-21): 검토 중이면 검토를 멈추고 새 완료 조건으로 다시 작업
-  { name: 'CEO 수정 요청', from: ['in_review'], event: 'ceo.revise', to: 'rework', by: ['ceo'] },
+  { name: 'CEO 수정 요청', from: ['in_review'], event: 'ceo.revise', to: 'rework', by: ['ceo'], patch: clearRepeat },
   { name: '핑퐁 → 회의', from: ['in_progress', 'in_review', 'rework'], event: 'guard.pingpong', to: 'meeting', by: ['orchestrator'] },
   { name: '회의 중 핑퐁 → 막힘', from: ['meeting'], event: 'guard.pingpong', to: 'blocked', by: ['orchestrator'] },
+  // 같은 반려가 이미 기준만큼 쌓인 티켓(기존 기록으로 채운 티켓)은 더 진행하지 않는다 (2026-10-23)
+  {
+    name: '반복 반려 누적 → 막힘',
+    from: ['in_progress', 'in_review', 'rework', 'meeting'],
+    event: 'guard.repeat',
+    to: 'blocked',
+    by: ['orchestrator'],
+    when: (t) => t.sameFailCount >= SAME_FAIL_LIMIT,
+  },
   {
     name: '일시정지',
     from: PAUSABLE,

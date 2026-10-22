@@ -2,7 +2,7 @@
 // 호출이 실패하면 종류에 맞게 티켓을 멈춘다: 형식 오류·호출 실패 2회 = 시스템 오류, 인터넷 끊김 = 연결되면 이어감, 한도 = 다음 바퀴.
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { DevOutputSchema, DocOutputSchema, MeetingPositionSchema, ProofreadOutputSchema, ReviewOutputSchema, SearchQueriesSchema, type DevOutput, type DocOutput, type ProofreadOutput } from '@ai-office/shared';
+import { DevOutputSchema, DocOutputSchema, MEETING_OUTCOME_LABEL, MeetingPositionSchema, ProofreadOutputSchema, ReviewOutputSchema, SearchQueriesSchema, type DevOutput, type DocOutput, type ProofreadOutput } from '@ai-office/shared';
 import { BrainError, type BrainTask, type TestRunner } from '../brains/brain.ts';
 import { emit, type Ctx } from '../context.ts';
 import { requestApproval } from '../core/approvals.ts';
@@ -156,7 +156,11 @@ export class TicketWork {
       ...(out.reasonCategory ? { reasonCategory: out.reasonCategory } : {}),
     });
     if (getTicket(c, tk.id).status !== 'in_review') return true; // 핑퐁 차단으로 이미 옮겨짐
-    const ev: TicketEvent = out.verdict === 'pass' ? { type: 'review.passed' } : { type: 'review.failed', reasonCategory: out.reasonCategory! };
+    // 같은 반려 반복 판단용 완료 조건 묶음은 코드가 검토 출력에서 뽑는다 (5장, 2026-10-23)
+    const ev: TicketEvent =
+      out.verdict === 'pass'
+        ? { type: 'review.passed' }
+        : { type: 'review.failed', reasonCategory: out.reasonCategory!, failedCriteria: out.criteria.filter((x) => !x.pass).map((x) => x.criterion) };
     const d = applyTicketEvent(c, tk.id, ev, { kind: 'employee', id: reviewer.id });
     if (d.to === 'awaiting_approval') {
       requestApproval(c, {
@@ -208,11 +212,12 @@ export class TicketWork {
       orderId: tk.orderId,
       fromId: 'orchestrator',
       kind: 'system',
-      content: `회의록 ${minutes.id}: ${result.outcome === 'agreed' ? '합의' : '불합의'} · 다음 할 일 ${result.nextActions.join(', ') || '없음'}`,
+      content: `회의록 ${minutes.id}: ${MEETING_OUTCOME_LABEL[result.outcome]} · 다음 할 일 ${result.nextActions.join(', ') || '없음'}`,
       countsForPingpong: false,
     });
     if (getTicket(c, tk.id).status !== 'meeting') return true;
-    applyTicketEvent(c, tk.id, { type: result.outcome === 'agreed' ? 'meeting.agreed' : 'meeting.failed' }, orchestrator);
+    const ev = ({ 'needs-ceo': 'meeting.escalated', agreed: 'meeting.agreed', disagreed: 'meeting.failed' } as const)[result.outcome];
+    applyTicketEvent(c, tk.id, { type: ev }, orchestrator);
     return true;
   }
 

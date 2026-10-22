@@ -27,6 +27,7 @@ import {
   USAGE_PROVIDERS,
   USAGE_SOURCES,
   type Brain,
+  type CeoNeedKind,
   type DesignComboOutput,
   type TempStaffRequest,
   type GateOutput,
@@ -165,6 +166,9 @@ export const tickets = sqliteTable(
     turnCap: integer('turn_cap').notNull(),
     // 핑퐁 차단: 상태가 바뀐 뒤 같은 담당자·검토자 쌍이 연속으로 주고받은 메시지 수
     pingpongCount: integer('pingpong_count').notNull().default(0),
+    // 같은 반려 반복 (2026-10-23): 직전 반려에서 통과하지 못한 완료 조건과, 그 묶음이 연속으로 반려된 횟수
+    lastFailedCriteria: text('last_failed_criteria', { mode: 'json' }).$type<string[]>(),
+    sameFailCount: integer('same_fail_count').notNull().default(0),
     lowPrecision: integer('low_precision', { mode: 'boolean' }).notNull().default(false),
     startedAt: text('started_at'),
     finishedAt: text('finished_at'),
@@ -345,7 +349,7 @@ export interface MinutesAgendaItem {
 }
 export interface MinutesRound {
   round: number;
-  positions: { employeeId: string; claim: string }[];
+  positions: { employeeId: string; claim: string; needsCeo?: { kind: CeoNeedKind; question: string } }[];
 }
 
 export const meetingMinutes = sqliteTable(

@@ -1,7 +1,7 @@
 // 회의와 회의록 (DESIGN.md 5장 회의록).
 // AI에게 요약을 시키지 않는다. 회의 중 주고받은 JSON에서 코드가 정해진 양식을 채운다.
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { ReviewOutputSchema, type MeetingKind, type MeetingOutcome, type MeetingPosition } from '@ai-office/shared';
+import { ReviewOutputSchema, type CeoNeedKind, type MeetingKind, type MeetingOutcome, type MeetingPosition } from '@ai-office/shared';
 import { emit, inTx, newId, nowIso, type Ctx } from '../context.ts';
 import { meetingMinutes, messages, type MinutesAgendaItem, type MinutesRound } from '../db/schema.ts';
 
@@ -46,16 +46,29 @@ export interface RoundPositions {
   positions: { employeeId: string; position: MeetingPosition }[];
 }
 
-/** 라운드 기록에서 결론을 계산한다. 마지막 라운드에서 모두 동의해야 합의다. */
+/**
+ * 라운드 기록에서 결론을 계산한다. 마지막 라운드 기준이다.
+ * 한 명이라도 사장님 판단을 요청하면 합의 여부와 관계없이 needs-ceo (2026-10-23), 그다음 모두 동의하면 합의.
+ */
 export function concludeMeeting(rounds: RoundPositions[]): { outcome: MeetingOutcome; nextActions: string[]; rounds: MinutesRound[] } {
   const last = rounds.at(-1);
+  const escalated = !!last && last.positions.some((p) => p.position.needsCeo);
   const agreed = !!last && last.positions.length > 0 && last.positions.every((p) => p.position.agree);
   const nextActions = [...new Set(last?.positions.flatMap((p) => p.position.nextActions) ?? [])];
   return {
-    outcome: agreed ? 'agreed' : 'disagreed',
+    outcome: escalated ? 'needs-ceo' : agreed ? 'agreed' : 'disagreed',
     nextActions,
-    rounds: rounds.map((r) => ({ round: r.round, positions: r.positions.map((p) => ({ employeeId: p.employeeId, claim: p.position.claim })) })),
+    rounds: rounds.map((r) => ({
+      round: r.round,
+      positions: r.positions.map((p) => ({ employeeId: p.employeeId, claim: p.position.claim, ...(p.position.needsCeo ? { needsCeo: p.position.needsCeo } : {}) })),
+    })),
   };
+}
+
+/** 회의록에서 사장님 판단 요청(마지막 라운드)을 꺼낸다. 막힘 메시지에 쓴다 */
+export function ceoRequestsOf(minutes: { rounds: MinutesRound[] }): { employeeId: string; kind: CeoNeedKind; question: string }[] {
+  const last = minutes.rounds.at(-1);
+  return (last?.positions ?? []).flatMap((p) => (p.needsCeo ? [{ employeeId: p.employeeId, ...p.needsCeo }] : []));
 }
 
 /** 안건 = 마지막 반려에서 통과하지 못한 완료 조건과 이유. 리뷰 메시지의 원문 JSON에서 가져온다. */

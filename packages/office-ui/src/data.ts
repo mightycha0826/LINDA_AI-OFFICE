@@ -92,6 +92,6 @@ export interface TicketDetail {
   acceptanceCriteria: { criterion: string; pass: boolean | null; reason?: string }[];
   summary: string | null;
   log: { id: string; at: string; fromId: string; toId: string | null; kind: string; text: string }[];
-  minutes: { id: string; kind: string; outcome: string; rounds: { round: number; positions: { employeeId: string; claim: string }[] }[]; nextActions: string[] }[];
+  minutes: { id: string; kind: string; outcome: string; rounds: { round: number; positions: { employeeId: string; claim: string; needsCeo?: { kind: string; question: string } }[] }[]; nextActions: string[] }[];
   usage: { tokens: number; turns: number; tokenCap: number | null; turnCap: number | null };
 }

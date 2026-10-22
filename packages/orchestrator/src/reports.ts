@@ -1,16 +1,17 @@
 // 보고 데이터 (10장 보고 형식). 순서는 항상 같다: 1 완료 2 결재 대기 3 막힌 것 4 사용량 5 시스템 상태(이상이 있을 때만).
 // 비서실장이 요약을 쓰고, 이 데이터는 /보고와 비서실장이 없을 때의 대체 보고에 그대로 쓴다.
-import { and, desc, eq, gte, inArray } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { Ctx } from './context.ts';
 import { getState, isStopped } from './context.ts';
 import { budgetStatus } from './core/budget.ts';
-import { approvals, retros, tickets, usage } from './db/schema.ts';
+import { approvals, events, retros, tickets, usage } from './db/schema.ts';
 
 export interface ReportData {
   since: string;
   done: { id: string; title: string; reworkCount: number; lowPrecision: boolean }[];
   pendingApprovals: { id: string; kind: string; summary: string; link: string | null }[];
-  blocked: { id: string; title: string }[];
+  /** cause: 막힘으로 보낸 이유. 같은 반려 반복과 회의의 사장님 판단 요청을 따로 센다 (2026-10-23) */
+  blocked: { id: string; title: string; cause: BlockedCause | null }[];
   paused: { id: string; title: string; reason: string }[];
   usage: { budget: string; fiveHour: number; fiveHourLimit: number | null; weekly: number; weeklyLimit: number | null; blockedUntil: string | null }[];
   estimated: boolean;
@@ -40,7 +41,7 @@ export function buildReportData(c: Ctx, since: string): ReportData {
     since,
     done: done.map((t) => ({ id: t.id, title: t.title, reworkCount: t.reworkCount, lowPrecision: t.lowPrecision })),
     pendingApprovals: pending.map((a) => ({ id: a.id, kind: a.kind, summary: a.summary, link: approvalLink(c, a.discordMessageId) })),
-    blocked: stuck.filter((t) => t.status === 'blocked').map((t) => ({ id: t.id, title: t.title })),
+    blocked: stuck.filter((t) => t.status === 'blocked').map((t) => ({ id: t.id, title: t.title, cause: blockedCause(c, t.id) })),
     paused: stuck.filter((t) => t.status === 'paused').map((t) => ({ id: t.id, title: t.title, reason: t.pauseReason ?? '' })),
     usage: (['dev', 'research', 'review'] as const).map((b) => {
       const s = budgetStatus(c, b);
@@ -51,6 +52,27 @@ export function buildReportData(c: Ctx, since: string): ReportData {
     claudeAccount: getState<{ fiveHourPct: number | null; weeklyPct: number | null; at: string } | null>(c, 'account.claude', null),
     weeklyRetro: latestWeeklyRetro(c),
   };
+}
+
+export type BlockedCause = 'repeat' | 'needs-ceo' | 'disagreed' | 'pingpong';
+const BLOCKED_BY: Record<string, BlockedCause> = {
+  'review.failed': 'repeat',
+  'guard.repeat': 'repeat',
+  'meeting.escalated': 'needs-ceo',
+  'meeting.failed': 'disagreed',
+  'guard.pingpong': 'pingpong',
+};
+const BLOCKED_NAME: Record<BlockedCause, string> = { repeat: '같은 조건 반복 반려', 'needs-ceo': '회의에서 사장님 판단 요청', disagreed: '회의 불합의', pingpong: '핑퐁 차단' };
+
+/** 티켓을 막힘으로 보낸 마지막 전환의 이유 */
+function blockedCause(c: Ctx, ticketId: string): BlockedCause | null {
+  const e = c.db
+    .select()
+    .from(events)
+    .where(and(eq(events.type, 'ticket.status'), sql`json_extract(${events.payload}, '$.ticketId') = ${ticketId}`, sql`json_extract(${events.payload}, '$.to') = 'blocked'`))
+    .orderBy(desc(events.seq))
+    .get();
+  return BLOCKED_BY[String((e?.payload as { event?: unknown } | undefined)?.event)] ?? null;
 }
 
 function latestWeeklyRetro(c: Ctx): ReportData['weeklyRetro'] {
@@ -74,7 +96,7 @@ export function formatReportData(d: ReportData): string {
     '**2. 결재 대기**',
     list(d.pendingApprovals, (a) => `${a.summary}${a.link ? ` — ${a.link}` : ''}`),
     '**3. 막힌 것**',
-    list([...d.blocked.map((b) => `${b.id} ${b.title}`), ...d.paused.filter((p) => p.reason === 'budget').map((p) => `${p.id} ${p.title} (한도 소진으로 멈춤)`)], (x) => x),
+    list([...d.blocked.map((b) => `${b.id} ${b.title}${b.cause ? ` (${BLOCKED_NAME[b.cause]})` : ''}`), ...d.paused.filter((p) => p.reason === 'budget').map((p) => `${p.id} ${p.title} (한도 소진으로 멈춤)`)], (x) => x),
     `**4. 사용량** ${d.estimated ? '(추정치)' : ''}`,
     list(d.usage, (u) => `${BUDGET_NAME[u.budget]}: 5시간 ${pct(u.fiveHour)}/${u.fiveHourLimit === null ? '자체 제한 없음' : `${u.fiveHourLimit}%`} · 주간 ${pct(u.weekly)}/${u.weeklyLimit === null ? '자체 제한 없음' : `${u.weeklyLimit}%`}${u.blockedUntil ? ` · 제공자 한도 도달, ${u.blockedUntil}까지 막음` : ''}`),
   ];

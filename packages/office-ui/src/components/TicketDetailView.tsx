@@ -1,5 +1,6 @@
 // 티켓 상세 (12장 업무 탭): 완료 조건 체크리스트, 대화 로그, 변경 요약, 사용량, 회의록
 import { useEffect, useState } from 'react';
+import { CEO_NEED_LABEL, MEETING_OUTCOME_LABEL, type CeoNeedKind, type MeetingOutcome } from '@ai-office/shared';
 import { fetchTicket, type TicketDetail } from '../data.ts';
 import { PAUSE_LABEL, STATUS_LABEL, TYPE_LABEL, clock } from '../format.ts';
 import { Meter } from './UsageCard.tsx';
@@ -113,7 +114,7 @@ export function TicketDetailView({ id, timezone, names }: { id: string; timezone
         d.minutes.map((m) => (
           <div key={m.id} className="ao-minutes">
             <p className="ao-minutes__head">
-              {m.kind === 'gate-review' ? 'GPT 관문' : '회의'} · {m.outcome === 'agreed' ? '합의' : '불합의'}
+              {m.kind === 'gate-review' ? 'GPT 관문' : '회의'} · {MEETING_OUTCOME_LABEL[m.outcome as MeetingOutcome] ?? m.outcome}
             </p>
             {m.rounds.map((r) => (
               <div key={r.round}>
@@ -122,6 +123,11 @@ export function TicketDetailView({ id, timezone, names }: { id: string; timezone
                   {r.positions.map((p, i) => (
                     <li key={i}>
                       {who(p.employeeId)}: {p.claim}
+                      {p.needsCeo && (
+                        <p className="ao-muted">
+                          사장님 판단 요청 [{CEO_NEED_LABEL[p.needsCeo.kind as CeoNeedKind] ?? p.needsCeo.kind}] {p.needsCeo.question}
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ul>

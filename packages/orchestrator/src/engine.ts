@@ -22,6 +22,7 @@ import { recoverQuotaPaused, type QuotaRecoveryResult } from './core/quota-recov
 import { askClarification } from './core/clarifications.ts';
 import { recordMessage, resumeUncappedTickets } from './core/guards.ts';
 import { registerOrder } from './core/orders.ts';
+import { blockRepeatedFailures } from './core/repeat-guard.ts';
 import { GATE_REVIEWER_ID } from './core/plans.ts';
 import { haltByChief, resumeAll, stopAll } from './core/stop.ts';
 import { applyTicketEvent, getTicket } from './core/tickets.ts';
@@ -180,6 +181,8 @@ export class Engine {
     if (isStopped(this.c)) return 0;
     let actions = (await this.connectivity.refresh()).length;
     actions += resumeUncappedTickets(this.c).length;
+    // 같은 반려가 이미 기준만큼 쌓인 티켓은 더 돌리지 않고 막힘으로 (5장, 2026-10-23)
+    actions += blockRepeatedFailures(this.c).length;
     // 업데이트 전에 이미 결재함에 올라온 미해결 질문도 별도 대화로 옮긴다.
     for (const plan of this.c.db.select().from(plans).where(eq(plans.status, 'awaiting-ceo')).all()) {
       if (plan.questions.length) {

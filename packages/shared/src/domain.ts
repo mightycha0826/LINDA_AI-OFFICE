@@ -158,8 +158,25 @@ export type RuleStatus = (typeof RULE_STATUSES)[number];
 export const MEETING_KINDS = ['ticket-meeting', 'gate-review'] as const;
 export type MeetingKind = (typeof MEETING_KINDS)[number];
 
-export const MEETING_OUTCOMES = ['agreed', 'disagreed'] as const;
+// needs-ceo (2026-10-23): 회의에서 한 명이라도 사장님 판단이 필요하다고 했다 → 막힘
+export const MEETING_OUTCOMES = ['agreed', 'disagreed', 'needs-ceo'] as const;
 export type MeetingOutcome = (typeof MEETING_OUTCOMES)[number];
+export const MEETING_OUTCOME_LABEL: Record<MeetingOutcome, string> = { agreed: '합의', disagreed: '불합의', 'needs-ceo': '사장님 판단 요청' };
+
+/** 회의에서 사장님 판단을 요청하는 이유 (5장, 2026-10-23) */
+export const CEO_NEED_KINDS = [
+  'missing-input', // 작업에 필요한 자료가 없다 (사장님 정보, 승인된 문구 등)
+  'workspace', // 작업 폴더에 필요한 파일이나 선행 결과물이 없다
+  'authority', // 직원 권한 밖의 일이다 (상태 변경, 프로세스 중지 등)
+  'criteria', // 완료 조건을 확인할 방법이 없거나 조건끼리 모순된다
+] as const;
+export type CeoNeedKind = (typeof CEO_NEED_KINDS)[number];
+export const CEO_NEED_LABEL: Record<CeoNeedKind, string> = {
+  'missing-input': '자료 없음',
+  workspace: '작업 폴더 문제',
+  authority: '직원 권한 밖',
+  criteria: '완료 조건 문제',
+};
 
 // 회고 (14장)
 export const RETRO_KINDS = ['ticket', 'weekly'] as const;

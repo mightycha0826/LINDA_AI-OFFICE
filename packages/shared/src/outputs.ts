@@ -1,6 +1,6 @@
 // 직원별 AI 출력 JSON 형식 (DESIGN.md 6장). 오케스트레이터는 이 스키마를 통과한 출력만 다음 단계로 넘긴다.
 import { z } from 'zod';
-import { EMPLOYEE_ROLES, PREVENT_STAGES, REASON_CATEGORIES, TEMP_BRAINS, TEMP_KINDS, TICKET_TYPES } from './domain.ts';
+import { CEO_NEED_KINDS, EMPLOYEE_ROLES, PREVENT_STAGES, REASON_CATEGORIES, TEMP_BRAINS, TEMP_KINDS, TICKET_TYPES } from './domain.ts';
 
 const text = z.string().trim().min(1);
 
@@ -108,6 +108,8 @@ export const MeetingPositionSchema = z.object({
   claim: text,
   agree: z.boolean(),
   nextActions: z.array(text),
+  /** 다시 작업해도 완료 조건을 채울 수 없을 때만 적는다. 한 명이라도 적으면 막힘 (2026-10-23) */
+  needsCeo: z.object({ kind: z.enum(CEO_NEED_KINDS), question: text }).optional(),
 });
 export type MeetingPosition = z.infer<typeof MeetingPositionSchema>;
 

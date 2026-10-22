@@ -246,7 +246,7 @@ export class Notifier {
     }
     if (p.to === 'blocked' && p.from !== 'paused') {
       const minutes = c.db.select().from(meetingMinutes).where(eq(meetingMinutes.ticketId, ticket.id)).all().at(-1) ?? null;
-      const msg = blockedMessage(ticket, minutes);
+      const msg = blockedMessage(ticket, minutes, typeof p.event === 'string' ? p.event : undefined);
       const route = this.route(projectId, 'blocked', ticket.assigneeId);
       await this.sendImmediate('blocked', { ...msg, ...route }, { kind: 'blocked', text: `${ticket.id} ${ticket.title}` });
       await this.explainAfter('blocked', msg.content, route.channelId);

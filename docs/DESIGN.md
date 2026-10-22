@@ -352,6 +352,8 @@ interface Ticket {
   status: TicketStatus;                // 5장
   pausedFrom?: TicketStatus;           // 일시정지 전 상태
   reworkCount: number;                 // 반려 횟수
+  lastFailedCriteria?: string[];       // 직전 반려에서 통과하지 못한 완료 조건 (정렬, 2026-10-23)
+  sameFailCount: number;               // 그 묶음이 연속으로 반려된 횟수 (5장 같은 반려 반복)
   branch?: string;                     // 'feature/T12-login'
   worktreePath?: string;
   needsCeoApproval: boolean;           // 배포·삭제·외부 전송 등
@@ -412,8 +414,8 @@ interface MeetingMinutes {
   kind: 'ticket-meeting' | 'gate-review';
   participants: string[];              // 직원 id
   agenda: { criterion: string; reason: string; reasonCategory: ReasonCategory }[];
-  rounds: { round: number; positions: { employeeId: string; claim: string }[] }[];
-  outcome: 'agreed' | 'disagreed';
+  rounds: { round: number; positions: { employeeId: string; claim: string; needsCeo?: { kind: CeoNeedKind; question: string } }[] }[];
+  outcome: 'agreed' | 'disagreed' | 'needs-ceo';  // needs-ceo: 사장님 판단 요청 (2026-10-23)
   nextActions: string[];
   createdAt: string;
 }
@@ -443,9 +445,11 @@ interface OfficeEvent {
 planned ─계획 승인→ in_progress ─제출→ in_review ─통과·결재 불필요→ done
                                          ├─통과·결재 필요→ awaiting_approval ─CEO 승인→ done / CEO 반려→ rework
                                          ├─반려(2회 미만)→ rework → in_progress
-                                         └─반려(2회째 이상)→ meeting ─합의→ in_progress
-                                                               └─불합의→ blocked ─CEO 다시 시도·방향 지시→ in_progress
-                                                                                 └─CEO 취소→ cancelled
+                                         ├─반려(2회째 이상, 같은 조건 연속 4회 미만)→ meeting ─합의→ in_progress
+                                         │                                                ├─불합의→ blocked
+                                         │                                                └─사장님 판단 요청→ blocked
+                                         └─반려(같은 조건 연속 4회째)→ blocked
+blocked ─CEO 다시 시도·방향 지시→ in_progress / CEO 취소→ cancelled
 (어디서든) → paused → 원래 상태로 복귀  · 한도 도달, 인터넷 끊김, 시스템 이상, /정지
 ```
 
@@ -480,11 +484,13 @@ type TicketStatus =
 | in\_progress | ticket.submitted | 출력 JSON 형식 통과 | in\_review | 담당자 |
 | in\_review | review.passed | 결재 불필요 | done | 검토자 |
 | in\_review | review.passed | 결재 필요 | awaiting\_approval | 검토자 |
+| in\_review | review.failed | 같은 완료 조건 묶음 연속 반려(이번 포함) ≥ 4 (2026-10-23) | blocked | 검토자 |
 | in\_review | review.failed | 반려 횟수(이번 반려 포함) < 2 | rework | 검토자 |
-| in\_review | review.failed | 반려 횟수(이번 반려 포함) ≥ 2 | meeting | 검토자 |
+| in\_review | review.failed | 반려 횟수(이번 반려 포함) ≥ 2, 같은 조건 연속 < 4 | meeting | 검토자 |
 | rework | rework.started | — | in\_progress | 오케스트레이터 |
-| meeting | meeting.agreed | 담당자·검토자 합의 | in\_progress | 오케스트레이터 |
+| meeting | meeting.agreed | 담당자·검토자 합의, 사장님 판단 요청 없음 | in\_progress | 오케스트레이터 |
 | meeting | meeting.failed | 회의 최대 2라운드 후 불합의 | blocked | 오케스트레이터 |
+| meeting | meeting.escalated (2026-10-23) | 마지막 라운드에 한 명이라도 사장님 판단 요청 | blocked | 오케스트레이터 |
 | awaiting\_approval | approval.approved | CEO 계정 | done | 결재 봇 |
 | awaiting\_approval | approval.rejected | CEO 계정 | rework | 결재 봇 |
 | blocked | ceo.retry / ceo.direct | CEO 계정 | in\_progress | 결재 봇 |
@@ -492,6 +498,7 @@ type TicketStatus =
 | blocked | ceo.cancel | CEO 계정 | cancelled | 결재 봇 |
 | in\_progress, in\_review, rework | guard.pingpong | 핑퐁 감지 | meeting | 오케스트레이터 |
 | meeting | guard.pingpong | 회의 중 핑퐁 감지 | blocked | 오케스트레이터 |
+| in\_progress, in\_review, rework, meeting | guard.repeat (2026-10-23) | 같은 조건 연속 반려 ≥ 4 (업데이트 전 기록으로 채운 티켓) | blocked | 오케스트레이터 |
 | (done, cancelled, paused 제외 전부) | system.pause | 한도 도달, 인터넷 끊김, 시스템 이상, `/정지` | paused | 오케스트레이터 |
 | paused | system.resume | 멈춘 이유가 풀림(아래 표) | pausedFrom | 오케스트레이터 · 결재 봇 |
 
@@ -511,6 +518,11 @@ type TicketStatus =
 
 - 개발자가 "완료"라고 말해도 바로 완료가 되지 않는다. `in_review`를 거치지 않는 길은 표에 없다.
 - 회의에서 합의해 `in_progress`로 돌아간 티켓이 다시 반려되면 매번 회의를 다시 연다(`reworkCount ≥ 2`). 회의가 불합의로 끝나면 `blocked`로 가서 CEO가 정한다.
+- **같은 반려 반복 막기 (2026-10-23 CEO 결정).** 10월 22일 티켓 4개가 같은 조건으로 41~56번 반려됐고 회의 191번이 모두 '합의'로 끝나 재작업으로 돌아갔다. 직원들은 "자료·작업 폴더가 없어 사장님 판단이 필요하다"고 말했지만 막힘으로 가는 길이 없었다. 그래서 두 가지를 둔다. 결과는 모두 `blocked`이고 #막힘에 이유가 붙는다.
+  - 반려 때 통과하지 못한 완료 조건 묶음(문구 그대로, 순서·중복 무시)을 직전 반려와 비교한다. 같으면 연속 횟수를 1 올리고, 다르면 1로 둔다. **같은 묶음 연속 4회째 반려는 회의를 더 열지 않고 `blocked`**(1회 재작업 → 2·3회 회의 → 4회 막힘). 판단은 코드만 한다. 반려 이유 문장·분류는 AI가 매번 다르게 쓰므로 보지 않고, 담당자가 보고한 `changedFiles`도 보지 않는다(실제로 안 고친 제출에 23개라고 적은 적이 있다). 기준을 3회로 하면 T-10처럼 고쳐 나가던 티켓이 잘못 막혀서 4회로 정했다.
+  - 회의에서 **한 명이라도** `needsCeo`(6장)를 적으면 합의 여부와 관계없이 `blocked`(`meeting.escalated`). 검토자만 끝까지 "담당자가 해 주세요"를 반복한 사례가 있어 두 명 모두를 요구하지 않는다. 막힘은 일을 멈추고 묻는 쪽이라 잘못 요청해도 피해가 작다. 정기 보고 '막힌 것'에 막힌 이유를 따로 적어 요청이 너무 많은지 본다.
+  - 통과하거나 CEO가 손대면(결재 반려, 다시 시도, 방향 지시, 수정 요청) 연속 횟수를 0부터 다시 센다.
+  - 업데이트 전부터 돌던 티켓은 시작할 때 한 번 기존 반려 기록으로 횟수를 채운다(`core/repeat-guard.ts`). 기준을 넘긴 진행 중 티켓은 다음 바퀴에 `guard.repeat`로 막힌다. 턴·토큰 상한과는 별개이며 상한은 그대로다.
 - 반려 횟수는 `review.failed` 때 먼저 1 올리고 판정한다. CEO 결재 반려(`approval.rejected`)는 반려 횟수에 넣지 않는다.
 - 반려는 **작업 시작 전에 정해진 완료 조건**으로만 판정한다. 검토자가 나중에 기준을 바꾸면 반려가 끝없이 반복되기 때문이다.
 - 같은 담당자·검토자 쌍이 메시지를 3번 연속 주고받기만 하고 상태가 바뀌지 않으면 오케스트레이터가 `guard.pingpong`으로 강제로 보낸다(핑퐁 차단): 작업·검토·재작업 중이면 `meeting`, 회의 중이면 `blocked`. 다른 사람의 메시지가 끼거나 상태가 바뀌면 다시 센다.
@@ -518,10 +530,10 @@ type TicketStatus =
 
 **회의록**
 
-- 회의(`meeting`)가 끝나는 순간 회의록을 하나 만든다: 참석자, 안건(반려된 완료 조건과 이유), 라운드별 양쪽 주장, 결론(합의/불합의), 다음 할 일.
+- 회의(`meeting`)가 끝나는 순간 회의록을 하나 만든다: 참석자, 안건(반려된 완료 조건과 이유), 라운드별 양쪽 주장과 사장님 판단 요청, 결론(합의/불합의/사장님 판단 요청), 다음 할 일. 결론은 마지막 라운드로 정한다: 한 명이라도 사장님 판단 요청 → `needs-ceo`, 아니면 모두 동의 → 합의, 그 밖에는 불합의.
 - **AI에게 요약을 시키지 않는다.** 회의 중 주고받은 JSON에서 코드가 정해진 양식에 채운다. 내용을 잘못 옮기지 않게 하기 위해서다.
 - GPT 관문에서 계획서 반려를 주고받은 기록도 같은 양식(`kind: 'gate-review'`)으로 남긴다.
-- 볼 수 있는 곳: 사무실 화면의 티켓 상세 "회의록" 칸과 로그 탭 "회의" 필터, #사무실-대화의 해당 티켓 스레드 끝. 불합의로 막히면 #막힘 메시지에 첨부한다.
+- 볼 수 있는 곳: 사무실 화면의 티켓 상세 "회의록" 칸과 로그 탭 "회의" 필터, #사무실-대화의 해당 티켓 스레드 끝. 불합의나 사장님 판단 요청으로 막히면 #막힘 메시지에 첨부한다.
 
 ## 6. 직원별 작업 방식
 
@@ -669,6 +681,20 @@ MCP 서버는 헤르메스가 띄우는 별도 프로세스라 DB를 열지 않�
   "fixRequests": ["LoginForm에 401 응답 시 에러 문구 표시"]
 }
 ```
+
+**티켓 회의 입장** (담당자와 검토자가 라운드마다 하나씩, 5장 회의록)
+
+```json
+{
+  "claim": "작업 폴더에 승인된 문구 초안이 없어 조건 1은 다시 작업해도 채울 수 없어요",
+  "agree": true,
+  "nextActions": ["초안을 받으면 content.json에 그대로 옮긴다"],
+  "needsCeo": { "kind": "missing-input", "question": "승인된 문구 초안을 주실 수 있나요?" }
+}
+```
+
+- `needsCeo`(2026-10-23)는 담당자가 이 티켓 안에서 다시 작업해도 완료 조건을 채울 수 없을 때만 적는다. 다시 작업해서 고칠 수 있으면 비워 둔다. 한 명이라도 적으면 티켓은 `blocked`로 간다(5장).
+- `kind`: `missing-input`(필요한 자료가 없음) · `workspace`(작업 폴더에 필요한 파일이나 선행 결과물이 없음) · `authority`(직원 권한 밖의 일) · `criteria`(완료 조건을 확인할 방법이 없거나 서로 모순됨). `question`은 #막힘에 그대로 실리는 사장님께 드릴 질문 한 줄이다.
 
 **관문 검사** (계획서, 정기 보고, 결재 요청이 CEO에게 가기 직전)
 
@@ -973,7 +999,8 @@ Discord는 CEO와 회사가 소통하는 유일한 창구다. 직원끼리의 �
 ④ 막힘 (#막힘)
 
 - 내용: 티켓 / 반려 이력 / 회의 결론 / 담당자와 검토자 각각의 주장 / **회의록 첨부**
-- 버튼: **\[다시 시도\] \[방향 지시\] \[취소\]**. 방향 지시는 입력창이 뜬다.
+- (2026-10-23) 같은 반려 반복이나 회의의 사장님 판단 요청으로 막혔으면 맨 위에 "막힌 이유"를 붙인다: `같은 완료 조건이 N번 연속 반려됐어요` + 그 조건 목록, 또는 `회의에서 사장님 판단을 요청했어요` + `[종류] 직원: 질문`(5장).
+- 버튼: **\[다시 시도\] \[방향 지시\] \[취소\]**. 방향 지시는 입력창이 뜬다. CEO 계정만 누를 수 있다(7장).
 
 ④-2 계획 작성 멈춤 (#막힘, 2026-10-19 추가)
 
@@ -1041,7 +1068,7 @@ CEO는 매일 08:00, 18:00, 22:00에 점검하고(주말 포함), 그 밖의 시
 
 1. 완료된 일
 2. 결재 대기 (계획 승인, CEO 결재, 규칙 추가) ← 여기서 한 번에 처리
-3. 막힌 것
+3. 막힌 것 (막힌 이유: 같은 조건 반복 반려 / 회의에서 사장님 판단 요청 / 회의 불합의 / 핑퐁 차단, 2026-10-23)
 4. 사용량: 오늘 / 주간 누적 (추정치 여부 표시)
 5. 시스템 상태 이상이 있었을 때만: 재시작, 자동 정지 기록
 
@@ -1579,7 +1606,7 @@ type ReasonCategory =
 
 - SQLite 스키마(4장), 상태 전환표(5장), 결재 규칙(7장), 한도 칸막이(8장)
 - AI 대신 \*\*가짜 AI(MockLLM)\*\*로 전체 흐름을 돌린다. API 비용 0.
-- 테스트 필수: 표에 없는 전환 거부, 반려 2회 → 회의, 핑퐁 차단, 턴·토큰 상한, 결재 두 번 클릭, 오래된 버튼 거부, 자동 승인 없음, 회의록 생성
+- 테스트 필수: 표에 없는 전환 거부, 반려 2회 → 회의, 핑퐁 차단, 턴·토큰 상한, 결재 두 번 클릭, 오래된 버튼 거부, 자동 승인 없음, 회의록 생성, (2026-10-23) 같은 조건 4회째 막힘·묶음이 바뀌면 다시 셈·회의 사장님 판단 요청 막힘·기존 기록 채우기 (`test/transitions.test.ts`, `test/repeat-guard.test.ts`)
 
 **2단계: 직원 연결**
 
