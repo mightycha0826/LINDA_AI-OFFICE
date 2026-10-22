@@ -106,19 +106,24 @@ export class BrainCalls {
   async callOrNull<S extends z.ZodType>(employeeId: string, task: BrainTask, schema: S, input: unknown, opts: CallOptions = {}): Promise<z.infer<S> | null> {
     const e = this.employee(employeeId);
     if (this.spendMode(e) !== 'ok') return null;
+    return this.orNull(e, task, () => this.call(e, task, schema, input, {}, opts));
+  }
+
+  /** 호출 실패를 null로 바꾼다. 끊김·한도는 기록하고, 호출 실패·형식 오류는 로그만 남긴다. 그 밖의 오류는 그대로 던진다 */
+  async orNull<T>(e: EmployeeRow, task: BrainTask, run: () => Promise<T>): Promise<T | null> {
     try {
-      return await this.call(e, task, schema, input, {}, opts);
+      return await run();
     } catch (err) {
       if (isQuiet(err)) {
         this.handleQuietFailure(err, e);
         return null;
       }
       if (err instanceof BrainError) {
-        this.log(`${employeeId} ${task} 실패: ${err.message}`);
+        this.log(`${e.id} ${task} 실패: ${err.message}`);
         return null;
       }
       if (err instanceof FormatError) {
-        this.log(`${employeeId} ${task} 형식 오류 2회: ${err.issues}`);
+        this.log(`${e.id} ${task} 형식 오류 2회: ${err.issues}`);
         return null;
       }
       throw err;

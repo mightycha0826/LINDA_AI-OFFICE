@@ -10,7 +10,7 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { GateOutputSchema, LOCAL_MODEL, StaffChatOutputSchema, type StaffChatOutput } from '@ai-office/shared';
-import { BrainError, type BrainTask, type TestRunner } from './brains/brain.ts';
+import type { BrainTask, TestRunner } from './brains/brain.ts';
 import { Lanes } from './brains/lanes.ts';
 import type { BrainFor } from './brains/registry.ts';
 import { Connectivity } from './connectivity.ts';
@@ -27,10 +27,10 @@ import { resumeAll, stopAll } from './core/stop.ts';
 import { applyTicketEvent, getTicket } from './core/tickets.ts';
 import type { TicketEvent } from './core/transitions.ts';
 import { employees, orders, plans, tickets } from './db/schema.ts';
-import { BrainCalls, isQuiet } from './engine/brain-calls.ts';
+import { BrainCalls } from './engine/brain-calls.ts';
 import { Planning, planBlockedKey } from './engine/planning.ts';
 import { TicketWork } from './engine/ticket-work.ts';
-import { assertCeo, FormatError, NotFoundError, OfficeError } from './errors.ts';
+import { assertCeo, NotFoundError, OfficeError } from './errors.ts';
 import { CommitDraftSchema, type CommitDraft, type CommitTicketInfo } from './gitcat/commit-message.ts';
 import { dismissAllTemps } from './staff/temp-staff.ts';
 import { createWeb, type Web } from './web/research.ts';
@@ -123,15 +123,7 @@ export class Engine {
    * GPT 한도가 없거나 연결이 끊겨 검사할 수 없으면 null ("관문 미통과"로 올린다).
    */
   async gateReport(report: string): Promise<z.infer<typeof GateOutputSchema> | null> {
-    const gate = this.calls.employee(GATE_REVIEWER_ID);
-    if (this.calls.spendMode(gate) !== 'ok') return null;
-    try {
-      return await this.calls.call(gate, 'gate', GateOutputSchema, { report }, {}, { workdir: this.workspace.sandbox('gate-report') });
-    } catch (err) {
-      if (isQuiet(err)) this.calls.handleQuietFailure(err, gate);
-      if (err instanceof BrainError || err instanceof FormatError) return null;
-      throw err;
-    }
+    return this.calls.callOrNull(GATE_REVIEWER_ID, 'gate', GateOutputSchema, { report }, { workdir: this.workspace.sandbox('gate-report') });
   }
 
   /**
@@ -154,13 +146,7 @@ export class Engine {
    */
   async chatAs(employeeId: string, input: unknown): Promise<StaffChatOutput | null> {
     const e: EmployeeRow = { ...this.calls.employee(employeeId), brain: { provider: 'ollama', model: LOCAL_MODEL } };
-    try {
-      return await this.calls.call(e, 'chat', StaffChatOutputSchema, input, {});
-    } catch (err) {
-      if (isQuiet(err)) this.calls.handleQuietFailure(err, e);
-      if (err instanceof BrainError || err instanceof FormatError) return null;
-      throw err;
-    }
+    return this.calls.orNull(e, 'chat', () => this.calls.call(e, 'chat', StaffChatOutputSchema, input, {}));
   }
 
   /**
