@@ -1,6 +1,5 @@
 // 오케스트레이터 서비스 (3장). pm2가 띄운다: npm start (또는 ecosystem.config.cjs).
 // 설정은 C:\ai-office\data\config.json, 비밀 값은 secrets.json, DB는 office.db (모두 저장소 밖).
-import { eq } from 'drizzle-orm';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createBrainRegistry } from './brains/registry.ts';
@@ -10,11 +9,11 @@ import { systemClock } from './clock.ts';
 import { DEFAULTS, loadConfig } from './config.ts';
 import { emit, type Ctx } from './context.ts';
 import { openDb } from './db/client.ts';
-import { employees } from './db/schema.ts';
 import { startDiscordBot, startStaffBots, type DiscordBot } from './discord/bot.ts';
 import { directChannelRoute, routeMirror, StaffPresence, type StaffBotPort } from './discord/staff-bots.ts';
-import { proposalMessage } from './discord/messages.ts';
+import { CHAT_PERSONAS } from './staff/chat-personas.ts';
 import { StaffChat } from './discord/staff-chat.ts';
+import { pruneStaffConversations } from './discord/chat-memory.ts';
 import { InteractionHandler } from './discord/interactions.ts';
 import { Mirror } from './discord/mirror.ts';
 import { Notifier } from './discord/notifier.ts';
@@ -26,6 +25,7 @@ import { gpuReader } from './screen/gpu.ts';
 import { backupHermes } from './retro/hermes-backup.ts';
 import { RetroService } from './retro/service.ts';
 import { loadSecrets } from './secrets.ts';
+import { loadChiefDiscordToken } from './discord/chief-authority.ts';
 import { seedStaff } from './seed.ts';
 import { loadGuestRegistry, syncGuests } from './core/guests.ts';
 import { loadSettingOverrides } from './settings.ts';
@@ -34,6 +34,7 @@ import { ProjectTestRunner } from './workspace/test-runner.ts';
 import { GitWorkspace } from './workspace/worktrees.ts';
 import { GitCat } from './gitcat/git-cat.ts';
 import { NewProjectService } from './workspace/new-project.ts';
+import { listProjects } from './workspace/projects.ts';
 import { DiffSummarySchema, ExplainOutputSchema, InterpretOutputSchema } from '@ai-office/shared';
 
 const log = (s: string) => console.log(`${new Date().toISOString()} ${s}`);
@@ -75,29 +76,32 @@ let presence: StaffPresence | null = null;
 // /새프로젝트 (11장): 봇은 명령 처리기가 있어야 뜨므로, 채널 포트는 봇이 뜬 뒤에 꺼내 쓴다
 const newProjects = new NewProjectService({ c: ctx, gitcat, channels: () => bot?.projectChannels ?? null, discord: () => bot?.port ?? null, log });
 if (secrets.discordToken && config.discord.guildId) {
-  bot = await startDiscordBot({ c: ctx, handler: new InteractionHandler(ctx, engine, log, gitcat, newProjects), token: secrets.discordToken, ...(secrets.mirrorWebhookUrl ? { webhookUrl: secrets.mirrorWebhookUrl } : {}), log });
+  const chiefToken = loadChiefDiscordToken(config.hermes.homeDir);
+  bot = await startDiscordBot({ c: ctx, handler: new InteractionHandler(ctx, engine, log, gitcat, newProjects), token: secrets.discordToken, ...(chiefToken ? { chiefToken } : {}), ...(secrets.mirrorWebhookUrl ? { webhookUrl: secrets.mirrorWebhookUrl } : {}), log });
   // 막힘 해설가·거울 통역사 (16장 7-5). 실패하면 해설·통역 없이 원래대로
   notifier = new Notifier(ctx, bot.port, log, async (notice) => (await engine.callAs('explainer', 'explain', ExplainOutputSchema, { notice }, { workdir: 'explain' }))?.lines ?? null);
   // 직원 봇 9개 (9장). 토큰이 있는 직원만 뜨고, 없거나 실패한 직원의 거울 글은 웹훅으로. 주인이 멘션하면 로컬 Gemma로 대답
   if (secrets.staffBotTokens && Object.keys(secrets.staffBotTokens).length) {
     const chat = new StaffChat(ctx, (id, input) => engine.chatAs(id, input), log);
-    const replies = bot.replies;
     staffBots = await startStaffBots({
       tokens: secrets.staffBotTokens,
+      c: ctx,
+      handler: new InteractionHandler(ctx, engine, log, gitcat, newProjects),
       log,
       onMention: (id, m) => chat.answer(id, m),
-      // 지시·수정으로 읽히면 LINDA가 주인 메시지 바로 아래에 확인 버튼을 띄운다 (2026-10-21). 일은 버튼을 눌러야 생긴다
-      onProposal: async (p) => {
-        const name = ctx.db.select().from(employees).where(eq(employees.id, p.employeeId)).get()?.displayName ?? p.employeeId;
-        await replies.reply(p.channelId, p.messageId, proposalMessage(p, name));
-      },
     });
+    bot.setStaffBots(staffBots);
     presence = new StaffPresence(ctx, staffBots);
+  }
+  // 기존 프로젝트에도 필요한 채널을 보충한다. 이미 있는 채널은 그대로 사용한다.
+  for (const project of listProjects(ctx).filter((p) => p.discordCategoryId || p.discordChannelId)) {
+    try { await bot.projectChannels.createProjectChannels(project.id); }
+    catch (err) { log(`프로젝트 채널 구성 실패(${project.id}): ${(err as Error).message}`); }
   }
   mirror = bot.mirror
     ? new Mirror(ctx, staffBots ? routeMirror(bot.mirror, staffBots, log) : bot.mirror, {
         log,
-        interpret: async (from, content) => (await engine.callAs('interpreter', 'interpret', InterpretOutputSchema, { from, content }, { workdir: 'interpret' }))?.text ?? null,
+        interpret: async (from, content, employeeId) => (await engine.callAs('interpreter', 'interpret', InterpretOutputSchema, { from, content, tone: CHAT_PERSONAS[employeeId as keyof typeof CHAT_PERSONAS]?.tone }, { workdir: 'interpret' }))?.text ?? null,
         // 직원 직접 지시로 시작한 일은 주인이 말한 채널 바로 아래에 (2026-10-21)
         direct: directChannelRoute(staffBots, bot.replies, log),
       })
@@ -137,6 +141,8 @@ const retro = new RetroService(ctx, engine, log);
 
 const timers = [
   every(10_000, '엔진', () => engine.step()),
+  // 재시작해도 마지막 점검부터 30분 간격을 지킨다(내부에 영속 시각 가드).
+  every(60_000, '30분 한도 점검', async () => engine.recoverQuotas()),
   every(5_000, '알림', async () => notifier?.tick()),
   every(5_000, 'Git 고양이', () => gitcat.tick()),
   every(config.mirror.flushSec * 1000, '거울', async () => mirror?.flush()),
@@ -148,11 +154,13 @@ const timers = [
     if (r.copied.length) log(`헤르메스 백업 ${r.date}: ${r.copied.join(', ')}`);
   }),
   every(30_000, '직원 봇 상태', async () => presence?.tick()),
+  every(60_000, '지난 대화 정리', async () => pruneStaffConversations(ctx)),
   every(60_000, '접속 상태·보고', async () => {
     refreshPresence(ctx);
     await reports?.fallbackIfMissing();
   }),
 ];
+engine.recoverQuotas();
 log('오케스트레이터 시작');
 
 async function shutdown(): Promise<void> {

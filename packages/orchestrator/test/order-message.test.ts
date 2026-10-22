@@ -17,7 +17,7 @@ function office() {
   const tools = new ChiefTools(s.ctx, s.engine, null);
   const msg = (messageId: string, over: { channelId?: string; authorId?: string; guildId?: string | null } = {}) =>
     onDiscordMessage(s.ctx, { guildId: GUILD, channelId: SECRETARY, authorId: CEO, messageId, ...over });
-  const order = (args: Record<string, unknown>) => tools.call('create_order', args) as Promise<{ orderId: string; created: boolean; discordMessageId: string; messageIdSource: string }>;
+  const order = (args: Record<string, unknown>) => tools.call('create_order', args) as Promise<{ proposalId: string; created: boolean; status: string; discordMessageId: string; messageIdSource: string }>;
   return { ...s, msg, order };
 }
 
@@ -26,8 +26,8 @@ describe('create_order 메시지 ID', () => {
     const s = office();
     s.msg('1300000000000000101');
     const r = await s.order({ rawText: '로그인 페이지에 비밀번호 찾기 기능 추가해줘' });
-    expect(r).toMatchObject({ created: true, discordMessageId: '1300000000000000101', messageIdSource: 'last-ceo-message' });
-    expect(s.db.select().from(orders).get()).toMatchObject({ discordMessageId: '1300000000000000101', rawText: '로그인 페이지에 비밀번호 찾기 기능 추가해줘' });
+    expect(r).toMatchObject({ created: false, status: 'awaiting-user-confirmation', discordMessageId: '1300000000000000101', messageIdSource: 'last-ceo-message' });
+    expect(s.db.select().from(orders).all()).toHaveLength(0);
   });
 
   it('같은 메시지로 두 번 불러도 지시는 하나 (헤르메스 재시도)', async () => {
@@ -35,9 +35,9 @@ describe('create_order 메시지 ID', () => {
     s.msg('1300000000000000101');
     const first = await s.order({ rawText: '비밀번호 찾기 추가해줘' });
     const again = await s.order({ rawText: '비밀번호 찾기 추가해줘' });
-    expect([first.created, again.created]).toEqual([true, false]);
-    expect(again.orderId).toBe(first.orderId);
-    expect(s.db.select().from(orders).all()).toHaveLength(1);
+    expect([first.created, again.created]).toEqual([false, false]);
+    expect(again.proposalId).toBe(first.proposalId);
+    expect(s.db.select().from(orders).all()).toHaveLength(0);
   });
 
   it('새 메시지가 오면 그 ID로 새 지시가 생긴다', async () => {
@@ -46,8 +46,8 @@ describe('create_order 메시지 ID', () => {
     await s.order({ rawText: '첫 지시' });
     s.msg('1300000000000000102');
     const second = await s.order({ rawText: '둘째 지시' });
-    expect(second).toMatchObject({ created: true, discordMessageId: '1300000000000000102' });
-    expect(s.db.select().from(orders).all()).toHaveLength(2);
+    expect(second).toMatchObject({ created: false, status: 'awaiting-user-confirmation', discordMessageId: '1300000000000000102' });
+    expect(s.db.select().from(orders).all()).toHaveLength(0);
   });
 
   it('기록이 없으면 지시를 만들지 않는다', async () => {
@@ -86,7 +86,7 @@ describe('create_order 메시지 ID', () => {
     const r = await s.order({ rawText: '지시', discordMessageId: '1300000000000000042' });
     expect(r).toMatchObject({ discordMessageId: '1300000000000000042', messageIdSource: 'provided' });
     await expect(s.order({ rawText: '지시', discordMessageId: 'current_message_id' })).rejects.toThrow(/인자/);
-    expect(s.db.select().from(orders).all()).toHaveLength(1);
+    expect(s.db.select().from(orders).all()).toHaveLength(0);
   });
 
   it('주인 메시지는 어느 채널이든 접속 중 표시를 켠다 (기존 동작)', () => {

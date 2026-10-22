@@ -236,6 +236,7 @@ export function startGateReview(c: Ctx, planId: string): PlanRow {
   return inTx(c, (t) => {
     const plan = getPlan(t, planId);
     if (plan.status !== 'draft') throw new OfficeError('plan-state', `관문 검사는 초안에서만 시작해요(${plan.status})`);
+    if (plan.questions.length) throw new OfficeError('unanswered-questions', 'PM 질문의 답변을 먼저 받아야 해요');
     t.db.update(plans).set({ status: 'gate-review' }).where(eq(plans.id, planId)).run();
     emit(t, 'plan.status', { planId, orderId: plan.orderId, version: plan.version, status: 'gate-review' });
     return getPlan(t, planId);
@@ -248,6 +249,7 @@ export function recordGateResult(c: Ctx, planId: string, gate: { passed: boolean
   return inTx(c, (t) => {
     const plan = getPlan(t, planId);
     if (plan.status !== 'gate-review') throw new OfficeError('plan-state', `관문 결과는 관문 검사 중에만 받아요(${plan.status})`);
+    if (plan.questions.length) throw new OfficeError('unanswered-questions', 'PM 질문의 답변을 먼저 받아야 해요');
     if (!isLatestPlanVersion(t, plan)) throw new OfficeError('plan-state', '최신 버전이 아니에요');
 
     let outcome: GateOutcome;
@@ -321,6 +323,7 @@ function saveGateMinutes(c: Ctx, current: PlanRow): void {
 export function applyCeoPlanDecision(c: Ctx, planId: string, decision: ApprovalDecision, note: string | null, ceo: Actor): void {
   const plan = getPlan(c, planId);
   if (plan.status !== 'awaiting-ceo') throw new OfficeError('plan-state', `CEO 결재 대기 중인 계획서가 아니에요(${plan.status})`);
+  if (decision === 'approved' && plan.questions.length) throw new OfficeError('unanswered-questions', 'PM 질문의 답변을 먼저 받아야 해요. 별도 질문 메시지에서 답변해 주세요');
 
   if (decision === 'revision') {
     // ceoNote가 null이 아니면 CEO 수정 요청이다(관문 반려와 구분). 내용이 없어도 빈 문자열로 남긴다.

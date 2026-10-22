@@ -76,10 +76,11 @@ describe('가짜 CLI로 끝까지', () => {
 
       const runs = readFileSync(logFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { bin: string; argv: string[]; cwd: string });
       const claudeRuns = runs.filter((r) => r.bin === 'claude');
-      expect(claudeRuns).toHaveLength(2); // 계획 1 + 구현 1
+      expect(claudeRuns).toHaveLength(3); // 요구사항 확인 1 + 계획 1 + 구현 1
       expect(claudeRuns[0]!.cwd.toLowerCase()).toContain('_sandbox'); // 계획은 빈 샌드박스에서 읽기 전용
       expect(claudeRuns[0]!.argv).toContain('Read,Glob,Grep');
-      const claudeRun = claudeRuns[1]!;
+      expect(claudeRuns[1]!.cwd.toLowerCase()).toContain('_sandbox');
+      const claudeRun = claudeRuns[2]!;
       const codexRuns = runs.filter((r) => r.bin === 'codex');
       expect(claudeRun.cwd.toLowerCase()).toBe(wt.toLowerCase());
       expect(codexRuns).toHaveLength(2); // 관문 1 + 리뷰 1

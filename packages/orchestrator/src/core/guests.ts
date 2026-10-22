@@ -104,8 +104,12 @@ export function guestUsage(c: Ctx, e: EmployeeRow): GuestUsage {
   const until = getState<string | null>(c, blockKey(id), null);
   const blockedUntil = until && new Date(until).getTime() > c.clock.now().getTime() ? until : null;
   if (e.brain.provider === 'claude-code') {
-    const a = getState<{ fiveHourPct: number | null; weeklyPct: number | null } | null>(c, accountKey(id), null);
-    return { fiveHour: a?.fiveHourPct ?? 0, weekly: a?.weeklyPct ?? 0, source: 'reported', blockedUntil };
+    const a = getState<{ fiveHourPct: number | null; weeklyPct: number | null; fiveHourResetsAt?: string; weeklyResetsAt?: string; at?: string } | null>(c, accountKey(id), null);
+    const current = (window: 'fiveHour' | 'weekly') => {
+      const reset=Date.parse(a?.[`${window}ResetsAt`] ?? '');
+      return reset <= c.clock.now().getTime() && Date.parse(a?.at ?? '') <= reset ? 0 : a?.[`${window}Pct`] ?? 0;
+    };
+    return { fiveHour: current('fiveHour'), weekly: current('weekly'), source: 'reported', blockedUntil };
   }
   const now = c.clock.now().getTime();
   const rows = getState<EstimateRow[]>(c, estimateKey(id), []);

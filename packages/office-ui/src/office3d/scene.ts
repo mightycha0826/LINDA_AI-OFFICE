@@ -9,6 +9,10 @@ import { hash, lookOf } from './characters.ts';
 import { buildFigure, disposeFigure, FigureKit } from './figure.ts';
 import { DESK_SEATS, GUEST_SEATS, MEETING_SEATS, type Act, type Placed, type Seat } from './layout.ts';
 import type { Avatar } from './vrm.ts';
+import { animateHand, gripHand, type Hand } from './hands.ts';
+import { buildKeyboard, buildMouse, createKeyboardLegends } from './peripherals.ts';
+import { REST_LABEL, restMotion, type RestProfile } from './rest.ts';
+import { buildRestProps, disposeRestProps, updateRestProps, type RestProps } from './rest-props.ts';
 
 const css = (n: number) => '#' + n.toString(16).padStart(6, '0');
 const W = 30;
@@ -32,11 +36,14 @@ interface Rig {
   figure: THREE.Group;
   head: THREE.Group;
   forearms: THREE.Group[];
+  hands: Hand[];
   torso: THREE.Object3D;
   ring: THREE.Mesh;
   target: THREE.Vector3;
   face: 1 | -1;
   act: Act;
+  rest: RestProfile | undefined;
+  props: RestProps;
   phase: number;
   label: HTMLButtonElement;
   anchorY: number;
@@ -73,6 +80,7 @@ export class Office3D {
   private meetingSign: { busy: THREE.Mesh; free: THREE.Mesh } | null = null;
   private readonly rigs = new Map<string, Rig>();
   private readonly kit = new FigureKit();
+  private readonly keyboardLegends = createKeyboardLegends();
   private disposed = false;
   private readonly glass: THREE.MeshStandardMaterial;
   private cat: THREE.Group | null = null;
@@ -105,7 +113,7 @@ export class Office3D {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.maxPolarAngle = Math.PI * 0.46;
-    this.controls.minDistance = 3.5;
+    this.controls.minDistance = 1.4;
     this.controls.maxDistance = 48;
     this.controls.screenSpacePanning = false;
     this.goHome(true);
@@ -144,13 +152,15 @@ export class Office3D {
       rig.target.set(p.seat.x, p.seat.seatY != null ? p.seat.seatY - 0.46 : 0, p.seat.z);
       rig.face = p.seat.face;
       rig.act = p.act;
+      rig.rest = p.rest;
+      if (p.rest) rig.props.tint(p.rest.color);
       (rig.ring.material as THREE.MeshBasicMaterial).color.setHex(STATUS_COLOR[p.status]);
       rig.label.querySelector('.ao3-dot')!.setAttribute('data-status', p.status);
-      rig.label.querySelector('.ao3-tag__name')!.textContent = p.name;
+      rig.label.querySelector('.ao3-tag__name')!.textContent = p.rest ? `${p.name} · ${REST_LABEL[p.rest.kind]}` : p.name;
       const proj = rig.label.querySelector<HTMLElement>('.ao3-tag__proj')!;
       proj.textContent = p.project ?? '';
       proj.hidden = !p.project;
-      rig.label.setAttribute('aria-label', p.project ? `${p.name}, 프로젝트 ${p.project}` : p.name);
+      rig.label.setAttribute('aria-label', [p.name,p.rest ? REST_LABEL[p.rest.kind] : null,p.project ? `프로젝트 ${p.project}` : null].filter(Boolean).join(', '));
       rig.label.classList.toggle('ao3-tag--small', p.helper);
       this.setModel(rig, p.model);
     }
@@ -160,6 +170,7 @@ export class Office3D {
       rig.label.remove();
       rig.avatar?.dispose();
       disposeFigure(rig.figure);
+      disposeRestProps(rig.props);
       this.rigs.delete(id);
     }
     // 파견 라운지 도킹 표시등: 앉은 자리는 초록
@@ -199,7 +210,9 @@ export class Office3D {
     // 앞쪽 위: 캐릭터가 보는 쪽(face)으로 비스듬히, 맞은편 모니터 너머로·천장 조명(2.6m) 높이쯤. OrbitControls 최소 거리(3.5)보다 조금 멀리
     const dist = near ? 3.6 : 6.5;
     // 돌아다니는 Git 고양이는 벽에 가리지 않게 위에서 내려다본다
-    const nearDir = rig ? new THREE.Vector3(0.25, 0.42, 0.87 * rig.face) : new THREE.Vector3(0.3, 0.9, 0.35);
+    const nearDir = rig
+      ? rig.rest?.kind === 'coffee' ? new THREE.Vector3(0.86,0.5,0.1*rig.face) : new THREE.Vector3(0.25,0.42,0.87*rig.face)
+      : new THREE.Vector3(0.3,0.9,0.35);
     const dir = near ? nearDir.normalize() : this.camera.position.clone().sub(this.controls.target).normalize();
     const toP = toT.clone().add(dir.clone().multiplyScalar(dist));
     if (!near && toP.y < 2.6) toP.y = 2.6;
@@ -239,8 +252,11 @@ export class Office3D {
     for (const r of this.rigs.values()) {
       r.avatar?.dispose();
       disposeFigure(r.figure);
+      disposeRestProps(r.props);
     }
     this.kit.dispose();
+    this.keyboardLegends.map?.dispose();
+    this.keyboardLegends.dispose();
     this.renderer.dispose();
     this.labels.replaceChildren();
   }
@@ -270,19 +286,34 @@ export class Office3D {
       r.group.rotation.y = r.face > 0 ? 0 : Math.PI;
       r.ring.position.set(r.group.position.x, r.target.y + 0.49, r.group.position.z);
       if (r.avatar) {
-        r.avatar.animate(r.act, t, r.phase, m, dt);
+        r.avatar.animate(r.act, t, r.phase, m, dt, r.rest);
+      } else if (r.act === 'rest' && r.rest) {
+        const pose = restMotion(r.rest,t,r.phase,m);
+        r.forearms.forEach((arm,i) => { arm.rotation.x = pose.arms[i]!; });
+        r.hands.forEach((hand,i) => {
+          hand.root.rotation.z = pose.wrists[i]!;
+          animateHand(hand,'idle',t,r.phase,m);
+          gripHand(hand,r.rest!.kind === 'coffee' && i === r.rest!.side ? 0.85 : r.rest!.kind === 'read' ? 0.25 : 0);
+        });
+        r.head.rotation.set(pose.headX,pose.headY,0);
+        r.torso.rotation.y = pose.torso;
       } else if (r.act === 'type') {
-        r.forearms.forEach((f, i) => (f.rotation.x = Math.sin(t * 14 + r.phase + i * 1.7) * 0.07 * m));
+        r.forearms.forEach((f, i) => (f.rotation.x = Math.sin(t * 7 + r.phase + i * 1.7) * 0.012 * m));
         r.head.rotation.set(0.06, Math.sin(t * 0.35 + r.phase) * 0.12 * m, 0);
+        r.torso.rotation.y = 0;
       } else if (r.act === 'talk') {
         r.forearms[0]!.rotation.x = 0;
         r.forearms[1]!.rotation.x = (-0.5 + Math.sin(t * 2.2 + r.phase) * 0.35) * m;
         r.head.rotation.set(0, Math.sin(t * 0.8 + r.phase) * 0.4 * m, 0);
+        r.torso.rotation.y = 0;
       } else {
         r.forearms.forEach((f) => (f.rotation.x = 0));
         r.head.rotation.set(0, Math.sin(t * 0.25 + r.phase) * 0.5 * m, 0);
         r.torso.rotation.y = Math.sin(t * 0.25 + r.phase) * 0.06 * m;
       }
+      if (!r.avatar && r.act !== 'rest') r.hands.forEach((hand, i) => { hand.root.rotation.z = 0; animateHand(hand, r.act, t, r.phase + i * 2.3, m); });
+      const pose = r.rest ? restMotion(r.rest,t,r.phase,m) : null;
+      updateRestProps(r.props,r.body,r.avatar?.hands ?? r.hands.map(h => h.root),r.rest,r.group.position.distanceToSquared(r.target)<0.16,pose?.sip ?? 0,t*m);
     }
     if (this.cat) {
       const cp = along([[18.0, 16.1], [22.1, 16.1], [22.1, 12.0], [17.2, 12.0]], 0.55 * m, t);
@@ -354,7 +385,12 @@ export class Office3D {
     const g = new THREE.Group();
     const body = new THREE.Group();
     body.scale.setScalar(p.helper ? 0.9 : 1);
+    // Resize around the seated pelvis, keeping small assistants above the cushion.
+    body.position.y = 0.5 * (1 - body.scale.y);
+    const wristLift = (1 / body.scale.y - 1) * (0.89 - 0.5);
+    fig.forearms.forEach(arm => arm.position.y += wristLift);
     body.add(fig.root);
+    const props = buildRestProps(color => this.mat(color)); body.add(props.root);
     g.add(body);
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: STATUS_COLOR[p.status], transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2;
@@ -368,14 +404,17 @@ export class Office3D {
       figure: fig.root,
       head: fig.head,
       forearms: fig.forearms,
+      hands: fig.hands,
       torso: fig.torso,
       ring,
       target: g.position.clone(),
       face: seat.face,
       act: p.act,
+      rest: p.rest,
+      props,
       phase: rnd(hash(p.id)) * 6.28,
       label: this.label(p.id),
-      anchorY: (fig.top + 0.08) * body.scale.y,
+      anchorY: body.position.y + (fig.top + 0.08) * body.scale.y,
       figureTop: fig.top,
       model: null,
       avatar: null,
@@ -393,17 +432,17 @@ export class Office3D {
       rig.avatar.dispose();
       rig.avatar = null;
       rig.figure.visible = true;
-      rig.anchorY = (rig.figureTop + 0.08) * rig.body.scale.y;
+      rig.anchorY = rig.body.position.y + (rig.figureTop + 0.08) * rig.body.scale.y;
     }
     if (!url) return;
     import('./vrm.ts')
-      .then((m) => m.loadAvatar(url))
+      .then((m) => m.loadAvatar(url, rig.body.scale.y))
       .then((av) => {
         if (this.disposed || this.rigs.get(rig.id) !== rig || rig.model !== url) return av.dispose();
         rig.body.add(av.root);
         rig.figure.visible = false;
         rig.avatar = av;
-        rig.anchorY = (av.top + 0.08) * rig.body.scale.y;
+        rig.anchorY = rig.body.position.y + (av.top + 0.08) * rig.body.scale.y;
       })
       .catch((err: unknown) => console.warn(`3D 모델을 읽지 못해 코드 인형으로 그려요: ${url}`, err));
   }
@@ -621,6 +660,12 @@ export class Office3D {
     this.scene.add(g);
     return g;
   }
+  private restBench(x: number, z: number, width: number, face: 1 | -1): void {
+    const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y = face > 0 ? 0 : Math.PI; this.scene.add(g);
+    this.box(width,0.08,0.48,0xa4b4a6,0,0.42,0,g);
+    this.box(width,0.3,0.06,0x8b9f91,0,0.68,-0.23,g);
+    for (const side of [-1,1]) for (const depth of [-0.16,0.16]) this.box(0.045,0.38,0.045,0x53655c,side*(width/2-0.12),0.19,depth,g);
+  }
   private monitor(x: number, z: number, face: 1 | -1, yaw = 0, kind: 'code' | 'doc' | 'chart' | 'chat' | null = 'doc', arm = false): void {
     const g = new THREE.Group();
     g.position.set(x, 0.77, z);
@@ -759,10 +804,16 @@ export class Office3D {
   }
   private deskStuff(sx: number, deskZ: number, face: 1 | -1, seed: number, name: string | null): void {
     const k = rnd(seed);
-    this.flat(0.26, 0.004, 0.22, 0x2e3436, sx + 0.33, 0.777, deskZ + 0.13 * face);
-    this.box(0.06, 0.02, 0.1, 0xdad5cb, sx + 0.33, 0.788, deskZ + 0.13 * face);
-    this.box(0.44, 0.02, 0.14, 0xe4dfd5, sx, 0.785, deskZ + 0.13 * face);
-    for (let r = 0; r < 4; r++) this.flat(0.4, 0.003, 0.018, 0xc9c3b8, sx, 0.797, deskZ + 0.13 * face + (r - 1.5) * 0.028);
+    const input = new THREE.Group();
+    input.position.set(sx, 0.812, deskZ + 0.08 * face);
+    input.rotation.y = face > 0 ? 0 : Math.PI;
+    this.scene.add(input);
+    input.add(buildKeyboard(color => this.mat(color), this.keyboardLegends));
+    // Layered stitched pad and a sculpted wireless mouse, on the user's right.
+    this.box(0.232, 0.003, 0.204, 0x758b89, -0.34, 0.0015, 0, input);
+    this.box(0.224, 0.002, 0.196, 0x344848, -0.34, 0.004, 0, input);
+    const mouse = buildMouse(color => this.mat(color));
+    mouse.position.set(-0.34, 0.005, 0.005); input.add(mouse);
     if (k < 0.75) this.mug(sx - 0.4, deskZ + 0.15 * face, [0xffffff, 0xe07a5f, 0x3e7bd6, 0x2f2f2f][Math.floor(k * 4)]!, k * 6);
     if (k > 0.3) this.box(0.15, 0.012, 0.21, [0x2f5d8a, 0x7a4e8c, 0xc9b796][Math.floor(k * 3)]!, sx - 0.55, 0.782, deskZ + 0.3 * face).rotation.y = 0.2;
     if (k > 0.55) {
@@ -1005,6 +1056,9 @@ export class Office3D {
     ct.scale.z = 0.42;
     this.tallPlant(22.2, 7.9);
     this.tallPlant(16.5, 10.9);
+    this.restBench(21.275,8.25,1.8,1);
+    this.restBench(21.275,10.35,1.8,-1);
+    this.restBench(18.8,18.2,2.6,-1);
     // 폰 부스
     for (const bx of [23.0, 24.4]) {
       this.glassRoom(bx, 7.9, bx + 1.2, 9.4, { side: 's', at: bx + 0.6 }, 2.2);

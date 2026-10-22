@@ -1,6 +1,6 @@
 // 폭주 방지 (DESIGN.md 5장 핵심 규칙).
 // - 핑퐁 차단: 같은 담당자·검토자 쌍이 상태 변화 없이 연속으로 주고받으면 guard.pingpong.
-// - 턴·토큰 상한: 넘으면 paused(cap). 자동으로 풀리지 않는다.
+// - 턴·토큰 상한: 넘으면 paused(cap). 새 한도 창의 자동 재개는 quota-recovery.ts가 맡는다.
 import { eq } from 'drizzle-orm';
 import type { MessageKind, ReasonCategory } from '@ai-office/shared';
 import { emit, inTx, newId, nowIso, type Ctx } from '../context.ts';

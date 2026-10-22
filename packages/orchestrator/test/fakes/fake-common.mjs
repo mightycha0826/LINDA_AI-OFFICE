@@ -35,6 +35,7 @@ export function criteriaFrom(prompt) {
 export function outputFor(schema, prompt) {
   if (process.env.FAKE_OUTPUT) return JSON.parse(process.env.FAKE_OUTPUT);
   const props = Object.keys(schema?.properties ?? {});
+  if (props.includes('understanding')) return { understanding: '기능 파일과 테스트 요구사항을 이해했어요', questions: [] };
   if (props.includes('verdict')) {
     return { verdict: 'pass', criteria: criteriaFrom(prompt).map((criterion) => ({ criterion, pass: true })), fixRequests: [] };
   }

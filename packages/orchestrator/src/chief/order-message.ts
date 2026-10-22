@@ -9,9 +9,13 @@ const KEY = 'chief.lastCeoMessage';
 /** 이보다 오래된 메시지 ID는 지시 등록에 쓰지 않는다 */
 export const ORDER_MESSAGE_MAX_AGE_MS = 10 * 60_000;
 
-interface LastMessage {
+export interface LastMessage {
   id: string;
   at: string;
+}
+
+export function lastCeoMessage(c: Ctx): LastMessage | null {
+  return getState<LastMessage | null>(c, KEY, null);
 }
 
 export interface IncomingMessage {
@@ -34,7 +38,7 @@ export function onDiscordMessage(c: Ctx, m: IncomingMessage): void {
 /** create_order에 쓸 메시지 ID. 넣은 ID가 있으면 그것, 없으면 #비서실 주인 마지막 메시지(10분 이내). */
 export function resolveOrderMessageId(c: Ctx, provided: string | undefined): { id: string; source: 'provided' | 'last-ceo-message' } {
   if (provided) return { id: provided, source: 'provided' };
-  const last = getState<LastMessage | null>(c, KEY, null);
+  const last = lastCeoMessage(c);
   if (!last) throw new OfficeError('no-message-id', '#비서실에서 주인 메시지를 찾지 못해 지시를 등록하지 않았어요. 주인에게 다시 말해 달라고 하거나 /지시를 안내하세요');
   if (c.clock.now().getTime() - new Date(last.at).getTime() > ORDER_MESSAGE_MAX_AGE_MS) {
     throw new OfficeError('stale-message-id', '#비서실의 주인 마지막 메시지가 10분보다 오래돼 지시를 등록하지 않았어요. 주인에게 다시 말해 달라고 하거나 /지시를 안내하세요');

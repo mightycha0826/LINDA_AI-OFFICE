@@ -9,6 +9,7 @@ import type { UsageBudget, UsageProvider, UsageSource } from '@ai-office/shared'
 import { emit, getState, inTx, isStopped, newId, nowIso, setState, type Ctx } from '../context.ts';
 import { employees, tickets, usage } from '../db/schema.ts';
 import { applyTicketEvent } from './tickets.ts';
+import { quotaResetAt } from './quota-window.ts';
 
 export type EmployeeRow = typeof employees.$inferSelect;
 type LimitedBudget = Exclude<UsageBudget, 'local'>;
@@ -46,7 +47,9 @@ export function limitOf(c: Ctx, b: LimitedBudget, window: keyof typeof WINDOWS):
 }
 
 export function usedPct(c: Ctx, b: UsageBudget, window: keyof typeof WINDOWS): number {
-  const since = new Date(c.clock.now().getTime() - WINDOWS[window]).toISOString();
+  const provider = b === 'local' ? null : providerOf(b) as 'claude' | 'gpt';
+  const reset = provider ? quotaResetAt(c,provider,window) : 0;
+  const since = new Date(Math.max(c.clock.now().getTime() - WINDOWS[window],reset)).toISOString();
   const row = c.db
     .select({ total: sum(window === 'fiveHour' ? usage.estimatedPct : usage.estimatedWeeklyPct) })
     .from(usage)

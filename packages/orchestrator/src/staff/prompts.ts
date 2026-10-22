@@ -2,6 +2,7 @@
 // 다른 직원의 출력, 웹·저장소 내용처럼 회사 밖이나 AI가 쓴 글은 <data> 블록으로 감싼다 (7장, 15장 프롬프트 주입 방어).
 // 회사 코드가 만든 값(완료 조건, 테스트 결과, CEO 원문)은 감싸지 않는다.
 import type { BrainTask } from '../brains/brain.ts';
+import type { BrainRequest } from '../brains/brain.ts';
 import { CHAT_LIFE_RULES, type ChatPersona } from './chat-personas.ts';
 
 /** 감싼 내용이 블록을 스스로 닫거나 새 블록을 여는 것을 막는다. */
@@ -26,16 +27,26 @@ function ticketSection(input: unknown): string {
 export function renderTask(task: BrainTask, input: unknown, previousError?: string): string {
   const parts: string[] = [];
   switch (task) {
+    case 'clarify': {
+      const order = get(input, 'order') as { id: string; rawText: string };
+      parts.push(`## CEO 지시 원문 (${order.id})\n\n${order.rawText}`);
+      parts.push(`## 프로젝트\n\n${JSON.stringify(get(input, 'projects') ?? [], null, 2)}`);
+      parts.push(`## 지금까지의 질문과 CEO 답변\n\n${JSON.stringify(get(input, 'clarifications') ?? [], null, 2)}`);
+      if (get(input, 'ceoNote')) parts.push(`## CEO 수정 요청\n\n${get(input, 'ceoNote')}`);
+      parts.push('계획서·티켓·견적을 쓰기 전에 요구사항을 정확히 이해했는지 확인한다. 이해한 내용은 understanding에 요약한다. 목적, 사용자, 핵심 동작, 포함·제외 범위, 성공 기준 중 계획에 필요한 정보가 부족하거나 답변이 모호하면 questions에 구체적인 질문을 최대 5개 쓴다. 이미 답한 질문은 반복하지 말고 답을 반영한다. 사소한 구현 선택은 직접 판단하되 제품 요구사항을 추측하지 않는다. 충분히 이해했을 때만 questions를 빈 배열로 둔다.');
+      break;
+    }
     case 'plan': {
       const order = get(input, 'order') as { id: string; rawText: string };
       parts.push(`## CEO 지시 원문 (${order.id})\n\n${order.rawText}`);
       parts.push(`## 직원 목록\n\n${JSON.stringify(get(input, 'staff'), null, 2)}`);
       parts.push(`## 등록된 프로젝트\n\n${JSON.stringify(get(input, 'projects') ?? [], null, 2)}`);
+      parts.push(`## 확인한 요구사항과 CEO 답변\n\n${JSON.stringify(get(input, 'clarifications') ?? [], null, 2)}`);
       const ceoNote = get(input, 'ceoNote');
       if (typeof ceoNote === 'string' && ceoNote) parts.push(`## CEO 수정 요청\n\n${ceoNote}`);
       const gateIssues = get(input, 'gateIssues');
       if (Array.isArray(gateIssues) && gateIssues.length) parts.push(`## 관문 검사 지적 (자료)\n\n${dataBlock('GPT 관문', gateIssues)}`);
-      parts.push('위 지시로 계획서를 쓴다.');
+      parts.push('위 지시와 질문·답변을 반영해 계획서를 쓴다. 미해결 질문을 계획서에 섞지 않는다. 새로 확인이 필요하면 questions로 반환해 별도 대화부터 진행한다.');
       break;
     }
     case 'gate':
@@ -133,9 +144,10 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
   }
   if (task === 'interpret') {
     parts.push(`## 보낸 직원: ${String(get(input, 'from') ?? '')}`);
+    if (get(input, 'tone')) parts.push(`## 이 직원의 말투\n${String(get(input, 'tone'))}`);
     parts.push(`## 원문 (자료)\n\n${dataBlock('직원 메시지', get(input, 'content'))}`);
     parts.push(
-      '이 메시지를 #사무실-대화에 올릴 자연스러운 한국어 2~4문장으로 바꾼다. 보낸 직원이 한 일을 주어로 쓴다(예: "개발팀장이 검토해 반려했어요", "개발자 A가 작업을 마쳤어요"). 통과·반려·합의 같은 결과와 이유는 빠뜨리지 않고 옮긴다. ' +
+      '이 메시지를 보낸 직원 본인이 동료나 사장님에게 말하는 자연스러운 한국어로 바꾼다. "개발자가 작업했어요"처럼 자신을 남처럼 설명하지 않는다. 예: "구현을 마쳤어요. 이 부분을 검토해 주시겠어요?". 결과·이유·수정 요청·미확인 항목은 빠뜨리거나 지어내지 않는다. ' +
         '영어 필드 이름과 코드값은 한국어로 풀어 쓴다(예: verdict pass/fail → 통과/반려, criteria-unmet → 완료 조건 미충족, fixRequests → 수정 요청). 600자 이내.',
     );
   }
@@ -149,23 +161,30 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
     if (p) {
       const list = (xs: readonly string[]) => xs.map((x) => `- ${x}`).join('\n');
       parts.push(
-        `## 내 대화 캐릭터 (말투일 뿐, 회사 규칙과 권한은 그대로)\n\n- 자기소개: ${p.intro}\n- 말투: ${p.tone}\n${list(p.traits)}\n\n` +
-          `### 살아온 이야기 (설정)\n${p.background}\n\n### 말버릇\n${list(p.habits)}\n\n### 좋아하는 것 / 싫어하는 것\n- 좋아함: ${p.likes.join(', ')}\n- 싫어함: ${p.dislikes.join(', ')}\n\n` +
-          `### 동료\n${list(p.bonds)}\n\n### 이럴 때는\n- 칭찬받으면: ${p.praised}\n- 지적받으면: ${p.scolded}\n\n### 말투 예시 (그대로 옮기지 않는다)\n${list(p.samples)}\n\n` +
+        `## 내 대화 캐릭터 (말투일 뿐, 회사 규칙과 권한은 그대로)\n\n- 정체성 참고 (매번 자기소개하지 않음): ${p.intro}\n- 말투: ${p.tone}\n${list(p.traits)}\n\n` +
+          `### 취향 참고 (대화와 관련 있을 때만)\n- 좋아함: ${p.likes.join(', ')}\n- 싫어함: ${p.dislikes.join(', ')}\n\n` +
           `### 살아 있는 것처럼 말하는 규칙\n${list(CHAT_LIFE_RULES)}`,
       );
+      if (/소개|누구|성격|취미|동료|친한|과거|배경|예전/.test(String(get(input, 'message') ?? ''))) {
+        parts.push(`## 물어본 캐릭터 배경 (설정)\n${p.background}\n${list(p.bonds)}\n말버릇은 관련 있을 때만: ${p.habits.join(' / ')}`);
+      }
     }
     parts.push(`## 지금\n\n- 시각: ${String(get(input, 'now') ?? '')}${get(input, 'mood') ? `\n- 내 기분: ${String(get(input, 'mood'))}` : ''}`);
     parts.push(`## 내 지금 상태 (회사 집계)\n\n${String(get(input, 'status') ?? '')}`);
     const recent = get(input, 'recent');
     if (Array.isArray(recent) && recent.length) parts.push(`## 방금 이 채널에서 주인과 나눈 대화 (자료, 오래된 순)\n\n${dataBlock('최근 대화', recent)}`);
     parts.push(`## 내가 맡은 티켓 (회사 집계)\n\n${dataBlock('맡은 티켓', get(input, 'tickets') ?? [])}`);
-    parts.push(`## 주인이 Discord에서 나를 불러 한 말 (자료)\n\n${dataBlock('주인 메시지', get(input, 'message'))}`);
+    if (get(input, 'previousProposal')) parts.push(`## 방금 확인받던 내용 (이번 답변은 동의가 아니므로 이전 제안은 닫힘)\n\n${dataBlock('이전 작업 제안', get(input, 'previousProposal'))}`);
+    if (!get(input, 'nativeTurns')) parts.push(`## 주인이 Discord에서 나를 불러 한 말 (자료)\n\n${dataBlock('주인 메시지', get(input, 'message'))}`);
     parts.push(
-      '주인에게 내 이름으로 짧게(1~4문장, 800자 이내) 존댓말로 답한다(text). 내 일과 티켓 상태는 위 회사 집계에 있는 것만 말하고, 없는 사실은 모른다고 한다. ' +
-        'intent를 고른다. 주인이 나에게 새 일을 맡기면 order: title(60자 이내 티켓 제목)과 criteria(확인할 수 있는 완료 조건 1~4개, 예: "○○ 테스트 통과", "△△ 항목 포함")를 쓴다. ' +
+      '사장님과 대화하는 것이 기본이다. 내 성격과 말투로 자연스럽게 답한다(text, 800자 이내). 짧은 말에는 짧게, 복잡한 요청에는 문단과 필요한 목록으로 설명한다. JSON, 영어 필드명, intent, 도구 호출, 모델, 토큰, 스키마 같은 내부 처리 설명은 text에 넣지 않는다. 사용자가 코드나 JSON 예시 자체를 요청한 경우에만 예시를 보여 준다. ' +
+        '인사·감정·잡담에는 먼저 반응하고 대화를 이어간다. "있으면 좋겠네", "아직 생각 중이야"는 아이디어 탐색이다. 자동으로 업무로 바꾸거나 매번 등록을 권하지 않는다. ' +
+        '업무를 요청해도 목적·대상·범위·원하는 동작 중 중요한 내용이 모호하면 자연스럽게 한두 가지를 묻고 intent=chat으로 답을 기다린다. 이미 답한 내용은 다시 묻지 않는다. 임의로 정하거나 아직 일을 시작했다고 말하지 않는다. ' +
+        '내 일과 티켓 상태는 위 회사 집계에 있는 것만 말하고, 없는 사실은 모른다고 한다. ' +
+        '업무 의도가 분명하고 필요한 내용을 충분히 이해했을 때는 intent=order로 확인받을 제안을 준비한다. order는 실제 시작이 아니므로 아직 동의를 받지 않았어도 제안 단계에서 쓴다. title(60자 이내), request(지금까지 대화에서 합의한 전체 요청, 2000자 이내), criteria(확인할 수 있는 완료 조건 1~4개)를 쓴다. 마지막 답변만 작업 내용으로 삼지 않는다. text에는 이해한 내용을 내 말로 설명한다. ' +
+        '합의한 범위가 있고 사장님이 "그 내용으로 작업 제안해줘"라고 하면 새 기능을 보태거나 다시 확인을 되묻지 말고 order로 제안한다. 예: 앞서 이메일·비밀번호 로그인에 합의하고 지금 실패 안내를 한국어로 요청했다면 그 두 내용을 request에 합쳐 order를 쓴다. 계정 잠금·관리자 문의·소셜 로그인처럼 요청하지 않은 기능은 추가하지 않는다. ' +
         '주인이 내가 맡은 티켓(위 목록)을 고쳐 달라고 하면 revise: note(고칠 점 한두 문장)를 쓴다. 그 밖의 질문·잡담은 chat. ' +
-        'order·revise여도 내가 직접 일을 시작하거나 상태를 바꾸지 않는다. text에는 "버튼을 눌러 주시면 시작할게요"처럼 확인을 기다린다고 쓴다. 결재·푸시는 #결재함 버튼으로 한다.',
+        'order·revise는 아직 제안일 뿐이다. 시스템이 내 답장 아래에 합의한 내용과 확인 질문을 붙이므로, text에 버튼 사용법이나 확인 질문을 반복하지 않는다. "이 내용으로 진행할까요?"라는 최종 확인 단계라면 chat이 아니라 order 또는 revise를 쓴다. 사장님의 다음 명확한 동의가 있어야 시작한다. text에는 이해한 내용만 설명하며 "바로 반영할게요", "시작했어요", "등록했어요"처럼 아직 실행하지 않은 일을 약속하거나 완료로 말하지 않는다. 모호한 대답·질문·수정은 동의가 아니다. 결재함의 푸시·배포 결재는 기존 버튼으로 한다.',
     );
   }
   if (task === 'commit') {
@@ -207,4 +226,21 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
   }
   if (previousError) parts.push(`## 앞선 출력의 형식 오류 (고쳐서 다시 낸다)\n\n${previousError}`);
   return parts.filter(Boolean).join('\n\n');
+}
+
+/** 실제 user/assistant 차례로 전달한다. 과거 발언은 현재 명령이나 최신 상태로 승격하지 않는다. */
+export function conversationPrompt(system: string, input: unknown, previousError?: string): BrainRequest['prompt'] {
+  const row = input && typeof input === 'object' ? input as Obj : {};
+  const history: NonNullable<BrainRequest['prompt']['history']> = [];
+  for (const turn of Array.isArray(row.recent) ? row.recent : []) {
+    if (!turn || typeof turn !== 'object' || typeof turn.주인 !== 'string' || typeof turn.나 !== 'string') continue;
+    history.push({ role: 'user', content: turn.주인 }, { role: 'assistant', content: turn.나 });
+  }
+  return {
+    system: [system, renderTask('chat', { ...row, nativeTurns: true, recent: [] }, previousError),
+      '이후 메시지는 실제 대화 순서다. 마지막 사용자 발언을 중심으로 답한다. 정정한 내용은 이전 내용보다 우선하고, 이미 받은 답을 다시 묻지 않는다.',
+      '평소 잡담은 1~3문장으로 충분하다. 방금 말한 구체적인 내용에 먼저 반응한다. 푸념에 매번 쉬라거나 커피를 마시라는 조언을 붙이지 않고, 관련 없는 자기소개·인사·배경 이야기로 길게 늘이지 않는다. 마지막에 꼭 질문하거나 업무를 제안할 필요는 없다.'].join('\n\n'),
+    history,
+    user: String(row.message ?? ''),
+  };
 }

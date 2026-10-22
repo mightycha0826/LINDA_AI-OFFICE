@@ -2,10 +2,11 @@
 // 상태 전환은 core/plans.ts의 규칙 함수만 한다. 형식 오류·호출 실패가 두 번이면 멈추고 CEO의 [다시 시도]를 기다린다.
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { brainModel, DesignComboOutputSchema, GateOutputSchema, PmPlanOutputSchema } from '@ai-office/shared';
+import { brainModel, DesignComboOutputSchema, GateOutputSchema, PmClarificationOutputSchema, PmPlanOutputSchema } from '@ai-office/shared';
 import { BrainError } from '../brains/brain.ts';
 import { emit, getState, inTx, setState, type Ctx } from '../context.ts';
 import { isGuest } from '../core/budget.ts';
+import { askClarification, clarificationKey, clarificationOf } from '../core/clarifications.ts';
 import { recordMessage } from '../core/guards.ts';
 import { checkPlanRules, createPlanVersion, fixReviewers, GATE_REVIEWER_ID, latestPlan, recordGateResult, setDesignCombo, startGateReview, type PlanRow } from '../core/plans.ts';
 import { employees, orders } from '../db/schema.ts';
@@ -39,6 +40,11 @@ export class Planning {
     if (getState<unknown>(c, planBlockedKey(orderId), null)) return false; // 형식 오류로 멈춤. CEO가 다시 시도해야 한다
     const plan = latestPlan(c, orderId);
     try {
+      if (clarificationOf(c, orderId).rounds.at(-1)?.answer === null) return false;
+      if (plan?.questions.length && ['draft', 'gate-review', 'revision-requested'].includes(plan.status)) {
+        askClarification(c, orderId, plan.questions);
+        return true;
+      }
       if (plan?.status === 'draft') {
         // 디자인 시스템 담당이 필요하면 관문 전에 조합부터 고른다 (6장)
         if (needsDesignCombo(plan.tempStaff) && !plan.designCombo) await this.chooseDesignCombo(plan);
@@ -46,7 +52,7 @@ export class Planning {
         return true;
       }
       if (plan?.status === 'gate-review') return await this.gate(plan);
-      if (plan && plan.status !== 'revision-requested') return false;
+      if (plan && !['revision-requested', 'superseded'].includes(plan.status)) return false;
       return await this.write(orderId, plan);
     } catch (err) {
       if (isQuiet(err)) {
@@ -95,15 +101,32 @@ export class Planning {
       order: { id: order.id, rawText: order.rawText },
       staff,
       projects,
+      clarifications: clarificationOf(c, orderId).rounds,
       ...(order.projectId ? { fixedProjectId: order.projectId } : {}),
       ...(plan && !afterGateRejection ? { ceoNote: plan.ceoNote ?? '' } : {}),
       ...(plan && afterGateRejection ? { gateIssues: plan.gateResult?.issues ?? [] } : {}),
     };
+    const clarification = clarificationOf(c, orderId);
+    if (!clarification.ready || (plan?.status === 'revision-requested' && plan.ceoNote && getState(c, `clarifiedRevision:${orderId}`, '') !== plan.id)) {
+      const assessment = await this.calls.call(pm, 'clarify', PmClarificationOutputSchema, input, { orderId }, {
+        ...(isCloud(pm) ? { workdir: this.workspace.sandbox(`clarify-${orderId}`) } : {}),
+      });
+      if (assessment.questions.length) askClarification(c, orderId, assessment.questions);
+      else {
+        setState(c, clarificationKey(orderId), { ...clarification, ready: true });
+        if (plan) setState(c, `clarifiedRevision:${orderId}`, plan.id);
+      }
+      return true;
+    }
     const out = await this.calls.call(pm, 'plan', PmPlanOutputSchema, input, { orderId }, {
-      check: (o: z.infer<typeof PmPlanOutputSchema>) => checkPlanRules(c, fixReviewers(c, o).out, order.projectId),
+      check: (o: z.infer<typeof PmPlanOutputSchema>) => o.questions.length ? [] : checkPlanRules(c, fixReviewers(c, o).out, order.projectId),
       // 클라우드 PM(7-1부터 Claude)은 빈 샌드박스에서 읽기 전용으로 쓴다
       ...(isCloud(pm) ? { workdir: this.workspace.sandbox(`plan-${orderId}`) } : {}),
     });
+    if (out.questions.length) {
+      askClarification(c, orderId, out.questions);
+      return true;
+    }
     const created = createPlanVersion(c, orderId, out, { afterGateRejection });
     if (!needsDesignCombo(created.tempStaff)) startGateReview(c, created.id);
     this.log(`${created.id} v${created.version} 작성`);

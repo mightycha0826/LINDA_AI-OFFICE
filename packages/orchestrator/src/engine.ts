@@ -18,13 +18,15 @@ import { clearState, emit, inTx, isStopped, type Ctx } from './context.ts';
 import { decideApproval, type DecideInput } from './core/approvals.ts';
 import { enforceBudgets, type EmployeeRow } from './core/budget.ts';
 import { enforceGuests } from './core/guests.ts';
+import { recoverQuotaPaused, type QuotaRecoveryResult } from './core/quota-recovery.ts';
+import { askClarification } from './core/clarifications.ts';
 import { recordMessage } from './core/guards.ts';
 import { registerOrder } from './core/orders.ts';
 import { GATE_REVIEWER_ID } from './core/plans.ts';
 import { resumeAll, stopAll } from './core/stop.ts';
 import { applyTicketEvent, getTicket } from './core/tickets.ts';
 import type { TicketEvent } from './core/transitions.ts';
-import { employees, orders, tickets } from './db/schema.ts';
+import { employees, orders, plans, tickets } from './db/schema.ts';
 import { BrainCalls, isQuiet } from './engine/brain-calls.ts';
 import { Planning, planBlockedKey } from './engine/planning.ts';
 import { TicketWork } from './engine/ticket-work.ts';
@@ -72,7 +74,7 @@ export class Engine {
 
   // --- 바깥(결재 봇, 비서실장)에서 들어오는 요청 ----------------------------
 
-  submitOrder(input: { discordMessageId: string; rawText: string; projectId?: string }) {
+  submitOrder(input: { discordMessageId: string; rawText: string; projectId?: string; channelId?: string }) {
     return registerOrder(this.c, input);
   }
 
@@ -174,10 +176,25 @@ export class Engine {
 
   // --- 한 바퀴 ----------------------------------------------------------------
 
+  /** 30분마다 호출. 계정 한도가 회복된 상한 대기 작업에 새 작업 몫을 준다. */
+  recoverQuotas(): QuotaRecoveryResult {
+    if (!this.connectivity.isOnline()) return {checked:false,resumed:[]};
+    const result = recoverQuotaPaused(this.c,e => this.calls.spendMode(e) === 'ok');
+    if (result.checked) this.log(`30분 한도 점검: 자동 재개 ${result.resumed.length}건${result.resumed.length ? ` (${result.resumed.join(', ')})` : ''}`);
+    return result;
+  }
+
   /** 할 수 있는 일을 한 바퀴 돈다. 실제로 한 일의 수를 돌려준다. */
   async step(): Promise<number> {
     if (isStopped(this.c)) return 0;
     let actions = (await this.connectivity.refresh()).length;
+    // 업데이트 전에 이미 결재함에 올라온 미해결 질문도 별도 대화로 옮긴다.
+    for (const plan of this.c.db.select().from(plans).where(eq(plans.status, 'awaiting-ceo')).all()) {
+      if (plan.questions.length) {
+        askClarification(this.c, plan.orderId, plan.questions);
+        actions++;
+      }
+    }
     const budget = enforceBudgets(this.c);
     actions += budget.paused.length + budget.resumed.length;
     // 파견 직원(친구 계정): 퇴근·한도 70%면 멈추고, 출근·여유가 생기면 이어간다

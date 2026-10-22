@@ -171,7 +171,8 @@ describe('7-5 거울 통역사', () => {
     const { recordMessage } = await import('../src/core/guards.ts');
     recordMessage(s.ctx, { ticketId: tk!.id, orderId: tk!.orderId, fromId: 'reviewer', kind: 'chat', content: '{"a":1}', countsForPingpong: false });
     await m.flush();
-    expect(port.posts.at(-1)!.content).toContain('{"a":1}');
+    expect(port.posts.at(-1)!.content).toContain('**a**: 1');
+    expect(port.posts.at(-1)!.content).not.toContain('{"a":1}');
   });
 });
 

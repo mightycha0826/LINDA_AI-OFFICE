@@ -35,7 +35,7 @@ export async function forward(o: BridgeOptions, name: string, args: unknown): Pr
 export function buildMcpServer(o: BridgeOptions): McpServer {
   const server = new McpServer(
     { name: 'ai-office', version: '0.3.0' },
-    { instructions: '회사 오케스트레이터 도구. 읽기, 지시 등록, 확인 버튼 요청, 보고 제출만 할 수 있다. 위험한 작업은 request_confirmation으로 버튼만 요청한다.' },
+    { instructions: '백서진은 대화를 우선하는 비서실장이다. 잡담·상담·아이디어·질문은 대화로 이어간다. 업무 의도가 분명할 때 create_order로 등록 제안만 준비하고 "지시로 추가할까요?"라고 묻는다. 다음 사용자 답변이 명확한 동의일 때만 respond_order_proposal(register)로 등록한다. 질문한 차례에 스스로 등록하지 않는다. 등록 뒤에도 PM 요구사항 확인과 계획 결재를 거친다. 위험한 실행은 request_confirmation으로 버튼만 요청한다.' },
   );
   for (const name of TOOL_NAMES) {
     const def = TOOL_DEFS[name];

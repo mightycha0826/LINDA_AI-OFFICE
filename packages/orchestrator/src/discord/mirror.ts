@@ -8,9 +8,13 @@
 import { eq, gt } from 'drizzle-orm';
 import { getState, setState, type Ctx } from '../context.ts';
 import { originOfOrder } from '../core/direct.ts';
-import { employees, events, meetingMinutes, messages, tickets } from '../db/schema.ts';
+import { employees, events, meetingMinutes, messages, orders, plans, tickets } from '../db/schema.ts';
 import { clip, minutesText } from './messages.ts';
 import type { MirrorPort } from './types.ts';
+import { readableDiscordText } from './format.ts';
+import { projectChannel } from './project-channels.ts';
+import { roleBotFor } from './staff-bots.ts';
+import { staffUpdate } from '../staff/voice.ts';
 
 /** 직접 지시 채널에 알리는 상태 변화 */
 const STATUS_LINE: Partial<Record<string, string>> = {
@@ -38,14 +42,14 @@ export class Mirror {
   private readonly port: MirrorPort;
   private readonly maxPerFlush: number;
   private readonly log: (s: string) => void;
-  private readonly interpret: ((from: string, content: string) => Promise<string | null>) | undefined;
+  private readonly interpret: ((from: string, content: string, employeeId: string) => Promise<string | null>) | undefined;
   private readonly direct: DirectChannelRoute | undefined;
 
-  /** interpret: 거울 통역사 (16장 7-5). JSON 메시지를 문장으로. 없거나 실패하면 원문(앞부분)을 그대로 */
+  /** interpret가 없거나 실패해도 로컬 포맷터로 읽기 쉽게 표시한다. */
   constructor(
     c: Ctx,
     port: MirrorPort,
-    opts: { maxPerFlush?: number; log?: (s: string) => void; interpret?: (from: string, content: string) => Promise<string | null>; direct?: DirectChannelRoute } = {},
+    opts: { maxPerFlush?: number; log?: (s: string) => void; interpret?: (from: string, content: string, employeeId: string) => Promise<string | null>; direct?: DirectChannelRoute } = {},
   ) {
     this.c = c;
     this.port = port;
@@ -59,7 +63,10 @@ export class Mirror {
   private originChannel(ticketId: string): string | null {
     if (!this.direct) return null;
     const t = this.c.db.select().from(tickets).where(eq(tickets.id, ticketId)).get();
-    return t ? (originOfOrder(this.c, t.orderId)?.channelId ?? null) : null;
+    if (!t) return null;
+    const projectId = this.c.db.select().from(plans).where(eq(plans.id, t.planId)).get()?.projectId
+      ?? this.c.db.select().from(orders).where(eq(orders.id, t.orderId)).get()?.projectId;
+    return projectChannel(this.c, projectId, 'mirror') ?? originOfOrder(this.c, t.orderId)?.channelId ?? null;
   }
 
   private async thread(ticketId: string): Promise<string | null> {
@@ -80,13 +87,14 @@ export class Mirror {
 
   /** JSON(앞에 한 줄 표시가 붙은 것 포함)이면 거울 통역사가 문장으로 바꾼다. 아니면 null(원문 그대로) */
   private async readable(fromId: string, content: string): Promise<string | null> {
-    if (!this.interpret || !/(^|\n)\s*[{[]/.test(content)) return null;
+    const fallback = readableDiscordText(content);
+    if (!this.interpret || fallback === content.trim()) return fallback;
     try {
-      const text = await this.interpret(this.name(fromId), content.slice(0, 6000));
-      return text?.trim() ? text.trim() : null;
+      const text = await this.interpret(this.name(fromId), content.slice(0, 6000), fromId);
+      return text?.trim() ? readableDiscordText(text.trim()) : fallback;
     } catch (err) {
-      this.log(`거울 통역 실패(원문으로): ${(err as Error).message}`);
-      return null;
+      this.log(`거울 통역 실패(로컬 서식 사용): ${(err as Error).message}`);
+      return fallback;
     }
   }
 
@@ -105,8 +113,10 @@ export class Mirror {
           const origin = m && this.originChannel(p.ticketId);
           if (m && origin && this.direct) {
             const content = (await this.readable(m.fromId, m.content)) ?? m.content;
+            const ticket = c.db.select().from(tickets).where(eq(tickets.id, p.ticketId)).get();
+            const speaker = roleBotFor(c, m.fromId === 'orchestrator' ? ticket?.assigneeId ?? 'pm' : m.fromId);
             const tag = m.toId && m.toId !== m.fromId ? this.direct.mentionOf(m.toId) : null;
-            await this.direct.post(origin, { username: this.name(m.fromId), employeeId: m.fromId, content: `${tag ? `${tag} ` : ''}${clip(content, c.config.mirror.maxChars, c.config.screenUrl, p.ticketId)}` });
+            await this.direct.post(origin, { username: this.name(speaker), employeeId: speaker, content: `${tag ? `${tag} ` : ''}${clip(content, c.config.mirror.maxChars, c.config.screenUrl, p.ticketId)}` });
             sent++;
             setState(c, CURSOR, ev.seq);
             continue;
@@ -121,7 +131,8 @@ export class Mirror {
           const m = c.db.select().from(meetingMinutes).where(eq(meetingMinutes.id, String(p.minutesId))).get();
           const origin = m && this.originChannel(p.ticketId);
           if (m && origin && this.direct) {
-            await this.direct.post(origin, { username: '회의록', content: minutesText(m) });
+            const ticket = c.db.select().from(tickets).where(eq(tickets.id, p.ticketId)).get();
+            await this.direct.post(origin, { username: '회의록', employeeId: roleBotFor(c, ticket?.reviewerId ?? 'pm'), content: minutesText(m) });
             sent++;
             setState(c, CURSOR, ev.seq);
             continue;
@@ -134,7 +145,9 @@ export class Mirror {
         } else if (ev.type === 'ticket.status' && typeof p.ticketId === 'string' && typeof p.to === 'string' && STATUS_LINE[p.to]) {
           const origin = this.originChannel(p.ticketId);
           if (origin && this.direct) {
-            await this.direct.post(origin, { username: '회사 시스템', content: `**${p.ticketId}** ${STATUS_LINE[p.to]}` });
+            const ticket = c.db.select().from(tickets).where(eq(tickets.id, p.ticketId)).get();
+            const speaker = roleBotFor(c, p.to === 'in_review' || p.to === 'meeting' ? ticket?.reviewerId ?? 'reviewer' : ticket?.assigneeId ?? 'pm');
+            await this.direct.post(origin, { username: this.name(speaker), employeeId: speaker, content: `**${p.ticketId}** ${staffUpdate(speaker, p.to)}` });
             sent++;
           }
         }

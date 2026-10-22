@@ -14,7 +14,8 @@ import { OfficeError } from '../errors.ts';
 import { approvalLink, buildReportData } from '../reports.ts';
 import type { ReportService } from './report-service.ts';
 import type { GitCatPort } from '../discord/interactions.ts';
-import { resolveOrderMessageId } from './order-message.ts';
+import { pendingChiefProposal, proposeChiefOrder, respondChiefOrder } from './order-proposals.ts';
+import { readableDiscordText } from '../discord/format.ts';
 import { TOOL_DEFS, type ToolName } from './tool-defs.ts';
 
 export class ChiefTools {
@@ -49,6 +50,7 @@ export class ChiefTools {
           ceoPresence: isCeoPresent(c) ? 'online' : 'away',
           stopped: isStopped(c),
           nextCheck: nextCheckTime(c.config, c.clock.now()),
+          pendingOrderProposal: pendingChiefProposal(c),
         };
       }
       case 'get_ticket': {
@@ -64,7 +66,7 @@ export class ChiefTools {
           reviewer: t.reviewerId,
           reworkCount: t.reworkCount,
           acceptanceCriteria: t.acceptanceCriteria,
-          recent: recent.map((m) => ({ from: m.fromId, kind: m.kind, summary: m.content.slice(0, 200) })),
+          recent: recent.map((m) => ({ from: m.fromId, kind: m.kind, summary: readableDiscordText(m.content).slice(0, 200) })),
         };
       }
       case 'get_pending_approvals':
@@ -74,10 +76,10 @@ export class ChiefTools {
       case 'get_usage':
         return (['dev', 'research', 'review'] as const).map((b) => ({ ...budgetStatus(c, b), estimated: true }));
       case 'create_order': {
-        const messageId = resolveOrderMessageId(c, args.discordMessageId);
-        const { order, created } = this.engine.submitOrder({ discordMessageId: messageId.id, rawText: args.rawText! });
-        return { orderId: order.id, created, status: order.status, discordMessageId: messageId.id, messageIdSource: messageId.source };
+        return proposeChiefOrder(c, { rawText: args.rawText!, ...(args.discordMessageId ? { discordMessageId: args.discordMessageId } : {}), ...(args.projectId ? { projectId: args.projectId } : {}) });
       }
+      case 'respond_order_proposal':
+        return respondChiefOrder(c, args.proposalId!, args.decision as 'register' | 'chat');
       case 'request_confirmation': {
         const t = c.db.select().from(tickets).where(eq(tickets.id, args.targetId!)).get();
         if (!t) return { requested: false, note: `${args.targetId} 티켓이 없어요` };

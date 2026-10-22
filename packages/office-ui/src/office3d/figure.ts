@@ -5,6 +5,8 @@
 import * as THREE from 'three';
 import { mergeBufferGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { shade, type Look } from './characters.ts';
+import { buildSeojin } from './seojin.ts';
+import { buildHand, type Hand } from './hands.ts';
 
 const V3 = THREE.Vector3;
 type V3 = THREE.Vector3;
@@ -43,6 +45,7 @@ export interface Figure {
   torso: THREE.Object3D;
   /** 타이핑·손짓 (팔꿈치 축, rotation.x만 바꾼다) */
   forearms: THREE.Group[];
+  hands: Hand[];
   /** 정수리 높이 (이름표 기준) */
   top: number;
 }
@@ -701,6 +704,7 @@ function eye(c: CanvasRenderingContext2D, ex: number, ey: number, dir: 1 | -1, l
 // ---------- 인형 ----------
 
 export function buildFigure(look: Look, kit: FigureKit): Figure {
+  if (look.portraitModel === 'seojin') return buildSeojin();
   const root = new THREE.Group();
   const jacket = kit.toon(look.jacket);
   const edge = kit.toon(shade(look.jacket, look.suit ? 0.12 : -0.15));
@@ -765,17 +769,20 @@ export function buildFigure(look: Look, kit: FigureKit): Figure {
 
   // 아래팔 (타이핑): 팔꿈치 축, 손은 책상 위로
   const forearms: THREE.Group[] = [];
+  const hands: Hand[] = [];
   for (const s of [-1, 1] as const) {
     const el = new THREE.Group();
     el.position.set(s * 0.215, 0.79, 0.09);
     el.rotation.y = -s * 0.22;
     const tilt = new THREE.Group();
-    tilt.rotation.x = -0.18;
     const fb = new Batch();
-    fb.add(jacket, limb(new V3(0, 0, 0), new V3(0, 0, 0.25), 0.045, 0.038));
-    fb.add(shirt, limb(new V3(0, 0, 0.245), new V3(0, 0, 0.27), 0.04, 0.04));
-    fb.add(skin, ball(0.04, new V3(0, -0.004, 0.305), new V3(0.85, 0.5, 1.25), 12));
+    fb.add(jacket, limb(new V3(0, 0, 0), new V3(0, 0.097, 0.29), 0.043, 0.027));
+    fb.add(shirt, limb(new V3(0, 0.097, 0.285), new V3(0, 0.1, 0.31), 0.028, 0.027));
     fb.into(tilt);
+    const hand = buildHand(s, skin, kit.toon(0xecd6cf));
+    hand.root.position.set(0, 0.1, 0.312);
+    tilt.add(hand.root);
+    hands.push(hand);
     el.add(tilt);
     root.add(el);
     forearms.push(el);
@@ -809,11 +816,12 @@ export function buildFigure(look: Look, kit: FigureKit): Figure {
   }
   root.add(head);
 
-  return { root, head, torso: upper, forearms, top: HEAD_Y + 0.226 * HEAD_SCALE.y };
+  return { root, head, torso: upper, forearms, hands, top: HEAD_Y + 0.226 * HEAD_SCALE.y };
 }
 
 /** 인형이 가진 도형을 버린다 (재질은 FigureKit이 갖고 있다) */
 export function disposeFigure(root: THREE.Object3D): void {
+  (root.userData.disposeMaterials as (() => void) | undefined)?.();
   root.traverse((o) => {
     if (o instanceof THREE.Mesh) o.geometry.dispose();
   });

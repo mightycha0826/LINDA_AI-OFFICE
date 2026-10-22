@@ -6,11 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ChiefTools } from '../src/chief/tools.ts';
+import { onDiscordMessage } from '../src/chief/order-message.ts';
 import { TOOL_NAMES } from '../src/chief/tool-defs.ts';
 import { approvals, orders, tickets } from '../src/db/schema.ts';
 import { startInternalApi } from '../src/http/internal-api.ts';
 import { buildMcpServer } from '../src/mcp/server.ts';
-import { approvedTickets, setup } from './helpers.ts';
+import { CEO, approvedTickets, setup } from './helpers.ts';
 
 const TOKEN = 'a'.repeat(64);
 let server: Server | null = null;
@@ -48,13 +49,17 @@ describe('내부 API', () => {
   });
 
   it('지시 등록은 Discord 메시지 ID가 있어야 하고(넣거나 #비서실 기록), 같은 메시지로는 한 번만', async () => {
-    const s = setup();
+    const s = setup({ config: { discord: { guildId: 'guild', channels: { secretary: 'secretary' } } } });
     const { call } = await api(s);
     // 넣은 ID도 #비서실 기록도 없으면 거부 (자세한 경우는 order-message.test.ts)
     expect((await call('create_order', { rawText: '로그인 추가해줘' })).status).toBe(400);
-    const r1 = (await (await call('create_order', { rawText: '로그인 추가해줘', discordMessageId: '1300000000000000042' })).json()) as { result: { created: boolean } };
-    const r2 = (await (await call('create_order', { rawText: '로그인 추가해줘', discordMessageId: '1300000000000000042' })).json()) as { result: { created: boolean } };
-    expect([r1.result.created, r2.result.created]).toEqual([true, false]);
+    const r1 = (await (await call('create_order', { rawText: '로그인 추가해줘', discordMessageId: '1300000000000000042' })).json()) as { result: { created: boolean; proposalId: string } };
+    const r2 = (await (await call('create_order', { rawText: '로그인 추가해줘', discordMessageId: '1300000000000000042' })).json()) as { result: { created: boolean; proposalId: string } };
+    expect([r1.result.created, r2.result.created]).toEqual([false, false]);
+    expect(r1.result.proposalId).toBe(r2.result.proposalId);
+    expect(s.db.select().from(orders).all()).toHaveLength(0);
+    onDiscordMessage(s.ctx, { guildId: 'guild', channelId: 'secretary', authorId: CEO, messageId: '1300000000000000043' });
+    expect((await call('respond_order_proposal', { proposalId: r1.result.proposalId, decision: 'register' })).status).toBe(200);
     expect(s.db.select().from(orders).all()).toHaveLength(1);
   });
 
@@ -106,13 +111,14 @@ describe('MCP 서버 (헤르메스가 띄움)', () => {
 
     const tools = await client.listTools();
     expect(tools.tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
-    expect(TOOL_NAMES).toHaveLength(8);
+    expect(TOOL_NAMES).toHaveLength(9);
     // 헤르메스는 메시지 ID를 모르니 필수로 알리지 않는다 (비우면 #비서실 기록을 쓴다)
     expect(tools.tools.find((t) => t.name === 'create_order')!.inputSchema.required).toEqual(['rawText']);
 
     const res = await client.callTool({ name: 'create_order', arguments: { rawText: '비밀번호 찾기 추가해줘', discordMessageId: '1300000000000000077' } });
     expect(res.isError).toBeFalsy();
-    expect(s.db.select().from(orders).get()!.rawText).toBe('비밀번호 찾기 추가해줘');
+    expect(JSON.parse((res.content as { text: string }[])[0]!.text)).toMatchObject({ created: false, status: 'awaiting-user-confirmation' });
+    expect(s.db.select().from(orders).all()).toHaveLength(0);
 
     const bad = await client.callTool({ name: 'request_confirmation', arguments: { kind: 'delete', targetId: 'T-1', reason: 'x' } });
     expect(bad.isError).toBe(true); // 이 도구로 삭제는 요청할 수 없다

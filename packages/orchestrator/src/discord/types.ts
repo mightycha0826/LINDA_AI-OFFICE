@@ -12,6 +12,11 @@ export interface Button {
 
 export interface OutgoingMessage {
   channel: ChannelKey;
+  /** 질문은 지시가 들어온 프로젝트 채널로 보낸다. 없으면 channel 설정을 쓴다. */
+  channelId?: string;
+  /** 실제로 이 글을 보내는 역할의 직원 봇 */
+  employeeId?: string;
+  replyToMessageId?: string;
   content: string;
   buttons?: Button[][];
   /** 휴대폰 알림 없이 올린다 (Discord @silent). 점검 시간 밖에는 이렇게 올린다 (10장) */
@@ -40,15 +45,15 @@ export interface MirrorPort {
  * 확인 버튼([맡기고 시작] 등)과 진행 소식을 올린다. 스레드는 열지 않는다
  */
 export interface ChannelReplyPort {
-  reply(channelId: string, replyToMessageId: string, msg: { content: string; buttons?: Button[][] }): Promise<void>;
+  reply(channelId: string, replyToMessageId: string, msg: { content: string; buttons?: Button[][]; employeeId?: string }): Promise<void>;
   post(channelId: string, content: string): Promise<void>;
 }
 
 /** /새프로젝트의 Discord 작업 공간: 카테고리 <프로젝트> › #작업 (9장). 시스템 봇에 채널 관리 권한이 필요하다 */
 export interface ProjectChannelPort {
   /** 같은 이름의 카테고리·#작업이 이미 있으면 그것을 돌려준다(다시 시도해도 두 개 생기지 않음) */
-  createProjectChannels(projectId: string): Promise<{ categoryId: string; channelId: string }>;
-  sendToChannel(channelId: string, content: string): Promise<void>;
+  createProjectChannels(projectId: string): Promise<{ categoryId: string; channelId: string; channels?: import('./project-channels.ts').ProjectChannelMap }>;
+  sendToChannel(channelId: string, content: string, employeeId?: string): Promise<void>;
 }
 
 /** 봇이 받은 상호작용. 클릭한 사람의 Discord ID가 항상 함께 온다 */

@@ -4,6 +4,8 @@ import { inTx, type Ctx } from '../context.ts';
 import { projects } from '../db/schema.ts';
 import { NotFoundError, OfficeError } from '../errors.ts';
 import { isInside } from './paths.ts';
+import { setState } from '../context.ts';
+import { projectChannelsKey, projectChannelsOf, type ProjectChannelMap } from '../discord/project-channels.ts';
 
 export type ProjectRow = typeof projects.$inferSelect;
 
@@ -49,11 +51,13 @@ export function findProject(c: Ctx, id: string): ProjectRow | null {
 /** 프로젝트 #작업 채널에서 온 입력이면 그 프로젝트 (9장) */
 export function projectByChannel(c: Ctx, channelId: string | undefined): ProjectRow | null {
   if (!channelId) return null;
-  return c.db.select().from(projects).where(eq(projects.discordChannelId, channelId)).get() ?? null;
+  return c.db.select().from(projects).where(eq(projects.discordChannelId, channelId)).get()
+    ?? c.db.select().from(projects).all().find((project) => Object.values(projectChannelsOf(c, project.id)).includes(channelId)) ?? null;
 }
 
-export function setProjectChannel(c: Ctx, id: string, ch: { categoryId: string; channelId: string }): void {
+export function setProjectChannel(c: Ctx, id: string, ch: { categoryId: string; channelId: string; channels?: ProjectChannelMap }): void {
   c.db.update(projects).set({ discordCategoryId: ch.categoryId, discordChannelId: ch.channelId }).where(eq(projects.id, id)).run();
+  if (ch.channels) setState(c, projectChannelsKey(id), ch.channels);
 }
 
 export function getProject(c: Ctx, id: string): ProjectRow {

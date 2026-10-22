@@ -10,7 +10,7 @@
 
 - Ollama와 `gemma4:12b` 모델
 - 회사 오케스트레이터 실행 중 (pm2 `ai-office`, 내부 API 127.0.0.1:8790)
-- 회사 MCP 서버: `packages/orchestrator/src/mcp/main.ts`. 도구 8개(get_status, get_ticket, get_pending_approvals, get_report_data, get_usage, create_order, request_confirmation, submit_report)가 실제 사무실에 연결되는 것을 확인했다(2026-10-19).
+- 회사 MCP 서버: `packages/orchestrator/src/mcp/main.ts`. 도구 9개(get_status, get_ticket, get_pending_approvals, get_report_data, get_usage, create_order, respond_order_proposal, request_confirmation, submit_report)가 실제 사무실에 연결된다.
 
 ## 1. 비서실장 봇 만들기 (휴대폰 가능)
 
@@ -100,7 +100,9 @@ hermes gateway
 ```
 
 #비서실에 "지금 회사 상태 알려 줘"라고 적어 본다. 비서실장이 `get_status`를 불러 답하면 연결된 것이다.
-"로그인 기능 만들어 줘"라고 하면 질문 몇 개 뒤 `create_order`로 지시가 등록되고, PM 계획서가 #결재함에 올라온다.
+"로그인 기능 만들어 줘"라고 하면 백서진이 대화 맥락을 확인하고 `create_order`로 등록 제안을 준비한다. 이때는 지시가 생기지 않는다. "이 내용으로 지시를 추가할까요?"라고 묻고 다음 사용자 답변을 기다린다. 사용자가 명확히 동의한 다음 차례에만 `respond_order_proposal(register)`로 등록하고, PM의 요구사항 확인과 계획 결재로 이어진다. 수정하면 새 내용으로 다시 묻고, 거절하면 대화를 이어간다. 인사·고민·아이디어·질문은 기본적으로 대화로 다룬다.
+
+2026-10-22의 대화 중심 지침 원본은 [HERMES-SOUL.md](HERMES-SOUL.md)다. 현재 `%LOCALAPPDATA%\hermes\SOUL.md`에 적용하며 기존 파일은 먼저 백업한다. 변경 후 `hermes gateway restart`로 메모리에 캐시된 지침과 MCP 도구를 새로 읽는다. 기존 대화 이력은 지우지 않는다. 도구에서 같은 차례에 제안과 등록을 연속 호출하면 거부하며, #비서실에 실제 CEO의 후속 메시지가 기록되어야 등록할 수 있다.
 
 0단계 #1(도구 호출 5과제)과 #7(Discord 연결)은 이 상태에서 Claude Code가 함께 확인하고 `stage0\RESULTS.md`에 적는다.
 

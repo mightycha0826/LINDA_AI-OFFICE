@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DevOutputSchema, GateOutputSchema, ReviewOutputSchema, DocOutputSchema } from '@ai-office/shared';
+import { DevOutputSchema, GateOutputSchema, ReviewOutputSchema, DocOutputSchema, StaffChatOutputSchema } from '@ai-office/shared';
+import { conversationPrompt } from '../src/staff/prompts.ts';
 import { BrainError, type BrainRequest } from '../src/brains/brain.ts';
 import { ClaudeCodeBrain } from '../src/brains/claude-code.ts';
 import { CODEX_SANDBOX, CodexBrain } from '../src/brains/codex.ts';
@@ -194,6 +195,17 @@ describe('Codex 어댑터', () => {
 });
 
 describe('Ollama 어댑터', () => {
+  it('대화 이력을 실제 user/assistant 차례로 전송하고 최신 사용자 말을 마지막에 둔다', async () => {
+    const s = setup();
+    const fake = await startFakeOllama({ reply: () => ({ text: '청록으로 정정하셨어요.', intent: 'chat' }) });
+    try {
+      const brain = new OllamaBrain({ host: fake.host, numCtx: 8192, timeoutMs: 5000, keepAlive: '30m', queue: new GpuQueue({ maxWaitMs: 60_000 }) });
+      await brain.call(request(s, { employee: emp(s, 'qa-local'), task: 'chat', schema: StaffChatOutputSchema, prompt: conversationPrompt('회사 규칙', { recent: [{ 주인: '파랑 아니고 청록', 나: '청록으로 기억할게요.' }], message: '내가 고른 색이 뭐였지?' }) }));
+      const body = fake.calls[0]!.body as { messages: { role: string; content: string }[]; options: { temperature: number } };
+      expect(body.messages.slice(1)).toEqual([{ role: 'user', content: '파랑 아니고 청록' }, { role: 'assistant', content: '청록으로 기억할게요.' }, { role: 'user', content: '내가 고른 색이 뭐였지?' }]);
+      expect(body.options.temperature).toBe(0.4);
+    } finally { await fake.close(); }
+  });
   it('JSON 스키마로 구조화 출력을 강제하고, 생각 모드를 끄고, 역할 카드를 system으로 보낸다', async () => {
     const s = setup();
     const fake = await startFakeOllama();

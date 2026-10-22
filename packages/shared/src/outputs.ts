@@ -27,6 +27,12 @@ export const TempStaffRequestSchema = z.object({
 });
 export type TempStaffRequest = z.infer<typeof TempStaffRequestSchema>;
 
+/** 계획 전에 요구사항부터 확인한다. 질문만 내고 티켓·견적은 만들지 않는다. */
+export const PmClarificationOutputSchema = z.object({
+  understanding: text,
+  questions: z.array(text).max(5),
+});
+
 /** PM 계획서. 티켓은 최대 6개 (6장). */
 export const PmPlanOutputSchema = z.object({
   goal: text,
@@ -133,11 +139,13 @@ export type InterpretOutput = z.infer<typeof InterpretOutputSchema>;
 
 /**
  * 직원 봇 대화 (9장, 2026-10-20): 주인이 멘션한 직원 봇의 답. 로컬 Gemma, 참고용.
- * 2026-10-21: intent로 지시·수정을 알아본다. 이것은 제안일 뿐이고, 일이 생기는 것은 주인이 버튼을 눌렀을 때다(core/direct.ts)
+ * intent로 지시·수정을 알아본다. 제안은 다음 명확한 동의 또는 확인 버튼 뒤에만 실행한다(core/direct.ts).
  */
 export const StaffChatOutputSchema = z.object({
   text: text.max(800),
   intent: z.enum(['chat', 'order', 'revise']),
+  /** order: 대화에서 합의한 전체 요청. 마지막 답변 한 줄로 앞선 요구사항을 잃지 않는다. */
+  request: z.string().trim().max(2000).optional(),
   /** order: 티켓 제목 */
   title: z.string().trim().max(60).optional(),
   /** order: 확인할 수 있는 완료 조건 1~4개 */

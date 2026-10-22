@@ -43,7 +43,7 @@ export class NewProjectService {
     } catch (err) {
       const text = `**/새프로젝트 ${input.id} 실패**: ${(err as Error).message}`;
       this.d.log?.(text);
-      await this.d.discord()?.send({ channel: 'blocked', content: text }).catch(() => undefined);
+      await this.d.discord()?.send({ channel: 'blocked', employeeId: 'git-cat', content: text }).catch(() => undefined);
     }
   }
 
@@ -72,7 +72,8 @@ export class NewProjectService {
     await step('안내 올리기', () =>
       channels.sendToChannel(
         ch.channelId,
-        [`**${id}** 프로젝트 작업 공간이에요.`, repoLine, `여기서 \`/지시\`를 쓰면 이 저장소 일로 등록돼요. 결재·보고·막힘은 공용 채널에 올라오고, 계획서 제목에 \`[${id}]\`가 붙어요.`].join('\n'),
+        [`**${id}** 프로젝트 작업 공간이에요.`, repoLine, `여기서 \`/지시\`를 쓰면 이 저장소 일로 등록돼요. PM과 #기획에서 질문·답변을 나누고, 요구사항을 이해한 뒤 #결재함에 계획서를 올려요. #할일에는 담당 AI의 진행 소식, #완료에는 완료 보고, #막힘에는 도움 요청, #사무실-대화에는 작업 대화가 올라와요.`].join('\n'),
+        'pm',
       ),
     );
     return `${id} 프로젝트를 만들었어요 (<#${ch.channelId}>)`;

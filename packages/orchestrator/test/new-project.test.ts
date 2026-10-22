@@ -160,7 +160,7 @@ describe('/새프로젝트', () => {
       channels: () => null,
       discord: () => ({ send: async (m) => (sent.push(m), { messageId: '1', url: 'u' }), edit: async () => {} }),
     }).run({ id: 'todo' });
-    expect(sent).toEqual([{ channel: 'blocked', content: expect.stringContaining('GitHub 저장소 만들기 단계에서 멈췄어요') }]);
+    expect(sent).toEqual([{ channel: 'blocked', employeeId: 'git-cat', content: expect.stringContaining('GitHub 저장소 만들기 단계에서 멈췄어요') }]);
     expect(project(s, 'todo')).toBeUndefined();
   });
 });

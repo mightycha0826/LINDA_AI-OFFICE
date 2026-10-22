@@ -1,19 +1,21 @@
 // 직원 봇 대화 (9장, 2026-10-20 CEO 결정): 주인이 멘션하면 그 직원 이름으로 로컬 Gemma가 답한다
 import { LOCAL_MODEL } from '@ai-office/shared';
+import { QUEUE_PRIORITY } from '../src/brains/gpu-queue.ts';
 import { describe, expect, it } from 'vitest';
 import { stopAll } from '../src/core/stop.ts';
 import { events, tickets } from '../src/db/schema.ts';
-import { CHAT_MAX_INPUT, CHAT_MEMORY_TURNS, chatInput, cleanMessage, StaffChat, type StaffMention } from '../src/discord/staff-chat.ts';
+import { CHAT_MAX_INPUT, CHAT_MEMORY_TURNS, CHAT_MEMORY_MS, chatInput, cleanMessage, StaffChat, type StaffMention } from '../src/discord/staff-chat.ts';
 import { STAFF_BOT_IDS } from '../src/discord/staff-bots.ts';
 import { CHAT_LIFE_RULES, CHAT_PERSONAS, chatMood } from '../src/staff/chat-personas.ts';
 import { PERSONAL_NAMES } from '../src/staff/org.ts';
 import { renderTask } from '../src/staff/prompts.ts';
 import { CEO, STRANGER, approvedTickets, setup, type Setup } from './helpers.ts';
 
+let messageSeq = 0;
 const mention = (s: Setup, over: Partial<StaffMention> = {}): StaffMention => ({
   guildId: s.config.discord.guildId,
   channelId: '400000000000000004',
-  messageId: '500000000000000005',
+  messageId: String(500000000000000000n + BigInt(++messageSeq)),
   authorId: CEO,
   authorIsBot: false,
   mentionsMe: true,
@@ -51,14 +53,24 @@ describe('직원 봇 대화: 누구에게 답하나', () => {
     expect(s.mock.callsFor('chat')).toHaveLength(0);
   });
 
-  it('한 직원은 한 번에 한 질문만 답한다', async () => {
+  it('연달아 보낸 말도 순서대로 답하고 앞선 대화를 두 번째 답변에 전달한다', async () => {
     const s = setup();
     let release!: (v: { text: string; intent: 'chat' }) => void;
-    const chat = new StaffChat(s.ctx, () => new Promise((r) => (release = r)));
+    let started!: () => void;
+    const ready = new Promise<void>((r) => { started = r; });
+    let n = 0;
+    const chat = new StaffChat(s.ctx, (_id, input) => {
+      if (++n === 1) { started(); return new Promise((r) => (release = r)); }
+      expect(input.recent).toEqual([{ 주인: '지금 뭐 해?', 나: '네, 작업 중이에요' }]);
+      return Promise.resolve({ text: '다음 말씀도 들었어요.', intent: 'chat' });
+    });
     const first = chat.answer('dev-a', mention(s));
-    expect((await chat.answer('dev-a', mention(s)))?.text ?? null).toContain('답하는 중');
+    await ready;
+    const second = chat.answer('dev-a', mention(s, { content: '그럼 다음 이야기도 할게' }));
+    expect(n).toBe(1);
     release({ text: '네, 작업 중이에요', intent: 'chat' });
     expect((await first)?.text).toBe('네, 작업 중이에요');
+    expect((await second)?.text).toBe('다음 말씀도 들었어요.');
   });
 
   it('두뇌가 답하지 못하면 상태를 담은 기본 답을 한다', async () => {
@@ -68,7 +80,7 @@ describe('직원 봇 대화: 누구에게 답하나', () => {
     const throwing = new StaffChat(s.ctx, async () => {
       throw new Error('끊김');
     });
-    expect((await throwing.answer('reviewer', mention(s)))?.text ?? null).toContain('답을 만들지 못했어요');
+    expect((await throwing.answer('reviewer', mention(s)))?.text ?? null).toContain('답변이 지연');
   });
 });
 
@@ -81,6 +93,7 @@ describe('직원 봇 대화: 두뇌와 권한', () => {
     const calls = s.mock.callsFor('chat');
     expect(calls.map((c) => c.employee.id)).toEqual(['pm', 'developer', 'reviewer']);
     for (const c of calls) expect(c.employee.brain).toEqual({ provider: 'ollama', model: LOCAL_MODEL });
+    expect(calls.every((c) => c.priority === QUEUE_PRIORITY.urgent)).toBe(true);
     expect(JSON.stringify(s.db.select().from(tickets).all())).toBe(before.tickets);
     // 새 이벤트는 로컬 사용량 기록뿐
     expect(new Set(s.db.select().from(events).all().slice(before.events).map((e) => e.type))).toEqual(new Set(['usage.updated']));
@@ -186,12 +199,14 @@ describe('살아 있는 것처럼 (2026-10-21 CEO 요청)', () => {
     expect(input.now).toBe('목요일 09:00');
     expect(input.mood).toBe(CHAT_PERSONAS.developer.moods.busy);
     const prompt = renderTask('chat', input);
-    for (const part of ['목요일 09:00', CHAT_PERSONAS.developer.background, CHAT_PERSONAS.developer.samples[0]!, CHAT_LIFE_RULES[1], 'AI 직원이라고 솔직히']) expect(prompt).toContain(part);
+    for (const part of ['목요일 09:00', CHAT_PERSONAS.developer.tone, CHAT_LIFE_RULES[1], 'AI 직원이라고 솔직히']) expect(prompt).toContain(part);
+    expect(prompt).not.toContain(CHAT_PERSONAS.developer.samples[0]!);
+    expect(renderTask('chat', chatInput(s.ctx, 'developer', '네 배경을 소개해줘'))).toContain(CHAT_PERSONAS.developer.background);
     s.clock.advanceHours(14); // 23:00
     expect(chatInput(s.ctx, 'developer', 'x').mood).toBe(CHAT_PERSONAS.developer.moods.lateNight);
   });
 
-  it('같은 채널에서 30분 안에 나눈 대화를 4번까지 기억하고, 다른 채널·시간이 지나면 잊는다', async () => {
+  it('같은 직원·채널의 최근 대화를 제한 안에서 기억하고 다른 직원·채널과 섞지 않는다', async () => {
     const s = setup();
     const seen: unknown[][] = [];
     let n = 0;
@@ -208,7 +223,7 @@ describe('살아 있는 것처럼 (2026-10-21 CEO 요청)', () => {
     expect(seen.at(-1)).toEqual([]);
     await chat.answer('dev-b', mention(s));
     expect(seen.at(-1)).toEqual([]);
-    s.clock.advance(31 * 60_000);
+    s.clock.advance(CHAT_MEMORY_MS + 1);
     await chat.answer('dev-a', mention(s));
     expect(seen.at(-1)).toEqual([]);
     // 기억한 대화는 자료 블록으로 넘어간다

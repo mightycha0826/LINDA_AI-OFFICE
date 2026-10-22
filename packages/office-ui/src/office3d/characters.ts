@@ -29,6 +29,8 @@ export type Bangs =
   | 'wispy';
 
 export interface Look {
+  /** Reference-sculpted model, separate from the shared office mannequin. */
+  portraitModel?: 'seojin';
   hair: number;
   /** 머리 안쪽·그늘 색 */
   hairShade: number;
@@ -74,7 +76,7 @@ const named = (o: Partial<Look> & Pick<Look, 'hair' | 'hairShade' | 'style' | 'b
 /** 이름 있는 9명 (DESIGN 13장 기준 그림 표). 색은 docs/VROID-GUIDE.md와 같은 사진에서 뽑았고, 은발 두 명만 조명에 하얗게 날지 않게 조금 어둡게 했다 */
 export const NAMED_LOOKS: Readonly<Record<string, Look>> = {
   // 백서진: 긴 검은 생머리, 일자 앞머리, 가는 사각 안경, 반묶음 검은 리본, 검은 넥타이, 호박색 눈
-  'chief-of-staff': named({ hair: 0x1c1a1f, hairShade: 0x0e0d12, style: 'long', bangs: 'blunt', length: 0.75, eyes: 0xb8892e, glasses: true, ribbon: { color: 0x15151a, tails: false }, tie: 'wide' }),
+  'chief-of-staff': named({ portraitModel: 'seojin', hair: 0x1c1a1f, hairShade: 0x0e0d12, style: 'long', bangs: 'blunt', length: 0.75, eyes: 0xb8892e, glasses: true, ribbon: { color: 0x15151a, tails: false }, tie: 'wide' }),
   // 류하영: 짙은 갈색 턱선 단발, 시스루 앞머리, 웃는 얼굴
   pm: named({ hair: 0x3a2a26, hairShade: 0x241915, style: 'bob', bangs: 'swept', eyes: 0x6b4636, smile: true }),
   // 설아인: 은백색 짧은 단발, 옆머리를 땋아 뒤로, 긴 꼬리 검은 리본, 귀걸이, 가는 넥타이

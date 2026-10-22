@@ -55,7 +55,7 @@ describe('전체 흐름', () => {
     });
     // 회의록을 만들려고 AI를 따로 부르지 않았다 (회의 발언 2번뿐)
     expect(s.mock.callsFor('meeting')).toHaveLength(2);
-    expect(new Set(s.mock.calls.map((c) => c.task))).toEqual(new Set(['plan', 'gate', 'work', 'review', 'meeting']));
+    expect(new Set(s.mock.calls.map((c) => c.task))).toEqual(new Set(['clarify', 'plan', 'gate', 'work', 'review', 'meeting']));
   });
 
   it('회의 2라운드 불합의 → blocked → CEO 다시 시도 → in_progress', async () => {

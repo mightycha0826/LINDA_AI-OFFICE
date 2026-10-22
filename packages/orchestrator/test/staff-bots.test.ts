@@ -109,10 +109,12 @@ describe('직원 봇이 받는 것 (코드로 집행)', () => {
   it('게이트웨이 권한은 Guilds·GuildMessages만, 처리기는 연결 확인과 멘션 대답뿐, 명령 등록 없음', () => {
     expect(body).toContain('intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] }');
     expect(body).not.toMatch(/MessageContent|DirectMessages/);
-    expect(body.match(/\.on\(|\.once\(/g)).toEqual(['.on(', '.once(']);
+    expect(body.match(/\.on\(|\.once\(/g)).toEqual(['.on(', '.on(', '.once(']);
     expect(body).toContain('client.on(Events.MessageCreate');
     expect(body).toContain('client.once(Events.ClientReady');
-    expect(body).not.toMatch(/applicationGuildCommands|InteractionCreate/);
+    expect(body).toContain('client.on(Events.InteractionCreate');
+    expect(body).toContain('dispatch(context, handler, it)');
+    expect(body).not.toMatch(/applicationGuildCommands/);
   });
 
   it('멘션을 걸지 않고, 토큰을 로그에 쓰지 않는다', () => {

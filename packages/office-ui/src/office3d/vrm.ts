@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm';
 import type { Act } from './layout.ts';
+import { restMotion, type RestProfile } from './rest.ts';
 
 const V3 = THREE.Vector3;
 type V3 = THREE.Vector3;
@@ -14,14 +15,15 @@ export const STAND_HEIGHT = 1.9;
 /** 앉았을 때 골반 높이·앞뒤 (의자 좌석 윗면 0.485) */
 const HIPS = new V3(0, 0.6, -0.03);
 /** 타이핑할 때 손이 놓이는 곳 (책상 윗면 0.81, 앞 모서리 z 0.3) */
-const HAND = { x: 0.16, y: 0.85, z: 0.42 };
+const HAND = { x: 0.16, y: 0.89, z: 0.42 };
 
 export interface Avatar {
   /** 자리 기준 몸 전체 */
   root: THREE.Group;
   /** 정수리 높이 (이름표 기준) */
   top: number;
-  animate(act: Act, t: number, phase: number, motion: number, dt: number): void;
+  hands: THREE.Object3D[];
+  animate(act: Act, t: number, phase: number, motion: number, dt: number, rest?: RestProfile): void;
   dispose(): void;
 }
 
@@ -31,9 +33,10 @@ interface Joint {
   /** 부모 공간에서 본 자리 기준 x축(끄덕임)·y축(돌림) */
   ax: V3;
   ay: V3;
+  az: V3;
 }
 
-export async function loadAvatar(url: string): Promise<Avatar> {
+export async function loadAvatar(url: string, seatedScale = 1): Promise<Avatar> {
   const loader = new GLTFLoader();
   loader.register((parser) => new VRMLoaderPlugin(parser));
   const gltf = await loader.loadAsync(url);
@@ -96,9 +99,41 @@ export async function loadAvatar(url: string): Promise<Avatar> {
     const hand = need(`${s}Hand`);
     const side = Math.sign(at(up).x) || (s === 'left' ? 1 : -1);
     aim(root, up, low, new V3(side * 0.14, -0.9, 0.34));
-    aim(root, low, hand, new V3(side * HAND.x, HAND.y, HAND.z).sub(at(low)));
+    const handY = 0.5 + (HAND.y - 0.5) / seatedScale;
+    aim(root, low, hand, new V3(side * HAND.x, handY, HAND.z).sub(at(low)));
     const finger = bone(`${s}MiddleProximal`);
-    if (finger) aim(root, hand, finger, new V3(-side * 0.15, -0.2, 1));
+    if (finger) aim(root, hand, finger, new V3(-side * 0.08, -0.08, 1));
+    // The forward vector alone leaves wrist roll ambiguous. Keep knuckles above the palm
+    // using the index-to-little direction, including VRM models with different rest axes.
+    const index = bone(`${s}IndexProximal`), little = bone(`${s}LittleProximal`);
+    if (finger && index && little) {
+      const forward = at(finger).sub(at(hand)).normalize();
+      const across = at(little).sub(at(index)).projectOnPlane(forward).normalize();
+      const target = new V3(side, 0, 0).projectOnPlane(forward).normalize();
+      if (across.lengthSq() > 0.5 && target.lengthSq() > 0.5) {
+        const delta = new THREE.Quaternion().setFromAxisAngle(forward, Math.atan2(new V3().crossVectors(across, target).dot(forward), across.dot(target)));
+        const parent = hand.parent!.getWorldQuaternion(new THREE.Quaternion()).invert();
+        hand.quaternion.copy(parent.multiply(delta.multiply(hand.getWorldQuaternion(new THREE.Quaternion()))));
+        root.updateMatrixWorld(true);
+      }
+    }
+  }
+  const fingers: { joint: Joint; digit: number; segment: number; side: number }[] = [];
+  for (const s of ['left', 'right'] as const) {
+    const side = Math.sign(at(need(`${s}Hand`)).x) || 1;
+    for (const [digit, name] of (['Index', 'Middle', 'Ring', 'Little', 'Thumb'] as const).entries()) {
+      const segments = name === 'Thumb' ? ['Metacarpal', 'Proximal', 'Distal'] : ['Proximal', 'Intermediate', 'Distal'];
+      const chain = segments.map(segment => bone(`${s}${name}${segment}` as VRMHumanBoneName));
+      chain.forEach((node, i) => {
+        if (!node) return;
+        const child = chain[i + 1] ?? node.children[0];
+        if (child) {
+          const bend = name === 'Thumb' ? 0.24 + i * 0.24 : 0.18 + i * 0.38 + digit * 0.045;
+          aim(root, node, child, new V3(name === 'Thumb' ? -side * 0.65 : side * (digit - 1.4) * 0.035, -Math.sin(bend), Math.cos(bend)));
+        }
+        fingers.push({ joint: joint(root, node), digit, segment: i, side });
+      });
+    }
   }
   root.updateMatrixWorld(true);
   vrm.springBoneManager?.reset();
@@ -110,6 +145,7 @@ export async function loadAvatar(url: string): Promise<Avatar> {
     neck: neckBone ? joint(root, neckBone) : null,
     chest: joint(root, chest),
     arms: (['left', 'right'] as const).map((s) => joint(root, need(`${s}LowerArm`))),
+    hands: (['left', 'right'] as const).map((s) => joint(root, need(`${s}Hand`))),
   };
   const top = at(need('head')).y + crown;
   const blinkEvery = 3.6 + Math.random() * 1.6;
@@ -117,10 +153,15 @@ export async function loadAvatar(url: string): Promise<Avatar> {
   return {
     root,
     top,
-    animate(act, t, phase, m, dt) {
+    hands: joints.hands.map(j => j.node),
+    animate(act, t, phase, m, dt, rest) {
       const { head, neck, chest: ch, arms } = joints;
-      if (act === 'type') {
-        arms.forEach((j, i) => turn(j, Math.sin(t * 14 + phase + i * 1.7) * 0.06 * m, 0));
+      const pose = act === 'rest' && rest ? restMotion(rest,t,phase,m) : null;
+      if (pose) {
+        arms.forEach((arm,i) => turn(arm,pose.arms[i]!,0));
+        turn(head,pose.headX,pose.headY); turn(ch,0,pose.torso);
+      } else if (act === 'type') {
+        arms.forEach((j, i) => turn(j, Math.sin(t * 7 + phase + i * 1.7) * 0.01 * m, 0));
         turn(head, 0.08, Math.sin(t * 0.35 + phase) * 0.1 * m);
         turn(ch, 0, 0);
       } else if (act === 'talk') {
@@ -133,12 +174,20 @@ export async function loadAvatar(url: string): Promise<Avatar> {
         turn(head, 0, Math.sin(t * 0.25 + phase) * 0.45 * m);
         turn(ch, 0, Math.sin(t * 0.25 + phase) * 0.06 * m);
       }
+      joints.hands.forEach((hand,i) => turn(hand,0,0,pose?.wrists[i] ?? 0));
+      for (const f of fingers) {
+        const tap = act === 'type' && f.digit < 4 ? Math.max(0, Math.sin(t * (6.4 + f.digit * 0.7) + phase + f.digit * 1.9 + f.side * 1.2)) * 0.14 * m : 0;
+        const open = act === 'talk' ? -0.08 * (f.segment + 1) : 0;
+        const handIndex = f.side > 0 ? 0 : 1;
+        const grip = pose && rest && rest.kind === 'coffee' && handIndex === rest.side ? 0.55 : pose && rest?.kind === 'read' ? 0.16 : 0;
+        turn(f.joint, open + grip + tap * (f.segment === 0 ? 1 : 0.6), 0);
+      }
       if (neck) turn(neck, 0, 0);
       const em = vrm.expressionManager;
       if (em) {
         const k = (t + phase * 3) % blinkEvery;
         em.setValue('blink', m && k < 0.14 ? Math.sin((k / 0.14) * Math.PI) : 0);
-        em.setValue('happy', act === 'talk' ? 0.35 : 0);
+        em.setValue('happy', act === 'talk' ? 0.35 : pose ? 0.12 : 0);
       }
       vrm.update(dt);
     },
@@ -162,14 +211,16 @@ function aim(root: THREE.Object3D, bone: THREE.Object3D, child: THREE.Object3D, 
 function joint(root: THREE.Object3D, node: THREE.Object3D): Joint {
   root.updateMatrixWorld(true);
   const inv = node.parent ? node.parent.getWorldQuaternion(new THREE.Quaternion()).invert() : new THREE.Quaternion();
-  return { node, base: node.quaternion.clone(), ax: new V3(1, 0, 0).applyQuaternion(inv), ay: new V3(0, 1, 0).applyQuaternion(inv) };
+  return { node, base: node.quaternion.clone(), ax: new V3(1, 0, 0).applyQuaternion(inv), ay: new V3(0, 1, 0).applyQuaternion(inv), az: new V3(0,0,1).applyQuaternion(inv) };
 }
 
 const qa = new THREE.Quaternion();
 const qb = new THREE.Quaternion();
+const qr = new THREE.Quaternion();
 /** 기본 자세에서 끄덕임(pitch, +면 아래)·돌림(yaw)만큼 더 돌린다 */
-function turn(j: Joint, pitch: number, yaw: number): void {
+function turn(j: Joint, pitch: number, yaw: number, roll = 0): void {
   qa.setFromAxisAngle(j.ay, yaw);
   qb.setFromAxisAngle(j.ax, pitch);
-  j.node.quaternion.copy(qa.multiply(qb).multiply(j.base));
+  qr.setFromAxisAngle(j.az,roll);
+  j.node.quaternion.copy(qa.multiply(qb).multiply(qr).multiply(j.base));
 }

@@ -54,6 +54,7 @@ export function failReview(criteria: string[], reasonCategory: ReasonCategory = 
 }
 
 export const DEFAULT_HANDLERS: Record<BrainTask, MockHandler> = {
+  clarify: () => ({ understanding: '요청한 기능과 완료 조건을 이해했어요', questions: [] }),
   plan: () => planOutput(),
   gate: (): GateOutput => ({ passed: true, issues: [], objection: null }),
   work: (req) => {

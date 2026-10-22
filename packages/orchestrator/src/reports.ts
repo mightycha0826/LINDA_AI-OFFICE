@@ -23,7 +23,8 @@ export interface ReportData {
 
 export function approvalLink(c: Ctx, discordMessageId: string | null): string | null {
   const { guildId, channels } = c.config.discord;
-  return discordMessageId && guildId ? `https://discord.com/channels/${guildId}/${channels.approvals}/${discordMessageId}` : null;
+  const delivery = discordMessageId ? getState<{ channelId: string } | null>(c, `discord.delivery:${discordMessageId}`, null) : null;
+  return discordMessageId && guildId ? `https://discord.com/channels/${guildId}/${delivery?.channelId ?? channels.approvals}/${discordMessageId}` : null;
 }
 
 export function buildReportData(c: Ctx, since: string): ReportData {

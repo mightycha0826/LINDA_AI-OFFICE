@@ -5,6 +5,9 @@
 import { eq } from 'drizzle-orm';
 import type { Ctx } from '../context.ts';
 import { pendingApprovals, requestApproval, type ApprovalDecision } from '../core/approvals.ts';
+import { answerClarification, clarificationOf } from '../core/clarifications.ts';
+import { readableDiscordText } from './format.ts';
+import { projectChannel } from './project-channels.ts';
 import { budgetStatus } from '../core/budget.ts';
 import { applyRevision, dismissProposal, getProposal, startDirectOrder } from '../core/direct.ts';
 import { guestLine, loadGuestRegistry, setGuestOn, syncGuests } from '../core/guests.ts';
@@ -63,13 +66,19 @@ export class InteractionHandler {
 
   private async button(id: string): Promise<InteractionReply> {
     const [kind, target, action] = id.split(':') as [string, string, string];
+    if (kind === 'cq') {
+      const state = clarificationOf(this.c, target);
+      const order = this.c.db.select().from(orders).where(eq(orders.id, target)).get();
+      if (order?.status !== 'planning' || Number(action) !== state.rounds.length || state.rounds.at(-1)?.answer !== null) throw new OfficeError('stale-question', '이미 답했거나 이전 질문이에요. 최신 질문을 확인해 주세요');
+      return { kind: 'modal', customId: `cqm:${target}:${action}`, title: `PM 질문 답변 · ${target}`, fields: [{ id: 'note', label: '번호별 답변 (모르는 항목은 적어 주세요)', style: 'paragraph', required: true }] };
+    }
     if (kind === 'ap') {
       if (action === 'revision') {
         return {
           kind: 'modal',
           customId: `apm:${target}`,
           title: '수정 요청',
-          fields: [{ id: 'note', label: '고칠 내용과 PM 질문에 대한 답', style: 'paragraph', required: true }],
+          fields: [{ id: 'note', label: '계획서에서 고칠 내용', style: 'paragraph', required: true }],
         };
       }
       return this.decide(target, action as ApprovalDecision);
@@ -150,6 +159,10 @@ export class InteractionHandler {
   private async modal(id: string, fields: Record<string, string>): Promise<InteractionReply> {
     const [kind, target] = id.split(':') as [string, string];
     const note = (fields.note ?? '').trim();
+    if (kind === 'cqm') {
+      answerClarification(this.c, target, Number(id.split(':')[2]), note, this.c.config.ceoDiscordId);
+      return { kind: 'update', content: `**PM 질문 답변 접수 · ${target}**\n\n${note}\n\nPM이 답변을 확인해요. 더 필요한 내용은 별도로 질문하고, 충분히 이해하면 계획서를 결재함에 올려요.`, buttons: [] };
+    }
     if (kind === 'apm') return this.decide(target, 'revision', null, note);
     if (kind === 'bkm') {
       this.engine.ceoTicketAction(target, this.c.config.ceoDiscordId, 'direct', note);
@@ -190,16 +203,17 @@ export class InteractionHandler {
     };
     switch (name) {
       case '지시': {
-        // 헤르메스(비서실장) 없이 CEO가 직접 지시한다. 되묻기 없이 적은 글이 그대로 지시서가 된다.
+        // 헤르메스(비서실장) 없이 CEO가 직접 지시한다. PM이 요구사항부터 확인한다.
         // 상호작용 ID가 지시의 discordMessageId라, 같은 명령이 두 번 처리돼도 지시는 하나만 생긴다.
         const text = String(o['내용'] ?? '').trim();
         if (text.length < 4) throw new OfficeError('arg', '지시 내용을 조금 더 자세히 적어 주세요');
         if (!interactionId || !/^\d{17,20}$/.test(interactionId)) throw new OfficeError('arg', '지시 번호를 만들 수 없어요. 다시 시도해 주세요');
         // 프로젝트 #작업 채널에서 쓴 지시는 그 프로젝트 일로 고정된다 (9장, 6장 PM)
         const project = projectByChannel(c, channelId);
-        const { order, created } = this.engine.submitOrder({ discordMessageId: interactionId, rawText: text, ...(project ? { projectId: project.id } : {}) });
+        const { order, created } = this.engine.submitOrder({ discordMessageId: interactionId, rawText: text, ...(channelId ? { channelId } : {}), ...(project ? { projectId: project.id } : {}) });
         if (!created) return { kind: 'reply', content: `이미 받은 지시예요 (${order.id})`, ephemeral: true };
-        return { kind: 'reply', content: `지시를 받았어요 (**${order.id}**${project ? ` · ${project.id} 프로젝트` : ''}). PM이 계획서를 만들면 결재함에 올라와요.
+        const planningChannel = projectChannel(c, project?.id, 'planning');
+        return { kind: 'reply', content: `지시를 받았어요 (**${order.id}**${project ? ` · ${project.id} 프로젝트` : ''}). PM이 요구사항부터 확인해요. 모호한 점은 ${planningChannel ? `<#${planningChannel}>` : '이 채널'}에서 따로 질문하고, 답변을 반영한 계획서를 결재함에 올려요.
 > ${text.slice(0, 300)}`, ephemeral: false };
       }
       case '파견': {
@@ -220,7 +234,7 @@ export class InteractionHandler {
             `**${t.id} ${t.title}** · ${t.status}${t.pauseReason ? `(${t.pauseReason})` : ''}`,
             `담당 ${t.assigneeId} · 검토 ${t.reviewerId} · 반려 ${t.reworkCount}회 · 턴 ${t.turnsUsed}/${t.turnCap} · 토큰 ${t.tokensUsed}/${t.tokenCap}`,
             `완료 조건: ${t.acceptanceCriteria.join(' / ')}`,
-            ...recent.map((m) => `- ${m.fromId}: ${m.content.slice(0, 80)}`),
+            ...recent.map((m) => `- ${m.fromId}:\n${readableDiscordText(m.content)}`),
           ].join('\n'),
         };
       }
@@ -290,7 +304,7 @@ export class InteractionHandler {
 
 /** 슬래시 명령 정의 (bot.ts가 Discord에 등록한다) */
 export const SLASH_COMMANDS: { name: string; description: string; options: { name: string; description: string; required: boolean; choices?: { name: string; value: string }[] }[] }[] = [
-  { name: '지시', description: '회사에 일을 맡겨요 (PM이 계획서를 만들어 결재함에 올려요)', options: [{ name: '내용', description: '예: demo 프로젝트에 로그인 기능 추가', required: true }] },
+  { name: '지시', description: '회사에 일을 맡겨요 (PM이 요구사항을 확인한 뒤 계획서를 올려요)', options: [{ name: '내용', description: '예: demo 프로젝트에 로그인 기능 추가', required: true }] },
   { name: '보고', description: '지금 상태를 바로 보고해요', options: [] },
   { name: '파견', description: '빌려 온 친구 계정(파견 직원)의 출근·퇴근과 사용률', options: [] },
   { name: '상태', description: '티켓 하나의 상세', options: [{ name: '티켓', description: '예: T-12', required: true }] },

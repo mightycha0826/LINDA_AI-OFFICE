@@ -7,17 +7,19 @@ import type { TicketType } from '@ai-office/shared';
 import { BrainError, type BrainTask } from '../brains/brain.ts';
 import type { Lanes } from '../brains/lanes.ts';
 import type { BrainFor } from '../brains/registry.ts';
+import { QUEUE_PRIORITY } from '../brains/gpu-queue.ts';
 import { estimatePct } from '../brains/usage-estimate.ts';
 import type { Connectivity } from '../connectivity.ts';
 import { setState, type Ctx } from '../context.ts';
 import { blockBudget, budgetOf, isExhausted, isGuest, recordUsage, type EmployeeRow } from '../core/budget.ts';
 import { blockGuest, guestExhausted, isGuestOn, recordGuestUsage } from '../core/guests.ts';
 import { recordTurn } from '../core/guards.ts';
+import { rememberQuotaResets } from '../core/quota-window.ts';
 import { employees } from '../db/schema.ts';
 import { FormatError, NotFoundError } from '../errors.ts';
 import { activeRuleRows, recordRuleApplications } from '../retro/rules.ts';
 import { queuePriorityOf } from '../staff/assistants.ts';
-import { renderTask } from '../staff/prompts.ts';
+import { conversationPrompt, renderTask } from '../staff/prompts.ts';
 import { roleCard } from '../staff/role-cards.ts';
 
 export interface CallOptions {
@@ -155,12 +157,12 @@ export class BrainCalls {
             task,
             schema,
             input,
-            prompt: { system, user: renderTask(task, input, previousError) },
+            prompt: task === 'chat' ? conversationPrompt(system, input, previousError) : { system, user: renderTask(task, input, previousError) },
             attempt,
             lowPrecision,
             signal: this.controller.signal,
             // 로컬 GPU 줄 순위: 결재 직전 해설·요약이 먼저, 거울·회고는 뒤 (16장 7-5)
-            priority: queuePriorityOf(e.id),
+            priority: task === 'chat' ? QUEUE_PRIORITY.urgent : queuePriorityOf(e.id),
             ...refs,
             ...(opts.workdir ? { workdir: opts.workdir } : {}),
             ...(previousError ? { previousError } : {}),
@@ -188,7 +190,10 @@ export class BrainCalls {
       });
       if (refs.ticketId) recordTurn(this.c, refs.ticketId, tokens);
       // 회사 계정 사용률 표시는 회사 직원 호출로만 바꾼다 (친구 계정 값이 섞이지 않게)
-      if (res.usage.account && !isGuest(e)) setState(this.c, `account.${res.usage.account.provider}`, { ...res.usage.account, at: this.c.clock.now().toISOString() });
+      if (res.usage.account && !isGuest(e)) {
+        rememberQuotaResets(this.c);
+        setState(this.c, `account.${res.usage.account.provider}`, { ...res.usage.account, at: this.c.clock.now().toISOString() });
+      }
 
       const parsed = schema.safeParse(res.output);
       const problems = parsed.success ? ((opts.check as ((o: z.infer<S>) => string[]) | undefined)?.(parsed.data as z.infer<S>) ?? []) : [z.prettifyError(parsed.error)];

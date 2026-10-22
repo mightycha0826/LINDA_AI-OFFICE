@@ -5,10 +5,27 @@ import type { PlanRow } from '../core/plans.ts';
 import type { TicketRow } from '../core/tickets.ts';
 import type { MinutesRow } from '../core/meeting.ts';
 import type { Button } from './types.ts';
+import type { OrderRow } from '../core/orders.ts';
+import type { Clarification } from '../core/clarifications.ts';
 
 const REVERSIBLE: Record<string, string> = { reversible: '되돌릴 수 있어요', partial: '일부만 되돌릴 수 있어요', irreversible: '되돌릴 수 없어요' };
 
 export const approvalButtonId = (id: string, decision: 'approved' | 'revision' | 'rejected') => `ap:${id}:${decision}`;
+
+export function clarificationMessage(order: OrderRow, state: Clarification): { content: string; buttons: Button[][] } {
+  return {
+    content: [
+      `**PM 확인 질문 · ${order.projectId ? `[${order.projectId}] ` : ''}${order.id}**`,
+      '',
+      `요청: ${order.rawText.slice(0, 300)}`,
+      '',
+      ...state.rounds.at(-1)!.questions.map((q, i) => `${i + 1}. ${q}`),
+      '',
+      '이 답장에 번호별로 답해 주시겠어요? **답변하기** 버튼을 쓰셔도 괜찮아요. 더 필요한 내용은 이어서 여쭙고, 충분히 이해하면 계획서로 정리할게요.',
+    ].join('\n'),
+    buttons: [[{ id: `cq:${order.id}:${state.rounds.length}`, label: '답변하기', style: 'primary' }]],
+  };
+}
 
 /** ① 계획 승인 요청 */
 export function planApprovalMessage(plan: PlanRow, a: ApprovalRow): { content: string; buttons: Button[][] } {
@@ -17,13 +34,12 @@ export function planApprovalMessage(plan: PlanRow, a: ApprovalRow): { content: s
     `**${plan.projectId ? `[${plan.projectId}] ` : ''}계획서 #${plan.id} · v${plan.version} — ${plan.goal}**`,
     '',
     '**티켓과 담당자**',
-    ...plan.tickets.map((t, i) => `${i + 1}. ${t.title} (${t.type}) · 담당 ${t.assignee} · 검토 ${t.reviewer}${t.needsCeoApproval ? ' · CEO 결재 필요' : ''}\n   완료 조건: ${t.acceptanceCriteria.join(' / ')}`),
+    ...plan.tickets.map((t, i) => `${i + 1}. **${t.title}** (${t.type})\n   담당: ${t.assignee} · 검토: ${t.reviewer}${t.needsCeoApproval ? ' · CEO 결재 필요' : ''}\n   완료 조건:\n${t.acceptanceCriteria.map((criterion) => `   - ${criterion}`).join('\n')}\n`),
     ...(plan.reviewerChanges.length ? ['', '**검토자 자동 변경** (같은 모델끼리는 검토하지 않아요)', ...plan.reviewerChanges.map((x) => `- ${x}`)] : []),
     ...(plan.tempStaff.length ? ['', `**임시 직원**: ${plan.tempStaff.map((s) => `${s.key}(${s.kind}${s.brain ? `, ${s.brain}` : ''}) — ${s.reason}`).join(' · ')}`] : []),
     ...(plan.designCombo ? ['', `**디자인 조합**: ${plan.designCombo.combo} (${plan.designCombo.mode}) — ${plan.designCombo.reason}`] : []),
     '',
     `**예상 사용량**: Claude 개발 몫 ${plan.estimate.claudeDevPct}%, 리서치 몫 ${plan.estimate.claudeResearchPct}%, GPT ${plan.estimate.gptPct}% · 약 ${plan.estimate.hours}시간`,
-    ...(plan.questions.length ? ['', '**PM 질문**', ...plan.questions.map((q) => `- ${q}`)] : []),
     '',
     `**GPT 관문**: ${g?.passed ? '통과' : `반대 의견 — ${g?.objection ?? g?.issues.join(' / ') ?? '없음'}`}`,
     `되돌리기: ${REVERSIBLE[a.reversible]}`,
@@ -170,15 +186,19 @@ export function minutesText(m: MinutesRow): string {
   ].join('\n');
 }
 
-/** 직원 직접 지시·진행 중 수정의 확인 메시지 (9장, 2026-10-21). LINDA가 주인 메시지 바로 아래에 띄운다 */
-export function proposalMessage(p: DirectProposal, name: string): { content: string; buttons: Button[][] } {
+/** 직원이 자기 답장에 함께 붙이는 작업·수정 범위와 확인 질문. */
+export function proposalMessage(p: DirectProposal, _name: string): { content: string; buttons: Button[][] } {
   if (p.kind === 'order') {
     return {
       content: [
-        `**${name}에게 맡길까요?** · ${p.projectId ? `[${p.projectId}] ` : ''}${p.title}`,
-        '완료 조건',
+        `**이렇게 진행할까요?** · ${p.title}`,
+        '',
+        p.rawText,
+        '',
+        '**마무리할 때 확인할 내용**',
         ...p.criteria.map((x, i) => `${i + 1}. ${x}`),
-        '[맡기고 시작]을 누르면 이 내용으로 바로 시작해요(계획서 결재 한 번). 검토는 다른 모델 직원이 하고, 푸시는 지금처럼 #결재함에서 결재해요. 30분 안에 눌러 주세요.',
+        '',
+        '이 내용으로 제가 맡아서 진행할까요? 이 답장에 “응, 진행해”라고 말씀해 주세요. 더 이야기하거나 내용을 고쳐도 괜찮아요.',
       ].join('\n'),
       buttons: [
         [
@@ -189,7 +209,7 @@ export function proposalMessage(p: DirectProposal, name: string): { content: str
     };
   }
   return {
-    content: [`**${p.ticketId}에 수정 요청을 붙일까요?** · 담당 ${name}`, `> ${p.note}`, '완료 조건에 "CEO 수정 요청" 한 줄로 붙어요. 검토 중이면 다시 작업으로 돌아가요. 30분 안에 눌러 주세요.'].join('\n'),
+    content: [`**이렇게 수정할까요?** · ${p.ticketId}`, '', p.note, '', '이 내용으로 바꿀까요? 이 답장에 “응, 반영해”라고 말씀해 주세요.'].join('\n'),
     buttons: [
       [
         { id: `rv:${p.id}:apply`, label: '수정 반영', style: 'primary' },

@@ -8,7 +8,7 @@ export const TEAM_LEADS = ['chief-of-staff', 'pm', 'developer', 'reviewer', 'str
 
 /** 상시 직원의 한 줄 "하는 일" (2-0 표의 하는 일 칸) */
 const JOBS: Record<string, string> = {
-  'chief-of-staff': 'Discord 대화, 지시 등록, 정기 보고',
+  'chief-of-staff': '대화·상담, 지시 의도 확인과 등록 제안, 동의 후 전달, 정기 보고',
   pm: '지시 분류, 계획서, 티켓 배정, 토큰 예상',
   developer: '설계 결정, 어려운 티켓 구현, GPT 개발자 코드 최종 리뷰',
   'dev-a': '일반 티켓 구현과 테스트 (작업 공간 안에서만)',

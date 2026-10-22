@@ -32,10 +32,19 @@ export const TOOL_DEFS = {
   },
   create_order: {
     description:
-      'CEO의 업무 지시를 원문 그대로 등록한다. Discord 메시지 ID를 모르면 discordMessageId는 비운다(지어내지 않는다). 그러면 회사 시스템이 #비서실 CEO 마지막 메시지 ID를 쓴다. 위험한 실행(push, 삭제, 전송)은 이 도구가 아니라 request_confirmation으로 요청한다.',
+      '대화에서 업무 의도가 분명해졌을 때만 지시 등록 제안을 준비한다. 이 도구는 지시를 등록하지 않는다. 반환한 내용을 보여 주고 "이 내용으로 지시를 추가할까요?"라고 물은 뒤 사용자의 다음 답변을 기다린다. 잡담, 질문, 감정 표현, 아이디어 탐색에는 호출하지 않는다. Discord 메시지 ID를 모르면 비운다. 위험한 실행은 request_confirmation으로 요청한다.',
     input: z.object({
-      rawText: z.string().min(1).max(4000).describe('CEO 원문 그대로'),
+      rawText: z.string().trim().min(1).max(4000).describe('지금까지 대화에서 사용자가 원한 일과 합의한 범위. 새 요구사항을 지어내지 않는다. 이 내용을 보여 주고 확인받는다'),
       discordMessageId: z.string().regex(/^\d{17,20}$/, 'Discord 메시지 ID(숫자)').optional().describe('모르면 비운다'),
+      projectId: z.string().optional().describe('대화에서 확인된 등록 프로젝트 ID. 모르면 비운다'),
+    }),
+    writes: true,
+  },
+  respond_order_proposal: {
+    description: '지시 등록 여부를 질문한 다음 사용자가 답한 차례에만 호출한다. 명확히 등록을 원하면 register, 계속 대화하거나 등록을 원치 않으면 chat. 모호한 답, 다른 질문, 수정 요청이면 등록하지 말고 대화를 이어간다. 내용을 수정했으면 create_order로 새 제안을 만들고 다시 묻는다. 같은 차례의 자동 등록은 거부된다.',
+    input: z.object({
+      proposalId: z.string().uuid().describe('create_order가 반환한 등록 제안 ID'),
+      decision: z.enum(['register', 'chat']),
     }),
     writes: true,
   },

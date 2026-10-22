@@ -3,6 +3,7 @@
 // face: 1 = 남쪽(+z)을 보고 앉음, -1 = 북쪽. seatY: 의자가 아닌 곳(스툴 등)의 앉는 높이
 import { deriveEmployeeStatus, type DerivedStatus, type ScreenEmployee, type ScreenTicket } from '@ai-office/shared';
 import { projectOf } from '../projects.ts';
+import { canRest, REST_SEATS, restProfile, type RestContext, type RestProfile } from './rest.ts';
 
 export interface Seat {
   x: number;
@@ -28,7 +29,7 @@ export const DESK_SEATS: Readonly<Record<string, Seat>> = {
   drafter: { x: 4.3, z: 13.0, face: 1 },
   strategy: { x: 7.4, z: 13.0, face: 1 },
   'commit-scribe': { x: 20.8, z: 13.0, face: 1 },
-  interpreter: { x: 18.8, z: 15.55, face: -1 },
+  interpreter: { x: 18.8, z: 15.25, face: -1 },
 };
 
 /** 회의실 A 의자 (회의 중인 직원이 차례로 앉는다) */
@@ -59,7 +60,7 @@ export const VISITOR_SEATS: readonly Seat[] = [
 export const GUEST_DEPARTMENT = '파견 라운지';
 export const CAT_ID = 'git-cat';
 
-export type Act = 'type' | 'talk' | 'idle';
+export type Act = 'type' | 'talk' | 'idle' | 'rest';
 
 export interface Placed {
   id: string;
@@ -72,6 +73,7 @@ export interface Placed {
   model: string | null;
   /** 지금 맡은 티켓의 프로젝트 (이름표 오른쪽 칩, 2026-10-22). 없으면 null */
   project: string | null;
+  rest?: RestProfile;
 }
 
 const ACT: Record<DerivedStatus, Act> = { working: 'type', reviewing: 'type', meeting: 'talk', blocked: 'idle', paused: 'idle', idle: 'idle', away: 'idle' };
@@ -80,7 +82,7 @@ const ACT: Record<DerivedStatus, Act> = { working: 'type', reviewing: 'type', me
  * 직원마다 앉을 자리와 몸짓을 정한다. 나간 직원(leftAt)은 없다. Git 고양이는 따로 돌아다니므로 빠진다.
  * 회의 중이면 회의실, 파견 직원은 파견 라운지, 임시 직원은 커피 바. 자리가 모자라면 그 직원은 그리지 않는다.
  */
-export function place3d(employees: readonly ScreenEmployee[], tickets: readonly ScreenTicket[]): Placed[] {
+export function place3d(employees: readonly ScreenEmployee[], tickets: readonly ScreenTicket[], context?: RestContext): Placed[] {
   const out: Placed[] = [];
   const pools = { meeting: [...MEETING_SEATS], guest: [...GUEST_SEATS], visitor: [...VISITOR_SEATS] };
   const sorted = [...employees].filter((e) => !e.leftAt && e.id !== CAT_ID).sort((a, b) => a.id.localeCompare(b.id));
@@ -97,6 +99,17 @@ export function place3d(employees: readonly ScreenEmployee[], tickets: readonly 
             : (DESK_SEATS[e.id] ?? pools.visitor.shift());
     if (!seat) continue;
     out.push({ id: e.id, name: e.personalName ?? e.displayName, status, seat, act: ACT[status], helper: e.rank === 'assistant' || e.isTemporary, model: e.model, project: projectOf(e.id, [...tickets]) });
+  }
+  const resting = new Set(out.filter(p => canRest(p.id, tickets, context)).map(p => p.id));
+  const occupied = new Set(out.filter(p => !resting.has(p.id)).map(p => `${p.seat.x}:${p.seat.z}`));
+  for (const p of out) {
+    if (!resting.has(p.id)) continue;
+    const profile = restProfile(p.id);
+    const free = REST_SEATS.filter(s => !occupied.has(`${s.x}:${s.z}`));
+    const seat = free.find(s => profile.kind === 'coffee' ? s.zone === 'coffee' : s.zone !== 'coffee') ?? free[0];
+    if (!seat) continue;
+    p.seat = seat; p.act = 'rest'; p.rest = profile;
+    occupied.add(`${seat.x}:${seat.z}`);
   }
   return out;
 }

@@ -25,6 +25,11 @@ export default function Office3DView({ snapshot, night, onSelectEmployee }: Prop
   const [spin, setSpin] = useState(false);
   const [listOpen, setListOpen] = useState(readListOpen);
   const [focused, setFocused] = useState<string | null>(null);
+  const [clock, setClock] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
   // 책상 명패는 처음 그릴 때 한 번 (이름이 바뀌는 일은 드물다)
   const names = useMemo(() => Object.fromEntries(snapshot.employees.map((e) => [e.id, e.personalName ?? e.displayName])), [snapshot.employees]);
   const namesRef = useRef(names);
@@ -49,7 +54,7 @@ export default function Office3DView({ snapshot, night, onSelectEmployee }: Prop
     if (!office) return;
     const cat = snapshot.employees.find((e) => e.id === CAT_ID && !e.leftAt);
     office.update({
-      placed: place3d(snapshot.employees, snapshot.tickets),
+      placed: place3d(snapshot.employees, snapshot.tickets, { now: snapshot.now, nextReport: snapshot.nextReport, timezone: snapshot.timezone, clock }),
       night,
       background: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || 'white',
       approvals: snapshot.approvals.length,

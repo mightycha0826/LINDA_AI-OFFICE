@@ -5,7 +5,7 @@ import type { EmployeeRow } from '../core/budget.ts';
 import { OfficeError } from '../errors.ts';
 
 /** search: 로컬 직원의 검색어 정하기, design: 디자인 시스템 담당의 조합 고르기, commit: Git 고양이 커밋 메시지 초안 */
-export type BrainTask = 'plan' | 'gate' | 'work' | 'review' | 'meeting' | 'search' | 'design' | 'commit' | 'retro' | 'proofread' | 'explain' | 'summarize' | 'interpret' | 'report' | 'chat';
+export type BrainTask = 'clarify' | 'plan' | 'gate' | 'work' | 'review' | 'meeting' | 'search' | 'design' | 'commit' | 'retro' | 'proofread' | 'explain' | 'summarize' | 'interpret' | 'report' | 'chat';
 
 export interface BrainRequest {
   employee: EmployeeRow;
@@ -15,7 +15,7 @@ export interface BrainRequest {
   /** 작업 입력(구조화). 프롬프트는 이것으로 만든다. MockLLM은 이것을 본다. */
   input: unknown;
   /** 역할 카드(system)와 작업 설명(user) */
-  prompt: { system: string; user: string };
+  prompt: { system: string; user: string; history?: { role: 'user' | 'assistant'; content: string }[] };
   /**
    * 일하는 폴더. 개발자 작업·코드 리뷰는 티켓 worktree, 리서치·관문은 빈 샌드박스.
    * 어댑터는 이 폴더가 작업 공간(paths.wt) 밖이면 실행하지 않는다.

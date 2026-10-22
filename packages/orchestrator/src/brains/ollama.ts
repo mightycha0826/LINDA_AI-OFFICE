@@ -25,6 +25,10 @@ interface ChatResponse {
   error?: string;
 }
 
+export function ollamaMessages(prompt: BrainRequest['prompt']) {
+  return [{ role: 'system', content: prompt.system }, ...(prompt.history ?? []), { role: 'user', content: prompt.user }];
+}
+
 export class OllamaBrain implements Brain {
   private readonly o: OllamaOptions;
 
@@ -43,15 +47,12 @@ export class OllamaBrain implements Brain {
     const model = this.modelFor(req);
     const body = {
       model,
-      messages: [
-        { role: 'system', content: req.prompt.system },
-        { role: 'user', content: req.prompt.user },
-      ],
+      messages: ollamaMessages(req.prompt),
       format: toJsonSchema(req.schema),
       stream: false,
       think: false,
       keep_alive: this.o.keepAlive,
-      options: { num_ctx: this.o.numCtx, temperature: 0.2 },
+      options: { num_ctx: this.o.numCtx, temperature: req.task === 'chat' ? 0.4 : 0.2 },
     };
     const doFetch = this.o.fetchImpl ?? fetch;
     const res = await this.o.queue.enqueue(

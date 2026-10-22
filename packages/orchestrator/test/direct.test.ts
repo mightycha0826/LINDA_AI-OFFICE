@@ -39,7 +39,7 @@ describe('멘션은 제안만 남긴다', () => {
     const { s, chat } = withChat(ORDER);
     const r = await chat.answer('dev-a', mention(s, '로그인 화면에 비밀번호 찾기 링크 넣어줘'));
     expect(r?.proposal?.kind).toBe('order');
-    expect(r?.text).toContain('버튼');
+    expect(r?.text).toContain('정리해 봤어요');
     expect(s.db.select().from(orders).all()).toHaveLength(0);
     expect(s.db.select().from(plans).all()).toHaveLength(0);
     expect(s.db.select().from(tickets).all()).toHaveLength(0);
@@ -167,7 +167,7 @@ describe('직원끼리 대화는 주인이 말한 채널 바로 아래에', () =
     expect(route.posts.length).toBeGreaterThan(0);
     expect(route.posts.every((x) => x.channelId === WORK_CHANNEL)).toBe(true);
     expect(route.posts.some((x) => x.employeeId === 'dev-a' && x.content.startsWith('<@bot-developer>'))).toBe(true);
-    expect(route.posts.some((x) => x.username === '회사 시스템' && x.content.includes(ticketId))).toBe(true);
+    expect(route.posts.some((x) => x.employeeId === 'dev-a' && x.content.includes(ticketId))).toBe(true);
     expect(threads.threads.filter((x) => x.ticketId === ticketId)).toHaveLength(0);
   });
 });

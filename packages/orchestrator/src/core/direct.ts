@@ -1,12 +1,13 @@
 // 직원 직접 지시와 진행 중 수정 (9장 직원 봇, 2026-10-21 CEO 결정).
 // 주인이 직원 봇을 멘션해 일을 맡기면, 로컬 Gemma가 "지시"로 읽은 내용을 제안으로만 남긴다.
-// 실제로 일이 생기는 것은 주인이 LINDA의 [맡기고 시작] 버튼을 눌렀을 때뿐이다(이 버튼이 계획서 결재 한 번).
-// 진행 중인 일을 고쳐 달라는 말도 [수정 반영] 버튼을 눌러야 완료 조건에 붙는다.
-// 버튼 전에는 상태가 바뀌지 않고, 제안은 30분 뒤 끝나며 한 번만 쓸 수 있다. 푸시 결재는 그대로다.
+// 실제로 일이 생기는 것은 다음 명확한 동의 또는 직원 답장의 [맡기고 시작] 버튼을 받았을 때다.
+// 진행 중 수정도 같은 확인을 거쳐 완료 조건에 붙인다.
+// 확인 전에는 상태가 바뀌지 않고, 제안은 30분 뒤 끝나며 한 번만 쓸 수 있다. 푸시 결재는 그대로다.
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { PmPlanOutput, TicketType } from '@ai-office/shared';
 import { getState, inTx, newId, nowIso, setState, type Ctx } from '../context.ts';
 import { employees, messages, plans, tickets } from '../db/schema.ts';
+import { systemState } from '../db/schema.ts';
 import { assertCeo, NotFoundError, OfficeError } from '../errors.ts';
 import { projectByChannel } from '../workspace/projects.ts';
 import { registerOrder } from './orders.ts';
@@ -52,6 +53,10 @@ type Proposals = Record<string, DirectProposal>;
 
 function save(c: Ctx, p: DirectProposal): DirectProposal {
   const all = getState<Proposals>(c, PROPOSALS, {});
+  // 내용을 다시 의논하거나 수정한 뒤에는 예전 버튼으로 이전 범위를 시작할 수 없다.
+  for (const previous of Object.values(all)) {
+    if (previous.employeeId === p.employeeId && previous.channelId === p.channelId && !previous.used) previous.used = true;
+  }
   // 오래된 것부터 지워 최대 MAX_KEPT개만 남긴다
   const kept = Object.values(all)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
@@ -62,6 +67,34 @@ function save(c: Ctx, p: DirectProposal): DirectProposal {
 
 export function getProposal(c: Ctx, id: string): DirectProposal | null {
   return getState<Proposals>(c, PROPOSALS, {})[id] ?? null;
+}
+
+/** 재시작 뒤에도 직원·채널별 마지막 확인 질문을 이어 간다. */
+export function pendingProposal(c: Ctx, employeeId: string, channelId: string): DirectProposal | null {
+  return Object.values(getState<Proposals>(c, PROPOSALS, {}))
+    .filter((p) => p.employeeId === employeeId && p.channelId === channelId && !p.used && c.clock.now().getTime() - Date.parse(p.createdAt) <= DIRECT_PROPOSAL_TTL_MS)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+}
+
+export function bindProposalReply(c: Ctx, replyMessageId: string, proposalId: string): void {
+  setState(c, `direct.reply:${replyMessageId}`, proposalId);
+  setState(c, `direct.shown:${proposalId}`, replyMessageId);
+}
+
+/** 실제 확인 질문이 Discord에 전송된 뒤의 메시지만 자연어 동의로 인정한다. */
+export function shownProposalMessage(c: Ctx, proposalId: string): string | null {
+  const saved = getState<string | null>(c, `direct.shown:${proposalId}`, null);
+  if (saved) return saved;
+  // 이전 버전에서 보낸 확인 질문도 이미 기록된 답장 연결로 복구한다.
+  const legacy = c.db.select().from(systemState).where(sql`${systemState.key} LIKE ${'direct.reply:%'}`).all()
+    .filter((row) => row.value === proposalId).map((row) => row.key.slice('direct.reply:'.length))
+    .sort((a, b) => BigInt(a) < BigInt(b) ? 1 : -1)[0];
+  if (legacy) setState(c, `direct.shown:${proposalId}`, legacy);
+  return legacy ?? null;
+}
+
+export function proposalIdForReply(c: Ctx, replyMessageId: string): string | null {
+  return getState<string | null>(c, `direct.reply:${replyMessageId}`, null);
 }
 
 /** 버튼을 눌렀을 때: 있고, 안 썼고, 30분이 안 지났는가 */
