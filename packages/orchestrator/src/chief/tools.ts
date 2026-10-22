@@ -1,5 +1,5 @@
-// 비서실장 도구 구현 (6장). 권한은 읽기와 지시 등록, 확인 버튼 요청, 보고 제출뿐이다.
-// 상태 변경, 결재 처리, 푸시는 할 수 없다. 이 파일에 그런 길이 없다.
+// 비서실장 도구 구현 (6장). 권한은 읽기와 지시 등록, 확인 버튼 요청, 보고 제출, 비상 정지(멈춤만)뿐이다.
+// 결재 처리, PM 질문 답변, /재개, 푸시, 티켓 상태 변경은 할 수 없다. 이 파일에 그런 길이 없다(2026-10-22 CEO 결정: 사장님이 직접 한다).
 import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Ctx } from '../context.ts';
@@ -16,6 +16,8 @@ import type { ReportService } from './report-service.ts';
 import type { GitCatPort } from '../discord/interactions.ts';
 import { pendingChiefProposal, proposeChiefOrder, respondChiefOrder } from './order-proposals.ts';
 import { readableDiscordText } from '../discord/format.ts';
+import { orderInfo, projectList, staffList, ticketLog } from './reads.ts';
+import { requestChiefAction, type ChiefRequestInput } from './requests.ts';
 import { TOOL_DEFS, type ToolName } from './tool-defs.ts';
 
 export class ChiefTools {
@@ -75,6 +77,22 @@ export class ChiefTools {
         return buildReportData(c, new Date(args.since!).toISOString());
       case 'get_usage':
         return (['dev', 'research', 'review'] as const).map((b) => ({ ...budgetStatus(c, b), estimated: true }));
+      case 'get_ticket_log':
+        return ticketLog(c, args.ticketId!, Number(args.limit ?? 20));
+      case 'get_order':
+        return orderInfo(c, args.orderId);
+      case 'get_staff':
+        return staffList(c);
+      case 'get_projects':
+        return projectList(c);
+      case 'request_action':
+        return requestChiefAction(c, parsed.data as ChiefRequestInput);
+      case 'emergency_stop': {
+        const { alreadyStopped } = this.engine.haltByChief(args.reason!);
+        return alreadyStopped
+          ? { stopped: true, note: '이미 회사가 멈춰 있어요. 다시 시작은 사장님이 /재개로 해요' }
+          : { stopped: true, note: '모든 직원을 멈추고 진행 중인 AI 호출을 끊었어요. 사장님께 알림이 갔어요. 다시 시작은 사장님이 /재개로만 할 수 있어요' };
+      }
       case 'create_order': {
         return proposeChiefOrder(c, { rawText: args.rawText!, ...(args.discordMessageId ? { discordMessageId: args.discordMessageId } : {}), ...(args.projectId ? { projectId: args.projectId } : {}) });
       }

@@ -10,7 +10,7 @@
 
 - Ollama와 `gemma4:12b` 모델
 - 회사 오케스트레이터 실행 중 (pm2 `ai-office`, 내부 API 127.0.0.1:8790)
-- 회사 MCP 서버: `packages/orchestrator/src/mcp/main.ts`. 도구 9개(get_status, get_ticket, get_pending_approvals, get_report_data, get_usage, create_order, respond_order_proposal, request_confirmation, submit_report)가 실제 사무실에 연결된다.
+- 회사 MCP 서버: `packages/orchestrator/src/mcp/main.ts`. 도구 15개(get_status, get_ticket, get_pending_approvals, get_report_data, get_usage, get_ticket_log, get_order, get_staff, get_projects, create_order, respond_order_proposal, request_confirmation, request_action, emergency_stop, submit_report)가 실제 사무실에 연결된다. 2026-10-22에 읽기 4개·확인 버튼 요청·비상 정지를 더했다(DESIGN 6·7장). 결재와 PM 질문 답변 대리 도구는 없다.
 
 ## 1. 비서실장 봇 만들기 (휴대폰 가능)
 

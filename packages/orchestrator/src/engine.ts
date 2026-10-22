@@ -23,7 +23,7 @@ import { askClarification } from './core/clarifications.ts';
 import { recordMessage, resumeUncappedTickets } from './core/guards.ts';
 import { registerOrder } from './core/orders.ts';
 import { GATE_REVIEWER_ID } from './core/plans.ts';
-import { resumeAll, stopAll } from './core/stop.ts';
+import { haltByChief, resumeAll, stopAll } from './core/stop.ts';
 import { applyTicketEvent, getTicket } from './core/tickets.ts';
 import type { TicketEvent } from './core/transitions.ts';
 import { employees, orders, plans, tickets } from './db/schema.ts';
@@ -116,6 +116,11 @@ export class Engine {
 
   resume(discordUserId: string): string[] {
     return resumeAll(this.c, discordUserId);
+  }
+
+  /** 비서실장 비상 정지: 진행 중인 AI 호출을 끊고 회사를 정지 상태로 둔다. 풀기는 /재개(CEO)뿐 */
+  haltByChief(reason: string): { alreadyStopped: boolean } {
+    return haltByChief(this.c, reason, () => this.calls.abortAll());
   }
 
   /**

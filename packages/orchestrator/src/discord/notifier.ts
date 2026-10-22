@@ -5,6 +5,8 @@
 // - 시간당 즉시 알림(멘션) 수에 상한을 둔다 (폭주 방지).
 import { eq, gt, like } from 'drizzle-orm';
 import { staffUpdate } from '../staff/voice.ts';
+import { personalNameOf } from '../staff/org.ts';
+import { chiefRequestMessage, markChiefRequestPosted, unpostedChiefRequests } from '../chief/requests.ts';
 import { getState, inTx, setState, type Ctx } from '../context.ts';
 import type { ApprovalRow } from '../core/approvals.ts';
 import { budgetStatus } from '../core/budget.ts';
@@ -126,6 +128,7 @@ export class Notifier {
       setState(c, CURSOR, ev.seq);
     }
     posts += await this.checkBlockedPlans();
+    posts += await this.checkChiefRequests();
     posts += await this.checkNearLimits();
     posts += await this.flushHeld();
     return posts;
@@ -264,6 +267,20 @@ export class Notifier {
     return 0;
   }
 
+  /**
+   * 비서실장 확인 요청: 아직 안 올린 요청을 #결재함에 [실행] [하지 않기]와 함께 올린다. 실행은 사장님 클릭으로만 (chief/requests.ts).
+   * 이벤트가 아니라 요청 상태를 직접 본다(계획 작성 멈춤과 같은 방식). 보내기에 실패하면 다음 바퀴에 다시 올린다.
+   */
+  private async checkChiefRequests(): Promise<number> {
+    let posts = 0;
+    for (const req of unpostedChiefRequests(this.c)) {
+      const messageId = await this.sendImmediate('approvals', chiefRequestMessage(req), { kind: 'approval', text: `비서실장 요청 · ${req.what.split('\n')[0]}` });
+      markChiefRequestPosted(this.c, req.id, messageId);
+      posts++;
+    }
+    return posts;
+  }
+
   private async onSystemPaused(p: Payload): Promise<number> {
     if (p.by === 'connectivity') {
       await this.sendImmediate('reports', { content: '인터넷이 끊겨 Claude·GPT 직원의 티켓을 멈췄어요. 로컬 직원은 계속 일해요' }, { kind: 'alert', text: '인터넷 끊김' });
@@ -271,6 +288,12 @@ export class Notifier {
     }
     if (p.by === 'ceo') {
       await this.port.send({ channel: 'reports', content: `모든 직원을 멈췄어요 (/정지). 멈춘 티켓 ${(p.tickets as string[] | undefined)?.length ?? 0}개`, silent: true });
+      return 1;
+    }
+    if (p.by === 'chief-of-staff') {
+      // 비서실장 비상 정지 (7장, 2026-10-22): 사장님이 시키지 않았을 수 있으니 바로 알린다
+      const name = personalNameOf('chief-of-staff');
+      await this.sendImmediate('reports', { content: `비서실장${name ? ` ${name}` : ''}이 비상 정지로 모든 직원을 멈췄어요.\n이유: ${String(p.reason ?? '')}\n다시 시작은 사장님이 /재개로 해요` }, { kind: 'alert', text: '비서실장 비상 정지' });
       return 1;
     }
     return 0;

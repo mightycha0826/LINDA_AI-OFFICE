@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import type { Ctx } from '../context.ts';
 import { pendingApprovals, requestApproval, type ApprovalDecision } from '../core/approvals.ts';
 import { answerClarification, clarificationOf } from '../core/clarifications.ts';
+import { assertChiefRequestPending, chiefRequestHead, chiefRequestOf, closeChiefRequest, type ChiefRequest } from '../chief/requests.ts';
 import { readableDiscordText } from './format.ts';
 import { projectChannel } from './project-channels.ts';
 import { budgetStatus } from '../core/budget.ts';
@@ -54,6 +55,7 @@ export class InteractionHandler {
     ['dp', (target, action) => this.direct('dp', target, action)],
     ['rv', (target, action) => this.direct('rv', target, action)],
     ['gs', (target, action) => this.guestButton(target, action)],
+    ['cr', (target, action) => this.chiefRequestButton(target, action)],
   ]);
 
   /** 슬래시 명령 이름 → 처리. 이름은 SLASH_COMMANDS와 같다 */
@@ -164,6 +166,48 @@ export class InteractionHandler {
   private guestButton(guestId: string, action: string): InteractionReply {
     setGuestOn(this.c, guestId, action === 'on', this.c.config.ceoDiscordId);
     return { kind: 'update', ...this.guestBoard() };
+  }
+
+  /**
+   * 비서실장이 띄운 확인 버튼 [실행] [하지 않기] (chief/requests.ts, 2026-10-22).
+   * 실행은 사장님 클릭으로만, /새프로젝트·/설정·/파견·#막힘 버튼과 같은 함수로 한다. 실행이 거부되면 요청은 그대로 남는다.
+   */
+  private chiefRequestButton(requestId: string, action: string): InteractionReply {
+    const req = chiefRequestOf(this.c, requestId);
+    if (!req) return { kind: 'reply', content: '요청을 찾지 못했어요', ephemeral: true };
+    if (action === 'no') {
+      closeChiefRequest(this.c, req.id, 'cancelled');
+      return { kind: 'update', content: `${chiefRequestHead(req)}\n${req.what}\n\n**하지 않기로 했어요**`, buttons: [] };
+    }
+    assertChiefRequestPending(req);
+    const result = this.runChiefRequest(req);
+    closeChiefRequest(this.c, req.id, 'done');
+    return { kind: 'update', content: `${chiefRequestHead(req)}\n${req.what}\n\n**실행했어요** · ${result}`, buttons: [] };
+  }
+
+  private runChiefRequest(req: ChiefRequest): string {
+    const ceo = this.c.config.ceoDiscordId;
+    switch (req.kind) {
+      case 'new-project':
+        if (!this.projects) throw new OfficeError('discord', 'Git 고양이나 Discord가 연결되지 않았어요');
+        void this.projects.run({ id: req.target, ...(req.testCommand ? { testCommand: req.testCommand } : {}), ...(req.description ? { description: req.description } : {}) });
+        return '저장소와 작업 채널을 만드는 중이에요. 끝나면 새 #작업 채널에 안내가 올라와요';
+      case 'setting':
+        return applySetting(this.c, req.target, req.value ?? '');
+      case 'guest-on':
+      case 'guest-off':
+        return guestLine(this.c, setGuestOn(this.c, req.target, req.kind === 'guest-on', ceo));
+      case 'retry-ticket':
+      case 'cancel-ticket':
+        this.engine.ceoTicketAction(req.target, ceo, req.kind === 'retry-ticket' ? 'retry' : 'cancel');
+        return req.kind === 'retry-ticket' ? '다시 시도해요' : '취소했어요';
+      case 'retry-plan':
+        this.engine.retryPlanning(req.target, ceo);
+        return 'PM이 계획서를 다시 써요. 결과는 결재함에 올라와요';
+      case 'cancel-plan':
+        this.engine.cancelBlockedOrder(req.target, ceo);
+        return '지시를 취소했어요';
+    }
   }
 
   /** 직원 직접 지시 [맡기고 시작]·진행 중 수정 [수정 반영]·[그냥 대화] (9장, 2026-10-21). 규칙은 core/direct.ts가 집행한다 */

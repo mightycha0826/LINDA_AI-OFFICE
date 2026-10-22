@@ -100,7 +100,7 @@ describe('내부 API', () => {
 });
 
 describe('MCP 서버 (헤르메스가 띄움)', () => {
-  it('도구 8개를 알리고, 호출은 내부 API로 넘긴다 (DB를 직접 열지 않음)', async () => {
+  it('도구 15개를 알리고, 호출은 내부 API로 넘긴다 (DB를 직접 열지 않음)', async () => {
     const s = setup();
     const { base } = await api(s);
     const mcp = buildMcpServer({ apiBase: base, token: TOKEN });
@@ -111,7 +111,7 @@ describe('MCP 서버 (헤르메스가 띄움)', () => {
 
     const tools = await client.listTools();
     expect(tools.tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
-    expect(TOOL_NAMES).toHaveLength(9);
+    expect(TOOL_NAMES).toHaveLength(15);
     // 헤르메스는 메시지 ID를 모르니 필수로 알리지 않는다 (비우면 #비서실 기록을 쓴다)
     expect(tools.tools.find((t) => t.name === 'create_order')!.inputSchema.required).toEqual(['rawText']);
 

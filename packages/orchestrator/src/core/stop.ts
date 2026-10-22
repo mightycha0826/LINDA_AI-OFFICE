@@ -1,4 +1,5 @@
 // 비상 정지 (DESIGN.md 7장). /정지와 /재개는 CEO 계정만 쓸 수 있다.
+// 비서실장은 멈추기만 할 수 있다(haltByChief, 2026-10-22 CEO 결정). 풀기는 /재개뿐이다.
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { emit, inTx, isStopped, setState, type Ctx } from '../context.ts';
 import { tickets } from '../db/schema.ts';
@@ -9,6 +10,22 @@ export { isStopped };
 
 /** 진행 중인 AI 호출을 끊는 쪽(엔진)에 알리기 위한 훅. */
 export type AbortHook = () => void;
+
+/**
+ * 비서실장 비상 정지: 회사를 정지 상태로 두고 진행 중인 AI 호출을 끊는다. 정지 중에는 엔진이 새 일을 시작하지 않는다.
+ * 티켓 상태는 바꾸지 않는다(CEO 정지 사유는 전환표상 CEO만 건다). 끊긴 호출은 티켓을 바꾸지 않고 버려지고,
+ * /재개(CEO)가 정지를 풀면 그 자리에서 이어간다. 이미 멈춰 있으면 아무것도 하지 않는다.
+ */
+export function haltByChief(c: Ctx, reason: string, abortInFlight?: AbortHook): { alreadyStopped: boolean } {
+  const alreadyStopped = inTx(c, (t) => {
+    if (isStopped(t)) return true;
+    setState(t, 'stopped', true);
+    emit(t, 'system.paused', { by: 'chief-of-staff', reason, tickets: [] });
+    return false;
+  });
+  if (!alreadyStopped) abortInFlight?.();
+  return { alreadyStopped };
+}
 
 export function stopAll(c: Ctx, discordUserId: string, abortInFlight?: AbortHook): string[] {
   assertCeo(c.config, discordUserId);

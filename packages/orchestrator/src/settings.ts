@@ -51,18 +51,29 @@ function replaceInPlace(target: Config, next: Config): void {
 const OVERRIDES = 'configOverrides';
 
 export function applySetting(c: Ctx, key: string, raw: string): string {
-  const spec = SETTINGS[key];
+  const { spec, patch, next } = checkSetting(c, key, raw);
+  const before = spec.show(c.config);
+  inTx(c, (t) => {
+    setState(t, OVERRIDES, deepMerge(getState(t, OVERRIDES, {}), patch));
+    emit(t, 'usage.updated', { setting: key, before, after: spec.show(next) });
+  });
+  replaceInPlace(c.config, next);
+  return `${spec.label}: ${before} → ${spec.show(c.config)}`;
+}
+
+/** 바꾸지 않고 "항목: 지금 → 새 값"만 보여 준다 (비서실장 확인 요청, chief/requests.ts). 반영할 수 없는 값이면 오류 */
+export function previewSetting(c: Ctx, key: string, raw: string): string {
+  const { spec, next } = checkSetting(c, key, raw);
+  return `${spec.label}: ${spec.show(c.config)} → ${spec.show(next)}`;
+}
+
+function checkSetting(c: Ctx, key: string, raw: string): { spec: SettingSpec; patch: Patch; next: Config } {
+  const spec = Object.hasOwn(SETTINGS, key) ? SETTINGS[key] : undefined;
   if (!spec) throw new OfficeError('setting', `모르는 항목이에요: ${key}`);
   const patch = spec.parse(raw);
   const result = ConfigSchema.safeParse(deepMerge(c.config, patch));
   if (!result.success) throw new OfficeError('setting', `반영하지 않았어요: ${z.prettifyError(result.error)}`);
-  const before = spec.show(c.config);
-  inTx(c, (t) => {
-    setState(t, OVERRIDES, deepMerge(getState(t, OVERRIDES, {}), patch));
-    emit(t, 'usage.updated', { setting: key, before, after: spec.show(result.data) });
-  });
-  replaceInPlace(c.config, result.data);
-  return `${spec.label}: ${before} → ${spec.show(c.config)}`;
+  return { spec, patch, next: result.data };
 }
 
 /** 시작할 때 DB에 남은 /설정 값을 설정 파일 값 위에 덮는다. 검사를 통과하지 못하면 무시한다. */
