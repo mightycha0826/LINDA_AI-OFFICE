@@ -101,8 +101,10 @@ export function TicketDetailView({ id, timezone, names }: { id: string; timezone
       )}
 
       <h3 className="ao-group__title">사용량</h3>
-      <Meter label="토큰" used={(d.usage.tokens / Math.max(d.usage.tokenCap, 1)) * 100} limit={100} note={`${d.usage.tokens.toLocaleString('ko-KR')} / ${d.usage.tokenCap.toLocaleString('ko-KR')}`} />
-      <Meter label="턴" used={(d.usage.turns / Math.max(d.usage.turnCap, 1)) * 100} limit={100} note={`${d.usage.turns} / ${d.usage.turnCap}`} />
+      {d.usage.tokenCap === null || d.usage.turnCap === null ? <p className="ao-detail__text">누적 토큰 {d.usage.tokens.toLocaleString('ko-KR')} · {d.usage.turns}턴 · 자체 제한 없음</p> : <>
+        <Meter label="토큰" used={(d.usage.tokens / Math.max(d.usage.tokenCap, 1)) * 100} limit={100} note={`${d.usage.tokens.toLocaleString('ko-KR')} / ${d.usage.tokenCap.toLocaleString('ko-KR')}`} />
+        <Meter label="턴" used={(d.usage.turns / Math.max(d.usage.turnCap, 1)) * 100} limit={100} note={`${d.usage.turns} / ${d.usage.turnCap}`} />
+      </>}
 
       <h3 className="ao-group__title">회의록</h3>
       {d.minutes.length === 0 ? (

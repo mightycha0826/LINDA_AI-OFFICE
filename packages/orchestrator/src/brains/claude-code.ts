@@ -18,7 +18,7 @@ export interface ClaudeCodeOptions {
   bin: string;
   binArgs: readonly string[];
   timeoutMs: number;
-  maxTurns: number;
+  maxTurns: number | null;
   wtRoot: string;
   dataDir: string;
   /** 비우면 계정 기본 모델 */
@@ -111,7 +111,7 @@ export class ClaudeCodeBrain implements Brain {
       '--tools', p.tools,
       '--permission-mode', p.permissionMode,
       '--permission-prompts', 'none',
-      '--max-turns', String(this.o.maxTurns),
+      ...(this.o.maxTurns === null ? [] : ['--max-turns', String(this.o.maxTurns)]),
       '--no-session-persistence',
       // 주인 개인 설정(플러그인, 스킬, MCP 서버, 훅)을 물려받지 않는다. 권한은 아래 --settings와 worktree의 프로젝트 설정만 (0단계 #5)
       '--setting-sources', 'project,local',

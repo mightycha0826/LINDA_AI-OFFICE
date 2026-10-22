@@ -20,7 +20,7 @@ import { enforceBudgets, type EmployeeRow } from './core/budget.ts';
 import { enforceGuests } from './core/guests.ts';
 import { recoverQuotaPaused, type QuotaRecoveryResult } from './core/quota-recovery.ts';
 import { askClarification } from './core/clarifications.ts';
-import { recordMessage } from './core/guards.ts';
+import { recordMessage, resumeUncappedTickets } from './core/guards.ts';
 import { registerOrder } from './core/orders.ts';
 import { GATE_REVIEWER_ID } from './core/plans.ts';
 import { resumeAll, stopAll } from './core/stop.ts';
@@ -188,6 +188,7 @@ export class Engine {
   async step(): Promise<number> {
     if (isStopped(this.c)) return 0;
     let actions = (await this.connectivity.refresh()).length;
+    actions += resumeUncappedTickets(this.c).length;
     // 업데이트 전에 이미 결재함에 올라온 미해결 질문도 별도 대화로 옮긴다.
     for (const plan of this.c.db.select().from(plans).where(eq(plans.status, 'awaiting-ceo')).all()) {
       if (plan.questions.length) {

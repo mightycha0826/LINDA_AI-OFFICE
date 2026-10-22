@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import type { Brain, ScreenAccountUsage, ScreenEmployee, ScreenLogEntry, ScreenTicket, Snapshot } from '@ai-office/shared';
 import { getState, isStopped, type Ctx } from '../context.ts';
 import { budgetStatus } from '../core/budget.ts';
+import { ticketCapsEnabled } from '../core/guards.ts';
 import { approvals, employees, events, meetingMinutes, messages, orders, projects, tickets, usage } from '../db/schema.ts';
 import { isCeoPresent } from '../discord/presence.ts';
 import { localTime, nextCheckTime } from '../discord/schedule.ts';
@@ -175,7 +176,7 @@ export function buildSnapshot(c: Ctx, extras: SnapshotExtras): Snapshot {
       .map((a) => ({ id: a.id, kind: a.kind, targetId: a.targetId, summary: a.summary, reversible: a.reversible, link: approvalLink(c, a.discordMessageId), createdAt: a.createdAt })),
     usage: (['dev', 'research', 'review'] as const).map((b) => {
       const s = budgetStatus(c, b);
-      return { budget: b, fiveHour: s.fiveHour.used, fiveHourLimit: s.fiveHour.limit ?? 0, weekly: s.weekly.used, weeklyLimit: s.weekly.limit ?? 0, blockedUntil: s.blockedUntil };
+      return { budget: b, fiveHour: s.fiveHour.used, fiveHourLimit: s.fiveHour.limit, weekly: s.weekly.used, weeklyLimit: s.weekly.limit, blockedUntil: s.blockedUntil };
     }),
     estimated: recentUsage.length === 0 || recentUsage.some((u) => u.source === 'estimated'),
     log,
@@ -233,6 +234,6 @@ export function buildTicketDetail(c: Ctx, id: string) {
     summary,
     log: msgs.map((m) => ({ id: m.id, at: m.createdAt, fromId: m.fromId, toId: m.toId, kind: m.kind, text: m.content.slice(0, 2000) })),
     minutes: c.db.select().from(meetingMinutes).where(eq(meetingMinutes.ticketId, id)).all(),
-    usage: { tokens: t.tokensUsed, turns: t.turnsUsed, tokenCap: t.tokenCap, turnCap: t.turnCap },
+    usage: { tokens: t.tokensUsed, turns: t.turnsUsed, tokenCap: ticketCapsEnabled(c,t) ? t.tokenCap : null, turnCap: ticketCapsEnabled(c,t) ? t.turnCap : null },
   };
 }

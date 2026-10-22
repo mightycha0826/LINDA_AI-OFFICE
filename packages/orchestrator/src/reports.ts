@@ -76,7 +76,7 @@ export function formatReportData(d: ReportData): string {
     '**3. 막힌 것**',
     list([...d.blocked.map((b) => `${b.id} ${b.title}`), ...d.paused.filter((p) => p.reason === 'budget').map((p) => `${p.id} ${p.title} (한도 소진으로 멈춤)`)], (x) => x),
     `**4. 사용량** ${d.estimated ? '(추정치)' : ''}`,
-    list(d.usage, (u) => `${BUDGET_NAME[u.budget]}: 5시간 ${pct(u.fiveHour)}/${u.fiveHourLimit}% · 주간 ${pct(u.weekly)}/${u.weeklyLimit}%${u.blockedUntil ? ` · 제공자 한도 도달, ${u.blockedUntil}까지 막음` : ''}`),
+    list(d.usage, (u) => `${BUDGET_NAME[u.budget]}: 5시간 ${pct(u.fiveHour)}/${u.fiveHourLimit === null ? '자체 제한 없음' : `${u.fiveHourLimit}%`} · 주간 ${pct(u.weekly)}/${u.weeklyLimit === null ? '자체 제한 없음' : `${u.weeklyLimit}%`}${u.blockedUntil ? ` · 제공자 한도 도달, ${u.blockedUntil}까지 막음` : ''}`),
   ];
   if (d.claudeAccount) {
     const a = d.claudeAccount;

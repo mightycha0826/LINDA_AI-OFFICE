@@ -75,9 +75,9 @@ export interface ScreenApproval {
 export interface ScreenUsage {
   budget: 'dev' | 'research' | 'review';
   fiveHour: number;
-  fiveHourLimit: number;
+  fiveHourLimit: number | null;
   weekly: number;
-  weeklyLimit: number;
+  weeklyLimit: number | null;
   blockedUntil: string | null;
 }
 

@@ -10,6 +10,7 @@ export const ConfigSchema = z
   .object({
     /** 결재를 인정하는 유일한 Discord 계정 (7장, 9장) */
     ceoDiscordId: z.string().regex(/^\d{17,20}$/, 'Discord 사용자 ID(숫자 17~20자리)여야 한다'),
+    usagePolicy: z.object({ enforceEstimates: z.boolean(), enforceTicketCaps: z.boolean() }),
     limits: z.object({
       claude: z.object({
         fiveHour: z.object({ dev: pct, research: pct }),
@@ -182,6 +183,7 @@ export type Config = z.infer<typeof ConfigSchema>;
 
 /** 설계 문서의 기본값. ceoDiscordId는 기본값이 없다. */
 export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
+  usagePolicy: { enforceEstimates: true, enforceTicketCaps: true },
   limits: {
     // 회사 전체 5시간 70% = 개발 55 + 리서치 15, 주간 50% = 79:21 비율 (8장)
     // 7-1부터 리서치 몫은 기획실장(PM)이 쓰는 "기획 몫"이다 (2-0)

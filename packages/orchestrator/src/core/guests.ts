@@ -135,6 +135,7 @@ export function guestExhausted(c: Ctx, e: EmployeeRow): boolean {
   const cap = guestCap(c, e);
   if (cap === null) return true;
   const u = guestUsage(c, e);
+  if (!c.config.usagePolicy.enforceEstimates) return !!u.blockedUntil;
   return u.fiveHour >= cap || u.weekly >= cap || !!u.blockedUntil;
 }
 
@@ -155,7 +156,7 @@ export function recordGuestUsage(c: Ctx, e: EmployeeRow, u: { account?: { fiveHo
 export function blockGuest(c: Ctx, e: EmployeeRow, resetsAt?: string): void {
   const id = guestAccountOf(e);
   if (!id) return;
-  const fallback = new Date(c.clock.now().getTime() + HOUR).toISOString();
+  const fallback = new Date(c.clock.now().getTime() + (c.config.usagePolicy.enforceEstimates ? HOUR : 30 * 60_000)).toISOString();
   setState(c, blockKey(id), resetsAt && new Date(resetsAt).getTime() > c.clock.now().getTime() ? resetsAt : fallback);
 }
 

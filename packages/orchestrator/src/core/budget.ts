@@ -76,7 +76,7 @@ const DEFAULT_BLOCK_MS = HOUR;
  * 추정 계수가 틀려도 실제 한도를 넘겨 계속 부르지 않게 하기 위해서다.
  */
 export function blockBudget(c: Ctx, b: UsageBudget, resetsAt?: string): string {
-  const fallback = new Date(c.clock.now().getTime() + DEFAULT_BLOCK_MS).toISOString();
+  const fallback = new Date(c.clock.now().getTime() + (c.config.usagePolicy.enforceEstimates ? DEFAULT_BLOCK_MS : 30 * 60_000)).toISOString();
   const until = resetsAt && new Date(resetsAt).getTime() > c.clock.now().getTime() ? resetsAt : fallback;
   setState(c, blockKey(b), until);
   emit(c, 'usage.updated', { budget: b, blockedUntil: until, reason: 'provider-limit' });
@@ -91,6 +91,7 @@ export function budgetStatus(c: Ctx, b: UsageBudget): BudgetStatus {
   const lw = limitOf(c, b, 'weekly');
   const until = getState<string | null>(c, blockKey(b), null);
   const blockedUntil = until && new Date(until).getTime() > c.clock.now().getTime() ? until : null;
+  if (!c.config.usagePolicy.enforceEstimates) return { budget:b, fiveHour:{used:five,limit:null}, weekly:{used:week,limit:null}, exhausted:!!blockedUntil, blockedUntil };
   return { budget: b, fiveHour: { used: five, limit: l5 }, weekly: { used: week, limit: lw }, exhausted: five >= l5 || week >= lw || !!blockedUntil, blockedUntil };
 }
 
@@ -148,6 +149,23 @@ export function enforceBudgets(c: Ctx): { paused: string[]; resumed: string[] } 
   return inTx(c, (t) => {
     const paused: string[] = [];
     const resumed: string[] = [];
+    if (!t.config.usagePolicy.enforceEstimates) {
+      const staff=new Map(t.db.select().from(employees).all().map(e=>[e.id,e]));
+      const actorOf=(tk: typeof tickets.$inferSelect) => staff.get((tk.status==='in_review'||tk.pausedFrom==='in_review')?tk.reviewerId:tk.assigneeId);
+      const all=t.db.select().from(tickets).all();
+      for(const tk of all) {
+        const actor=actorOf(tk);
+        if(!actor || isGuest(actor)) continue;
+        const budget=budgetOf(actor);
+        const blocked=budget && isExhausted(t,budget);
+        if (blocked && ['in_progress','rework','meeting','in_review'].includes(tk.status)) {
+          applyTicketEvent(t,tk.id,{type:'system.pause',reason:'budget'},{kind:'orchestrator'}); paused.push(tk.id);
+        } else if (!blocked && tk.status==='paused' && tk.pauseReason==='budget' && !isStopped(t)) {
+          applyTicketEvent(t,tk.id,{type:'system.resume',cause:'budget-refilled'},{kind:'orchestrator'}); resumed.push(tk.id);
+        }
+      }
+      return {paused,resumed};
+    }
     const devIds = t.db
       .select()
       .from(employees)
@@ -172,6 +190,9 @@ export function enforceBudgets(c: Ctx): { paused: string[]; resumed: string[] } 
         .all()
         .filter((tk) => !guestIdSet(t).has(tk.assigneeId));
       for (const tk of waiting) {
+        const worker=t.db.select().from(employees).where(eq(employees.id,tk.pausedFrom==='in_review'?tk.reviewerId:tk.assigneeId)).get();
+        const budget=worker?budgetOf(worker):null;
+        if (budget && isExhausted(t,budget)) continue;
         applyTicketEvent(t, tk.id, { type: 'system.resume', cause: 'budget-refilled' }, orchestrator);
         resumed.push(tk.id);
       }

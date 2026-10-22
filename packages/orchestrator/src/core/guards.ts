@@ -1,13 +1,36 @@
 // 폭주 방지 (DESIGN.md 5장 핵심 규칙).
 // - 핑퐁 차단: 같은 담당자·검토자 쌍이 상태 변화 없이 연속으로 주고받으면 guard.pingpong.
 // - 턴·토큰 상한: 넘으면 paused(cap). 새 한도 창의 자동 재개는 quota-recovery.ts가 맡는다.
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { MessageKind, ReasonCategory } from '@ai-office/shared';
-import { emit, inTx, newId, nowIso, type Ctx } from '../context.ts';
-import { messages, tickets } from '../db/schema.ts';
+import { emit, inTx, isStopped, newId, nowIso, type Ctx } from '../context.ts';
+import { employees, messages, tickets } from '../db/schema.ts';
 import { applyTicketEvent, getTicket } from './tickets.ts';
 
 const orchestrator = { kind: 'orchestrator' } as const;
+
+/** Cloud work ignores app-imposed token/turn caps when the CEO disables them. */
+export function ticketCapsEnabled(c: Ctx, tk: {assigneeId:string;reviewerId:string}): boolean {
+  if(c.config.usagePolicy.enforceTicketCaps) return true;
+  const staff=c.db.select().from(employees).where(inArray(employees.id,[tk.assigneeId,tk.reviewerId])).all();
+  return !staff.some(e=>e.brain.provider==='claude-code'||e.brain.provider==='codex');
+}
+
+/** Release old cap pauses when the policy changes. CEO /정지 remains authoritative. */
+export function resumeUncappedTickets(c: Ctx): string[] {
+  if(isStopped(c) || c.config.usagePolicy.enforceTicketCaps) return [];
+  return inTx(c,t=>{
+    const resumed:string[]=[];
+    const waiting=t.db.select().from(tickets).where(and(eq(tickets.status,'paused'),eq(tickets.pauseReason,'cap'))).all();
+    for(const tk of waiting) {
+      if(!tk.pausedFrom || ticketCapsEnabled(t,tk)) continue;
+      emit(t,'ticket.status',{ticketId:tk.id,from:'paused',to:'paused',event:'caps.disabled'});
+      applyTicketEvent(t,tk.id,{type:'system.resume',cause:'cap-raised'},orchestrator);
+      resumed.push(tk.id);
+    }
+    return resumed;
+  });
+}
 
 export interface MessageInput {
   ticketId?: string;
@@ -98,7 +121,7 @@ export function recordTurn(c: Ctx, ticketId: string, tokens: number): { capped: 
     const turnsUsed = tk.turnsUsed + 1;
     const tokensUsed = tk.tokensUsed + tokens;
     t.db.update(tickets).set({ turnsUsed, tokensUsed }).where(eq(tickets.id, ticketId)).run();
-    const over = turnsUsed >= tk.turnCap || tokensUsed >= tk.tokenCap;
+    const over = ticketCapsEnabled(t,tk) && (turnsUsed >= tk.turnCap || tokensUsed >= tk.tokenCap);
     if (over && tk.status !== 'paused' && tk.status !== 'done' && tk.status !== 'cancelled') {
       applyTicketEvent(t, ticketId, { type: 'system.pause', reason: 'cap' }, orchestrator);
       return { capped: true };
@@ -110,7 +133,7 @@ export function recordTurn(c: Ctx, ticketId: string, tokens: number): { capped: 
 /** 호출 전에 상한을 넘었는지 본다. */
 export function isOverCap(c: Ctx, ticketId: string): boolean {
   const tk = getTicket(c, ticketId);
-  return tk.turnsUsed >= tk.turnCap || tk.tokensUsed >= tk.tokenCap;
+  return ticketCapsEnabled(c,tk) && (tk.turnsUsed >= tk.turnCap || tk.tokensUsed >= tk.tokenCap);
 }
 
 /** CEO가 상한을 올린다(/설정). 상한 때문에 멈춘 티켓이 이제 상한 안이면 이어간다. */

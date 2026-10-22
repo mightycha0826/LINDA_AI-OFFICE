@@ -9,6 +9,7 @@ import { answerClarification, clarificationOf } from '../core/clarifications.ts'
 import { readableDiscordText } from './format.ts';
 import { projectChannel } from './project-channels.ts';
 import { budgetStatus } from '../core/budget.ts';
+import { ticketCapsEnabled } from '../core/guards.ts';
 import { applyRevision, dismissProposal, getProposal, startDirectOrder } from '../core/direct.ts';
 import { guestLine, loadGuestRegistry, setGuestOn, syncGuests } from '../core/guests.ts';
 import { isGuest } from '../core/budget.ts';
@@ -232,7 +233,7 @@ export class InteractionHandler {
           ephemeral: false,
           content: [
             `**${t.id} ${t.title}** · ${t.status}${t.pauseReason ? `(${t.pauseReason})` : ''}`,
-            `담당 ${t.assigneeId} · 검토 ${t.reviewerId} · 반려 ${t.reworkCount}회 · 턴 ${t.turnsUsed}/${t.turnCap} · 토큰 ${t.tokensUsed}/${t.tokenCap}`,
+            `담당 ${t.assigneeId} · 검토 ${t.reviewerId} · 반려 ${t.reworkCount}회 · 턴 ${t.turnsUsed}${ticketCapsEnabled(c,t) ? `/${t.turnCap}` : ''} · 토큰 ${t.tokensUsed}${ticketCapsEnabled(c,t) ? `/${t.tokenCap}` : ' · 자체 제한 없음'}`,
             `완료 조건: ${t.acceptanceCriteria.join(' / ')}`,
             ...recent.map((m) => `- ${m.fromId}:\n${readableDiscordText(m.content)}`),
           ].join('\n'),
@@ -262,7 +263,7 @@ export class InteractionHandler {
         const name_ = { dev: 'Claude 개발', research: 'Claude 리서치', review: 'GPT 리뷰' } as const;
         const lines = (['dev', 'research', 'review'] as const).map((b) => {
           const s = budgetStatus(c, b);
-          return `${name_[b]}: 5시간 ${s.fiveHour.used.toFixed(1)}/${s.fiveHour.limit}% · 주간 ${s.weekly.used.toFixed(1)}/${s.weekly.limit}%${s.blockedUntil ? ` · ${s.blockedUntil}까지 막힘` : ''}`;
+          return `${name_[b]}: 5시간 ${s.fiveHour.used.toFixed(1)}/${s.fiveHour.limit === null ? '자체 제한 없음' : `${s.fiveHour.limit}%`} · 주간 ${s.weekly.used.toFixed(1)}/${s.weekly.limit === null ? '자체 제한 없음' : `${s.weekly.limit}%`}${s.blockedUntil ? ` · ${s.blockedUntil}까지 막힘` : ''}`;
         });
         return { kind: 'reply', content: `**몫별 사용량** (추정치)\n${lines.join('\n')}`, ephemeral: false };
       }

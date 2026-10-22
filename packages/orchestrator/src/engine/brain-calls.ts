@@ -83,6 +83,7 @@ export class BrainCalls {
     if (isCloud(e) && !this.connectivity.isOnline()) return 'offline';
     if (!b || b === 'local' || !isExhausted(this.c, b)) return 'ok';
     // 리서치 몫 소진 때 로컬로 바꾸는 것은 리서치 직원뿐. 기획실장(PM)은 기다린다(로컬 계획은 뒤에서 더 비싸다, 2-0)
+    if (!this.c.config.usagePolicy.enforceEstimates) return 'wait';
     return b === 'research' && e.role !== 'pm' ? 'low-precision' : 'wait';
   }
 

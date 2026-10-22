@@ -18,9 +18,9 @@ export function ResourceTab({ snapshot, nowMs }: { snapshot: Snapshot; nowMs: nu
         <Meter label={`5시간 ${BUDGET_LABEL.research}`} used={u('research').fiveHour} limit={u('research').fiveHourLimit} />
         <Meter label="주간 개발" used={u('dev').weekly} limit={u('dev').weeklyLimit} />
         <Meter label="주간 기획" used={u('research').weekly} limit={u('research').weeklyLimit} />
-        <p className="ao-card__note">
+        {u('dev').fiveHourLimit === null ? <p className="ao-card__note">사용량은 참고용 추정치이며 작업을 중단하지 않습니다.</p> : <p className="ao-card__note">
           개인용 여유: 5시간 {pct(s.personalReserve.claudeFiveHour)}, 주간 {pct(s.personalReserve.claudeWeekly)}
-        </p>
+        </p>}
         {s.account.claude && (
           <>
             <div className="ao-card__head">
@@ -41,9 +41,9 @@ export function ResourceTab({ snapshot, nowMs }: { snapshot: Snapshot; nowMs: nu
         </div>
         <Meter label="5시간" used={u('review').fiveHour} limit={u('review').fiveHourLimit} />
         <Meter label="주간" used={u('review').weekly} limit={u('review').weeklyLimit} />
-        <p className="ao-card__note">
+        {u('review').fiveHourLimit === null ? <p className="ao-card__note">사용량은 참고용 추정치이며 작업을 중단하지 않습니다.</p> : <p className="ao-card__note">
           개인용 여유: 5시간 {pct(s.personalReserve.gptFiveHour)}, 주간 {pct(s.personalReserve.gptWeekly)}
-        </p>
+        </p>}
       </section>
 
       <section className="ao-card">
