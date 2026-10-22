@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ScreenEmployee } from '@ai-office/shared';
-import { staffGroups } from './staff.ts';
+import { characterList, staffGroups } from './staff.ts';
 
 const emp = (id: string, department: string, rank: ScreenEmployee['rank'], over: Partial<ScreenEmployee> = {}): ScreenEmployee => ({
   id,
@@ -32,6 +32,24 @@ describe('직원 탭 묶음', () => {
     expect(groups.map((g) => [g.title, g.members.map((e) => e.id)])).toEqual([
       ['기획실', ['pm']],
       ['방문 · 기타', ['t1']],
+    ]);
+  });
+});
+
+describe('3D 캐릭터 목록 (2026-10-22)', () => {
+  it('정규 직원(방 순서) → Git 고양이 → 보조 직원 → 방문, 나간 직원은 뺀다', () => {
+    const list = characterList([
+      emp('t1', '임시', 'temp'),
+      emp('helper', '개발팀', 'assistant'),
+      emp('git-cat', '운영지원', 'member'),
+      emp('pm', '기획실', 'lead'),
+      emp('dev-b', '개발팀', 'member'),
+      emp('gone', '개발팀', 'member', { leftAt: '2026-10-20T00:00:00Z' }),
+    ]);
+    expect(list.map((g) => [g.title, g.members.map((e) => e.id)])).toEqual([
+      ['직원', ['dev-b', 'pm', 'git-cat']],
+      ['보조 직원', ['helper']],
+      ['방문', ['t1']],
     ]);
   });
 });

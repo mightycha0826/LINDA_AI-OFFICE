@@ -146,7 +146,11 @@ export class Office3D {
       rig.act = p.act;
       (rig.ring.material as THREE.MeshBasicMaterial).color.setHex(STATUS_COLOR[p.status]);
       rig.label.querySelector('.ao3-dot')!.setAttribute('data-status', p.status);
-      rig.label.lastChild!.textContent = p.name;
+      rig.label.querySelector('.ao3-tag__name')!.textContent = p.name;
+      const proj = rig.label.querySelector<HTMLElement>('.ao3-tag__proj')!;
+      proj.textContent = p.project ?? '';
+      proj.hidden = !p.project;
+      rig.label.setAttribute('aria-label', p.project ? `${p.name}, 프로젝트 ${p.project}` : p.name);
       rig.label.classList.toggle('ao3-tag--small', p.helper);
       this.setModel(rig, p.model);
     }
@@ -176,22 +180,38 @@ export class Office3D {
     if (this.catLabel) {
       this.catLabel.hidden = !s.cat;
       if (s.cat) {
-        this.catLabel.lastChild!.textContent = s.cat.name;
+        this.catLabel.querySelector('.ao3-tag__name')!.textContent = s.cat.name;
         this.catLabel.querySelector('.ao3-dot')!.setAttribute('data-status', s.cat.status);
       }
     }
     if (this.cat) this.cat.visible = !!s.cat;
   }
 
-  /** 그 직원에게 카메라가 다가간다 */
-  focus(id: string): void {
+  /**
+   * 그 직원에게 카메라가 다가간다. near(캐릭터 목록, 2026-10-22)면 더 가까이, 그 캐릭터 앞쪽 위에서 얼굴이 보이게.
+   * 이름표를 누를 때는 지금 보는 방향을 그대로 두고 다가간다. inset: 왼쪽을 가린 목록 너비(px), 그만큼 비켜 보인다.
+   */
+  focus(id: string, near = false, inset = 0): void {
     const rig = this.rigs.get(id);
     const at = rig ? rig.group.position.clone() : id === 'git-cat' && this.cat ? this.cat.position.clone() : null;
     if (!at) return;
-    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
-    const toT = at.setY(0.8);
-    const toP = toT.clone().add(dir.multiplyScalar(6.5));
-    if (toP.y < 2.6) toP.y = 2.6;
+    const toT = at.setY(near ? (rig ? 1.1 : 0.4) : 0.8);
+    // 앞쪽 위: 캐릭터가 보는 쪽(face)으로 비스듬히, 맞은편 모니터 너머로·천장 조명(2.6m) 높이쯤. OrbitControls 최소 거리(3.5)보다 조금 멀리
+    const dist = near ? 3.6 : 6.5;
+    // 돌아다니는 Git 고양이는 벽에 가리지 않게 위에서 내려다본다
+    const nearDir = rig ? new THREE.Vector3(0.25, 0.42, 0.87 * rig.face) : new THREE.Vector3(0.3, 0.9, 0.35);
+    const dir = near ? nearDir.normalize() : this.camera.position.clone().sub(this.controls.target).normalize();
+    const toP = toT.clone().add(dir.clone().multiplyScalar(dist));
+    if (!near && toP.y < 2.6) toP.y = 2.6;
+    const w = this.canvas.clientWidth;
+    if (inset > 0 && w > 0) {
+      // 화면 가운데가 목록 오른쪽 빈자리 가운데로 오게 카메라와 시선을 같이 옆으로 민다
+      const viewW = 2 * dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect;
+      const side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+      const shift = side.multiplyScalar(((inset / 2) / w) * viewW);
+      toT.add(shift);
+      toP.add(shift);
+    }
     this.fly = { t: this.reduce ? 1 : 0, fromP: this.camera.position.clone(), fromT: this.controls.target.clone(), toP, toT };
   }
 
@@ -313,7 +333,13 @@ export class Office3D {
     b.className = 'ao3-tag';
     const dot = document.createElement('i');
     dot.className = 'ao3-dot';
-    b.append(dot, document.createTextNode(''));
+    const name = document.createElement('span');
+    name.className = 'ao3-tag__name';
+    // 오른쪽 프로젝트 칩 (2026-10-22 CEO 요청: 지금 맡은 프로젝트). 없으면 숨긴다
+    const proj = document.createElement('span');
+    proj.className = 'ao3-tag__proj';
+    proj.hidden = true;
+    b.append(dot, name, proj);
     b.addEventListener('click', () => {
       this.focus(id);
       this.onSelect(id);

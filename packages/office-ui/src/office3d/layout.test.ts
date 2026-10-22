@@ -19,8 +19,10 @@ const emp = (id: string, over: Partial<ScreenEmployee> = {}): ScreenEmployee => 
   leftAt: null,
   ...over,
 });
-const ticket = (id: string, status: ScreenTicket['status'], assigneeId: string, reviewerId = 'reviewer'): ScreenTicket => ({
+const ticket = (id: string, status: ScreenTicket['status'], assigneeId: string, reviewerId = 'reviewer', projectId: string | null = null): ScreenTicket => ({
   id,
+  orderId: 'O-1',
+  projectId,
   title: id,
   type: 'coding',
   status,
@@ -44,6 +46,13 @@ describe('3D 자리 배치', () => {
     const p = byId(place3d([emp('dev-a', { personalName: '한주아' }), emp('pm')], [ticket('T-1', 'in_progress', 'dev-a')]));
     expect(p.get('dev-a')).toMatchObject({ seat: DESK_SEATS['dev-a'], status: 'working', act: 'type', name: '한주아' });
     expect(p.get('pm')).toMatchObject({ seat: DESK_SEATS['pm'], status: 'idle', act: 'idle', name: 'pm' });
+  });
+
+  it('이름표 칩: 지금 맡은 티켓의 프로젝트, 없으면 null (2026-10-22)', () => {
+    const p = byId(place3d([emp('dev-a'), emp('dev-b'), emp('pm')], [ticket('T-1', 'in_progress', 'dev-a', 'reviewer', 'shop'), ticket('T-2', 'in_progress', 'dev-b')]));
+    expect(p.get('dev-a')!.project).toBe('shop');
+    expect(p.get('dev-b')!.project).toBeNull();
+    expect(p.get('pm')!.project).toBeNull();
   });
 
   it('VRM 주소가 있으면 그대로 넘긴다 (없으면 코드 인형, 13장 3D 캐릭터)', () => {

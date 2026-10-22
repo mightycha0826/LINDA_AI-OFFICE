@@ -10,7 +10,7 @@ const emp = (id: string, spriteSet = id) => ({ id, displayName: id, role: 'devel
 function snap(): Snapshot {
   return {
     companyName: 't', combo: 1, timezone: 'Asia/Seoul', checkTimes: [], nextReport: '18:00', now: new Date().toISOString(), lastSeq: 0,
-    employees: [emp('developer'), emp('reviewer')], tickets: [], approvals: [], usage: [], estimated: true, log: [], pushing: [],
+    employees: [emp('developer'), emp('reviewer')], tickets: [], approvals: [], usage: [], estimated: true, log: [], pushing: [], projects: [], orders: [],
     system: { startedAt: '', stopped: false, online: true, ceoPresent: false, loadedModel: null, lastModelSwitchAt: null, gpu: null, lastError: null, account: { claude: null }, personalReserve: { claudeFiveHour: 0, claudeWeekly: 0, gptFiveHour: 0, gptWeekly: 0 } },
   };
 }

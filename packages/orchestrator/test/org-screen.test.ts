@@ -3,13 +3,13 @@ import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import type { Snapshot } from '@ai-office/shared';
 import { messageSummary } from '../src/core/guards.ts';
-import { employees } from '../src/db/schema.ts';
-import { buildSnapshot, brainLabel } from '../src/screen/snapshot.ts';
+import { employees, orders } from '../src/db/schema.ts';
+import { buildSnapshot, buildTicketDetail, brainLabel, withoutCredentials } from '../src/screen/snapshot.ts';
 import { seedStaff, STANDING_STAFF } from '../src/seed.ts';
 import { ASSISTANTS } from '../src/staff/assistants.ts';
 import { jobOf, rankOf, TEAM_LEADS } from '../src/staff/org.ts';
 import { DESKS, GRID, MEETING_CHAIRS, ROOMS, TEMP_SLOTS, roomAt, roomOfDepartment, type Point } from '../../office-ui/src/map.ts';
-import { setup } from './helpers.ts';
+import { approvedTickets, setup } from './helpers.ts';
 
 const snap = (s: ReturnType<typeof setup>): Snapshot => buildSnapshot(s.ctx, { startedAt: new Date().toISOString(), gpu: null });
 
@@ -106,5 +106,36 @@ describe('말풍선 요약', () => {
   it('교정 1차 점검처럼 지적 목록만 있는 출력은 건수로 보인다', () => {
     expect(messageSummary('교정 1차 점검: {"issues":[{"kind":"tone","where":"1번","note":"x"}],"missingCriteria":[]}')).toBe('교정 1차 점검: 지적 1건');
     expect(messageSummary('교정 1차 점검: {"issues":[],"missingCriteria":[]}')).toBe('교정 1차 점검: 지적 없음');
+  });
+});
+
+describe('프로젝트별 묶음 자료 (2026-10-22 CEO 요청: 업무 탭·이름표 프로젝트)', () => {
+  it('티켓마다 지시와 그 지시의 프로젝트가 실리고, 스냅샷에 프로젝트·지시 목록이 있다', async () => {
+    const s = setup();
+    const { order, tickets } = await approvedTickets(s, '로그인 기능\n  추가해줘');
+    s.db.update(orders).set({ projectId: 'demo' }).where(eq(orders.id, order.id)).run();
+    const v = snap(s);
+    const mine = v.tickets.filter((t) => t.orderId === order.id);
+    expect(mine.length).toBe(tickets.length);
+    expect(mine.every((t) => t.projectId === 'demo')).toBe(true);
+    expect(v.projects).toEqual([{ id: 'demo', repoUrl: 'https://github.com/owner/demo.git' }]);
+    expect(v.orders).toEqual([{ id: order.id, projectId: 'demo', text: '로그인 기능 추가해줘', createdAt: order.createdAt }]);
+    expect(buildTicketDetail(s.ctx, tickets[0]!.id)!.ticket.projectId).toBe('demo');
+  });
+
+  it('저장소 주소의 사용자·토큰 부분은 화면에 싣지 않는다', () => {
+    expect(withoutCredentials('https://u:p@github.com/owner/demo.git')).toBe('https://github.com/owner/demo.git');
+    expect(withoutCredentials('https://t@github.com/owner/demo.git')).toBe('https://github.com/owner/demo.git');
+    expect(withoutCredentials('https://github.com/owner/demo.git')).toBe('https://github.com/owner/demo.git');
+    expect(withoutCredentials('git@github.com:owner/demo.git')).toBe('git@github.com:owner/demo.git');
+  });
+
+  it('프로젝트 없는 지시의 티켓은 projectId가 null', async () => {
+    const s = setup();
+    const { order } = await approvedTickets(s);
+    s.db.update(orders).set({ projectId: null }).where(eq(orders.id, order.id)).run();
+    const v = snap(s);
+    expect(v.tickets.filter((t) => t.orderId === order.id).every((t) => t.projectId === null)).toBe(true);
+    expect(v.orders.map((o) => o.projectId)).toEqual([null]);
   });
 });

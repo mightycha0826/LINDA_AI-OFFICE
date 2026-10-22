@@ -2,6 +2,7 @@
 // WebGL 없이 시험할 수 있게 그림 코드(scene.ts)와 나눴다. 좌표는 미터, 층은 30 × 19.5.
 // face: 1 = 남쪽(+z)을 보고 앉음, -1 = 북쪽. seatY: 의자가 아닌 곳(스툴 등)의 앉는 높이
 import { deriveEmployeeStatus, type DerivedStatus, type ScreenEmployee, type ScreenTicket } from '@ai-office/shared';
+import { projectOf } from '../projects.ts';
 
 export interface Seat {
   x: number;
@@ -69,6 +70,8 @@ export interface Placed {
   helper: boolean;
   /** VRM 주소 (13장 3D 캐릭터). 없으면 코드 인형 */
   model: string | null;
+  /** 지금 맡은 티켓의 프로젝트 (이름표 오른쪽 칩, 2026-10-22). 없으면 null */
+  project: string | null;
 }
 
 const ACT: Record<DerivedStatus, Act> = { working: 'type', reviewing: 'type', meeting: 'talk', blocked: 'idle', paused: 'idle', idle: 'idle', away: 'idle' };
@@ -93,7 +96,7 @@ export function place3d(employees: readonly ScreenEmployee[], tickets: readonly 
             ? pools.visitor.shift()
             : (DESK_SEATS[e.id] ?? pools.visitor.shift());
     if (!seat) continue;
-    out.push({ id: e.id, name: e.personalName ?? e.displayName, status, seat, act: ACT[status], helper: e.rank === 'assistant' || e.isTemporary, model: e.model });
+    out.push({ id: e.id, name: e.personalName ?? e.displayName, status, seat, act: ACT[status], helper: e.rank === 'assistant' || e.isTemporary, model: e.model, project: projectOf(e.id, [...tickets]) });
   }
   return out;
 }

@@ -263,6 +263,61 @@ body {
   flex-direction: column;
   gap: var(--space-2);
 }
+/* 업무 탭 프로젝트별 보기 (2026-10-22): 프로젝트 → 지시 → 티켓 */
+.ao-view--work {
+  align-self: flex-start;
+  margin-bottom: 0;
+}
+.ao-proj {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.ao-proj__title {
+  color: var(--ink);
+}
+.ao-proj__title .material-symbols-rounded {
+  font-size: 18px;
+  color: var(--primary-icon);
+}
+.ao-proj__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ao-proj__counts {
+  margin-left: auto;
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: 400;
+  white-space: nowrap;
+}
+.ao-proj__order {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ao-proj__order + .ao-proj__order {
+  margin-top: var(--space-2);
+}
+.ao-proj__order-title {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: 400;
+}
+.ao-proj__order-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ao-done summary {
   display: list-item;
   cursor: pointer;
@@ -611,9 +666,13 @@ body {
 }
 /* 지도가 좁으면 이름표가 겹치니 두뇌 이름은 넓을 때만 (직원을 누르면 상세에 나온다) */
 @container (max-width: 640px) {
-  .ao-nametag__brain {
+  .ao-nametag__brain,
+  .ao-nametag .ao3-tag__proj {
     display: none;
   }
+}
+.ao-nametag .ao3-tag__proj {
+  max-width: 96px;
 }
 .ao-dot {
   display: inline-block;
@@ -839,11 +898,93 @@ body {
   line-height: var(--text-caption-line);
   pointer-events: none;
 }
+/* 지금 맡은 프로젝트 칩 (이름표·캐릭터 목록·2D 이름표·직원 탭, 2026-10-22) */
+.ao3-tag__proj {
+  display: inline-block;
+  max-width: 120px;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: var(--radius-sm);
+  background: var(--track);
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: 400;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.ao3-tag__proj[hidden] {
+  display: none;
+}
+/* 캐릭터 목록: 누르면 그 캐릭터로 다가간다 */
+.ao3__list {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  bottom: var(--space-8);
+  width: 220px;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.ao3__list-group + .ao3__list-group {
+  margin-top: var(--space-2);
+}
+.ao3__list-title {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: var(--text-caption-weight);
+}
+.ao3-person {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-row-size);
+  line-height: var(--text-row-line);
+  text-align: left;
+  cursor: pointer;
+}
+.ao3-person:hover {
+  background: var(--badge-bg);
+}
+.ao3-person[aria-pressed='true'] {
+  background: var(--badge-bg);
+  color: var(--primary-text);
+  font-weight: var(--text-label-weight);
+}
+.ao3-person:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.ao3-person__name {
+  flex: none;
+}
+.ao3-person .ao3-tag__proj {
+  margin-left: auto;
+}
 @media (max-width: 767px) {
   .ao3 {
     aspect-ratio: 3 / 4;
   }
   .ao3__hint {
     display: none;
+  }
+  .ao3__list {
+    bottom: var(--space-3);
+    width: 180px;
   }
 }

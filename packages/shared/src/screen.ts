@@ -28,6 +28,10 @@ export interface ScreenEmployee {
 
 export interface ScreenTicket {
   id: string;
+  /** 이 티켓을 만든 지시 (2026-10-22: 업무 탭 프로젝트별 묶음) */
+  orderId: string;
+  /** 지시의 프로젝트. 프로젝트 없는 지시(조사·글쓰기 등)면 null */
+  projectId: string | null;
   title: string;
   type: TicketType;
   status: TicketStatus;
@@ -43,6 +47,19 @@ export interface ScreenTicket {
   tokensUsed: number;
   turnsUsed: number;
   lowPrecision: boolean;
+}
+
+export interface ScreenProject {
+  id: string;
+  repoUrl: string;
+}
+
+export interface ScreenOrder {
+  id: string;
+  projectId: string | null;
+  /** 지시 원문 앞부분 (한 줄) */
+  text: string;
+  createdAt: string;
 }
 
 export interface ScreenApproval {
@@ -111,6 +128,10 @@ export interface Snapshot {
   lastSeq: number;
   employees: ScreenEmployee[];
   tickets: ScreenTicket[];
+  /** 등록된 프로젝트 (/새프로젝트) */
+  projects: ScreenProject[];
+  /** 화면에 보이는 티켓의 지시 (프로젝트별 묶음의 둘째 단) */
+  orders: ScreenOrder[];
   approvals: ScreenApproval[];
   usage: ScreenUsage[];
   estimated: boolean;

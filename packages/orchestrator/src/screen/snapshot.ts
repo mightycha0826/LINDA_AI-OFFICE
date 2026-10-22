@@ -3,7 +3,7 @@ import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import type { Brain, ScreenAccountUsage, ScreenEmployee, ScreenLogEntry, ScreenTicket, Snapshot } from '@ai-office/shared';
 import { getState, isStopped, type Ctx } from '../context.ts';
 import { budgetStatus } from '../core/budget.ts';
-import { approvals, employees, events, meetingMinutes, messages, tickets, usage } from '../db/schema.ts';
+import { approvals, employees, events, meetingMinutes, messages, orders, projects, tickets, usage } from '../db/schema.ts';
 import { isCeoPresent } from '../discord/presence.ts';
 import { localTime, nextCheckTime } from '../discord/schedule.ts';
 import { approvalLink } from '../reports.ts';
@@ -24,9 +24,12 @@ export function brainLabel(id: string, b: Brain): string {
   }
 }
 
+/** 티켓 한 줄. 프로젝트는 지시를 봐야 알 수 있어 null로 두고, 스냅샷·상세가 withProject로 채운다 */
 export function toScreenTicket(t: typeof tickets.$inferSelect): ScreenTicket {
   return {
     id: t.id,
+    orderId: t.orderId,
+    projectId: null,
     title: t.title,
     type: t.type,
     status: t.status,
@@ -44,6 +47,17 @@ export function toScreenTicket(t: typeof tickets.$inferSelect): ScreenTicket {
     lowPrecision: t.lowPrecision,
   };
 }
+
+/** 화면에는 저장소 주소의 `사용자:토큰@` 부분을 싣지 않는다 (토큰을 주소에 넣어 등록했어도 화면으로 새지 않게) */
+export const withoutCredentials = (url: string): string => url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, '$1');
+
+/** 지시 → 프로젝트 (2026-10-22: 업무 탭 프로젝트별 묶음, 이름표 프로젝트 칩) */
+function orderProjects(c: Ctx, orderIds: string[]): Map<string, typeof orders.$inferSelect> {
+  if (orderIds.length === 0) return new Map();
+  return new Map(c.db.select().from(orders).where(inArray(orders.id, [...new Set(orderIds)])).all().map((o) => [o.id, o]));
+}
+
+const withProject = (t: typeof tickets.$inferSelect, byOrder: Map<string, typeof orders.$inferSelect>): ScreenTicket => ({ ...toScreenTicket(t), projectId: byOrder.get(t.orderId)?.projectId ?? null });
 
 export interface SnapshotExtras {
   startedAt: string;
@@ -90,6 +104,10 @@ export function buildSnapshot(c: Ctx, extras: SnapshotExtras): Snapshot {
     .from(tickets)
     .where(or(inArray(tickets.status, ['planned', 'in_progress', 'in_review', 'rework', 'meeting', 'blocked', 'awaiting_approval', 'paused']), gte(tickets.finishedAt, today)))
     .all();
+  const byOrder = orderProjects(
+    c,
+    ticketRows.map((t) => t.orderId),
+  );
 
   const msgRows = c.db.select().from(messages).orderBy(desc(sql`rowid`)).limit(100).all();
   const minutesRows = c.db.select().from(meetingMinutes).orderBy(desc(meetingMinutes.createdAt)).limit(20).all();
@@ -142,7 +160,13 @@ export function buildSnapshot(c: Ctx, extras: SnapshotExtras): Snapshot {
     now: now.toISOString(),
     lastSeq,
     employees: staff,
-    tickets: ticketRows.map(toScreenTicket),
+    tickets: ticketRows.map((t) => withProject(t, byOrder)),
+    projects: c.db
+      .select()
+      .from(projects)
+      .all()
+      .map((p) => ({ id: p.id, repoUrl: withoutCredentials(p.repoUrl) })),
+    orders: [...byOrder.values()].map((o) => ({ id: o.id, projectId: o.projectId, text: o.rawText.replace(/\s+/g, ' ').trim().slice(0, 80), createdAt: o.createdAt })),
     approvals: c.db
       .select()
       .from(approvals)
@@ -204,7 +228,7 @@ export function buildTicketDetail(c: Ctx, id: string) {
     }
   }
   return {
-    ticket: toScreenTicket(t),
+    ticket: withProject(t, orderProjects(c, [t.orderId])),
     acceptanceCriteria: criteria,
     summary,
     log: msgs.map((m) => ({ id: m.id, at: m.createdAt, fromId: m.fromId, toId: m.toId, kind: m.kind, text: m.content.slice(0, 2000) })),

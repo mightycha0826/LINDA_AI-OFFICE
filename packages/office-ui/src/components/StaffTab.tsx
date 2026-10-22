@@ -2,6 +2,7 @@
 // 지도가 작은 폰에서도 누가 무엇을 하는지 한눈에 보이게 한다. 누르면 직원 상세가 열린다.
 import { currentTicketOf, deriveEmployeeStatus, type Snapshot } from '@ai-office/shared';
 import { fullName, RANK_LABEL, STATUS_LABEL, WORK_LABEL } from '../format.ts';
+import { projectOf } from '../projects.ts';
 import { staffGroups } from '../staff.ts';
 
 interface Props {
@@ -21,6 +22,7 @@ export function StaffTab({ snapshot, onSelectEmployee }: Props) {
             {g.members.map((e) => {
               const status = deriveEmployeeStatus(e.id, snapshot.tickets, e.leftAt);
               const t = currentTicketOf(e.id, snapshot.tickets);
+              const project = projectOf(e.id, snapshot.tickets);
               return (
                 <button key={e.id} type="button" className="ao-ticket ao-staff" onClick={() => onSelectEmployee(e.id)}>
                   <span className="ao-ticket__line">
@@ -36,7 +38,10 @@ export function StaffTab({ snapshot, onSelectEmployee }: Props) {
                     </span>
                   </span>
                   {e.job && <span className="ao-ticket__meta">{e.job}</span>}
-                  <span className="ao-ticket__meta">{t ? `${t.id} ${STATUS_LABEL[t.status]}` : WORK_LABEL[status]}</span>
+                  <span className="ao-ticket__meta">
+                    {t ? `${t.id} ${STATUS_LABEL[t.status]}` : WORK_LABEL[status]}
+                    {project && <span className="ao3-tag__proj">{project}</span>}
+                  </span>
                 </button>
               );
             })}

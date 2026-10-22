@@ -13,3 +13,15 @@ export function staffGroups(employees: ScreenEmployee[]): { title: string; membe
   const rest = sorted(here.filter((e) => !placed.has(e.id)));
   return [...groups, { title: '방문 · 기타', members: rest }].filter((g) => g.members.length > 0);
 }
+
+/** 3D 캐릭터 목록 (12장, 2026-10-22 CEO 요청): 정규 직원(지도의 방 순서) → Git 고양이 → 보조 직원 → 방문. 나간 직원은 뺀다 */
+export function characterList(employees: ScreenEmployee[]): { title: string; members: ScreenEmployee[] }[] {
+  const flat = staffGroups(employees).flatMap((g) => g.members);
+  const regular = flat.filter((e) => (e.rank === 'lead' || e.rank === 'member') && e.id !== 'git-cat');
+  const cat = flat.filter((e) => e.id === 'git-cat');
+  return [
+    { title: '직원', members: [...regular, ...cat] },
+    { title: '보조 직원', members: flat.filter((e) => e.rank === 'assistant') },
+    { title: '방문', members: flat.filter((e) => e.rank === 'temp') },
+  ].filter((g) => g.members.length > 0);
+}

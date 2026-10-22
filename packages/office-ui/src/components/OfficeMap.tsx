@@ -8,6 +8,7 @@ import { APPROVAL_TRAY, BUDGET_GAUGE, CEO_DESK, GRID, MAILBOX, MODEL_NOTE, RACKS
 import { Character } from './Character.tsx';
 import { Floor, G } from './Floor.tsx';
 import { fullName } from '../format.ts';
+import { projectOf } from '../projects.ts';
 
 const pct = (p: Point) => ({ left: `${(p.x / GRID.w) * 100}%`, top: `${(p.y / GRID.h) * 100}%` });
 
@@ -95,6 +96,7 @@ export function OfficeMap({ snapshot, director, night, onOpenTicket, onSelectEmp
           const e = byId.get(c.id);
           if (!e) return null;
           const t = director.ticketOf(c.id);
+          const project = projectOf(c.id, snapshot.tickets);
           return (
             <motion.div
               key={c.id}
@@ -130,6 +132,7 @@ export function OfficeMap({ snapshot, director, night, onOpenTicket, onSelectEmp
                   {/* 지도 이름표는 짧게: 캐릭터 이름이 있으면 이름만 (직함은 상세·직원 탭에) */}
                   {e.personalName ?? e.displayName}
                   {e.isTemporary ? ' · 방문' : ''}
+                  {project && <span className="ao3-tag__proj">{project}</span>}
                 </span>
                 {e.rank !== 'assistant' && <span className="ao-nametag__brain">{e.brainLabel}</span>}
               </span>
