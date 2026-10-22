@@ -30,7 +30,7 @@ import {
 import { getState, setState, type Ctx } from '../context.ts';
 import { discordChunks } from './format.ts';
 import { resilientMirror } from './mirror-delivery.ts';
-import { ensureProjectChannels } from './project-channels.ts';
+import { ensureProjectChannels, type ProjectChannelMap } from './project-channels.ts';
 import { chiefProjectChannelPort } from './chief-authority.ts';
 import { findProject, listProjects, setProjectChannel } from '../workspace/projects.ts';
 import { roleDiscordPort } from './role-port.ts';
@@ -41,7 +41,7 @@ import { proposalMessage } from './messages.ts';
 import { personalNameOf } from '../staff/org.ts';
 import { bindProposalReply } from '../core/direct.ts';
 import type { StaffMention, StaffReply } from './staff-chat.ts';
-import type { Button, ChannelKey, ChannelReplyPort, DiscordPort, InteractionReply, MirrorPort, OutgoingMessage, ProjectChannelPort } from './types.ts';
+import type { Button, ChannelReplyPort, DiscordPort, InteractionReply, MirrorPort, OutgoingMessage, ProjectChannelPort, SentMessage } from './types.ts';
 
 const STYLE: Record<Button['style'], ButtonStyle> = {
   primary: ButtonStyle.Primary,
@@ -109,7 +109,7 @@ async function dispatch(c: Ctx, handler: InteractionHandler, it: DiscordInteract
   }
 }
 
-async function sendRich(c: Ctx, client: Client, channelId: string, msg: OutgoingMessage): Promise<import('./types.ts').SentMessage> {
+async function sendRich(c: Ctx, client: Client, channelId: string, msg: OutgoingMessage): Promise<SentMessage> {
   const ch = (await client.channels.fetch(channelId)) as TextChannel;
   const chunks = discordChunks(msg.content);
   const prefixIds: string[] = [];
@@ -129,6 +129,97 @@ async function editRich(c: Ctx, client: Client, channelId: string, messageId: st
   await ch.messages.edit(messageId, { content: chunks.at(-1)!, components: rows(msg.buttons), allowedMentions: { parse: [] } });
 }
 
+/** 슬래시 명령 등록 내용 (SLASH_COMMANDS → Discord 형식) */
+function slashCommandBody() {
+  return SLASH_COMMANDS.map((cmd) => {
+    const b = new SlashCommandBuilder().setName(cmd.name).setDescription(cmd.description);
+    for (const opt of cmd.options) {
+      b.addStringOption((x) => {
+        x.setName(opt.name).setDescription(opt.description).setRequired(opt.required);
+        if (opt.choices) x.addChoices(...opt.choices.slice(0, 25));
+        return x;
+      });
+    }
+    return b.toJSON();
+  });
+}
+
+/** 글을 쓸 수 있는 채널·스레드. 아니면 오류 (what: 오류에 적을 이름) */
+async function writableChannel(client: Client, id: string, what: string): Promise<TextChannel | ThreadChannel> {
+  const ch = (await client.channels.fetch(id)) as TextChannel | ThreadChannel | null;
+  if (!ch?.isTextBased()) throw new Error(`글을 쓸 수 없는 ${what}: ${id}`);
+  return ch;
+}
+
+/** 멘션 없이 나눠 올린다 */
+async function postPlain(ch: TextChannel | ThreadChannel, content: string): Promise<void> {
+  for (const part of discordChunks(content)) await ch.send({ content: part, allowedMentions: { parse: [] } });
+}
+
+/** #사무실-대화 거울 (9장 ⑦). 웹훅이 있으면 직원 이름으로 올리고, 웹훅이 실패하면 회사 봇이 이름을 붙여 올린다 */
+function mirrorPort(c: Ctx, client: Client, webhook: WebhookClient | null, log: (s: string) => void): MirrorPort | null {
+  if (!c.config.discord.channels.mirror) return null;
+  const nativeMirror: MirrorPort = {
+    async ensureThread(_ticketId, title) {
+      const ch = (await client.channels.fetch(c.config.discord.channels.mirror)) as TextChannel;
+      const thread = await ch.threads.create({ name: title, autoArchiveDuration: 10080 });
+      return thread.id;
+    },
+    async post(threadId, message) {
+      await postPlain((await client.channels.fetch(threadId)) as ThreadChannel, `**${message.username}**\n\n${message.content}`);
+    },
+  };
+  const hookMirror: MirrorPort | null = webhook
+    ? {
+        ensureThread: nativeMirror.ensureThread,
+        async post(threadId, m) {
+          for (const content of discordChunks(m.content)) await webhook.send({ content, username: m.username.slice(0, 80), threadId, allowedMentions: { parse: [] } });
+        },
+      }
+    : null;
+  return resilientMirror(hookMirror, nativeMirror, log);
+}
+
+/** /새프로젝트의 카테고리·채널 만들기(비서실장 인증)와 그 채널에 글 올리기 */
+function projectChannelPort(c: Ctx, channelManager: ReturnType<typeof chiefProjectChannelPort>, port: DiscordPort): ProjectChannelPort {
+  // 한 프로젝트에 동시에 생성 요청이 와도 카테고리와 채널은 한 번만 만든다.
+  const provisioning = new Map<string, Promise<{ categoryId: string; channelId: string; channels: ProjectChannelMap }>>();
+  return {
+    async createProjectChannels(projectId) {
+      if (provisioning.has(projectId)) return provisioning.get(projectId)!;
+      const job = (async () => {
+        const project = findProject(c, projectId);
+        const result = await ensureProjectChannels(channelManager, projectId, { categoryId: project?.discordCategoryId ?? null, channelId: project?.discordChannelId ?? null });
+        if (project) setProjectChannel(c, projectId, result);
+        return result;
+      })();
+      provisioning.set(projectId, job);
+      try { return await job; } finally { provisioning.delete(projectId); }
+    },
+    async sendToChannel(channelId, content, employeeId) {
+      await port.send({ channel: 'secretary', channelId, content, ...(employeeId ? { employeeId } : {}) });
+    },
+  };
+}
+
+/** 직원 직접 지시 (2026-10-21): 주인이 말한 채널 바로 아래에 확인 버튼과 진행 소식. 멘션은 주인 한 명만 */
+function channelReplyPort(c: Ctx, client: Client, port: DiscordPort): ChannelReplyPort {
+  return {
+    async reply(channelId, replyToMessageId, msg) {
+      if (msg.employeeId) {
+        await port.send({ channel: 'secretary', channelId, replyToMessageId, ...msg });
+        return;
+      }
+      const ch = await writableChannel(client, channelId, '채널');
+      const chunks = discordChunks(msg.content);
+      for (let i = 0; i < chunks.length; i++) await ch.send({ content: chunks[i]!, components: i === chunks.length - 1 ? rows(msg.buttons) : [], reply: { messageReference: replyToMessageId, failIfNotExists: false }, allowedMentions: { users: [c.config.ceoDiscordId], repliedUser: false } });
+    },
+    async post(channelId, content) {
+      await postPlain(await writableChannel(client, channelId, '채널'), content);
+    },
+  };
+}
+
 export interface DiscordBot {
   port: DiscordPort;
   mirror: MirrorPort | null;
@@ -144,7 +235,6 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
   if (o.chiefToken && o.chiefToken === o.token) throw new Error('비서실장과 LINDA는 서로 다른 봇 인증을 사용해야 해요.');
   const channelManager = chiefProjectChannelPort(c.config.discord.guildId, o.chiefToken);
   o.log(o.chiefToken ? 'Discord 채널 관리 담당: 백서진(비서실장)' : '비서실장 채널 관리 인증이 없어 새 채널 생성은 대기해요');
-  const channelId = (k: ChannelKey) => c.config.discord.channels[k];
   let staffBots: StaffBotPort | null = null;
 
   client.on(Events.InteractionCreate, async (it) => {
@@ -162,68 +252,20 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
 
   client.once(Events.ClientReady, async (ready) => {
     o.log(`Discord 봇 연결: ${ready.user.tag}`);
-    const body = SLASH_COMMANDS.map((cmd) => {
-      const b = new SlashCommandBuilder().setName(cmd.name).setDescription(cmd.description);
-      for (const opt of cmd.options) {
-        b.addStringOption((x) => {
-          x.setName(opt.name).setDescription(opt.description).setRequired(opt.required);
-          if (opt.choices) x.addChoices(...opt.choices.slice(0, 25));
-          return x;
-        });
-      }
-      return b.toJSON();
-    });
-    await new REST().setToken(o.token).put(Routes.applicationGuildCommands(ready.user.id, c.config.discord.guildId), { body });
+    await new REST().setToken(o.token).put(Routes.applicationGuildCommands(ready.user.id, c.config.discord.guildId), { body: slashCommandBody() });
   });
 
   await client.login(o.token);
 
-  const textChannel = async (k: ChannelKey) => (await client.channels.fetch(channelId(k))) as TextChannel;
   const port = roleDiscordPort(c, {
     send: (destination, msg) => sendRich(c, client, destination, msg),
     edit: (destination, messageId, msg) => editRich(c, client, destination, messageId, msg),
   }, () => staffBots);
-
   const webhook = o.webhookUrl ? new WebhookClient({ url: o.webhookUrl }) : null;
-  const nativeMirror: MirrorPort = {
-    async ensureThread(_ticketId, title) {
-      const ch = await textChannel('mirror');
-      const thread = await ch.threads.create({ name: title, autoArchiveDuration: 10080 });
-      return thread.id;
-    },
-    async post(threadId, message) {
-      const ch = (await client.channels.fetch(threadId)) as ThreadChannel;
-      for (const content of discordChunks(`**${message.username}**\n\n${message.content}`)) await ch.send({ content, allowedMentions: { parse: [] } });
-    },
-  };
-  const hookMirror: MirrorPort | null = webhook
-    ? {
-        ensureThread: nativeMirror.ensureThread,
-        async post(threadId, m) {
-          for (const content of discordChunks(m.content)) await webhook.send({ content, username: m.username.slice(0, 80), threadId, allowedMentions: { parse: [] } });
-        },
-      }
-    : null;
-  const mirror = channelId('mirror') ? resilientMirror(hookMirror, nativeMirror, o.log) : null;
+  const mirror = mirrorPort(c, client, webhook, o.log);
+  const projectChannels = projectChannelPort(c, channelManager, port);
 
-  // 한 프로젝트에 동시에 생성 요청이 와도 카테고리와 채널은 한 번만 만든다.
-  const provisioning = new Map<string, Promise<{ categoryId: string; channelId: string; channels: import('./project-channels.ts').ProjectChannelMap }>>();
-  const projectChannels: ProjectChannelPort = {
-    async createProjectChannels(projectId) {
-      if (provisioning.has(projectId)) return provisioning.get(projectId)!;
-      const job = (async () => {
-        const project = findProject(c, projectId);
-        const result = await ensureProjectChannels(channelManager, projectId, { categoryId: project?.discordCategoryId ?? null, channelId: project?.discordChannelId ?? null });
-        if (project) setProjectChannel(c, projectId, result);
-        return result;
-      })();
-      provisioning.set(projectId, job);
-      try { return await job; } finally { provisioning.delete(projectId); }
-    },
-    async sendToChannel(channelId, content, employeeId) {
-      await port.send({ channel: 'secretary', channelId, content, ...(employeeId ? { employeeId } : {}) });
-    },
-  };
+  // 주인이 Discord에서 프로젝트 카테고리를 직접 만들면 그 아래 채널을 맞춰 둔다
   client.on(Events.ChannelCreate, async (channel) => {
     if (channel.type !== ChannelType.GuildCategory || channel.guild.id !== c.config.discord.guildId) return;
     const project = listProjects(c).find((p) => p.discordCategoryId === channel.id || p.id === channel.name);
@@ -232,30 +274,11 @@ export async function startDiscordBot(o: { c: Ctx; handler: InteractionHandler; 
     catch (err) { o.log(`프로젝트 채널 구성 실패(${project.id}): ${(err as Error).message}`); }
   });
 
-  // 직원 직접 지시 (2026-10-21): 주인이 말한 채널 바로 아래에 확인 버튼과 진행 소식. 멘션은 주인 한 명만
-  const replies: ChannelReplyPort = {
-    async reply(channelId, replyToMessageId, msg) {
-      if (msg.employeeId) {
-        await port.send({ channel: 'secretary', channelId, replyToMessageId, ...msg });
-        return;
-      }
-      const ch = (await client.channels.fetch(channelId)) as TextChannel | ThreadChannel | null;
-      if (!ch?.isTextBased()) throw new Error(`글을 쓸 수 없는 채널: ${channelId}`);
-      const chunks = discordChunks(msg.content);
-      for (let i = 0; i < chunks.length; i++) await ch.send({ content: chunks[i]!, components: i === chunks.length - 1 ? rows(msg.buttons) : [], reply: { messageReference: replyToMessageId, failIfNotExists: false }, allowedMentions: { users: [c.config.ceoDiscordId], repliedUser: false } });
-    },
-    async post(channelId, content) {
-      const ch = (await client.channels.fetch(channelId)) as TextChannel | ThreadChannel | null;
-      if (!ch?.isTextBased()) throw new Error(`글을 쓸 수 없는 채널: ${channelId}`);
-      for (const part of discordChunks(content)) await ch.send({ content: part, allowedMentions: { parse: [] } });
-    },
-  };
-
   return {
     port,
     mirror,
     projectChannels,
-    replies,
+    replies: channelReplyPort(c, client, port),
     setStaffBots(bots) { staffBots = bots; },
     async stop() {
       webhook?.destroy();
