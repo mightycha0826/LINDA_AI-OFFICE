@@ -1,7 +1,7 @@
 // 프로젝트 등록 (11장). 회사는 등록된 저장소만 건드린다. Discord 명령은 4단계에서 붙인다.
 import { eq } from 'drizzle-orm';
 import { inTx, type Ctx } from '../context.ts';
-import { projects } from '../db/schema.ts';
+import { orders, projects } from '../db/schema.ts';
 import { NotFoundError, OfficeError } from '../errors.ts';
 import { isInside } from './paths.ts';
 
@@ -60,6 +60,12 @@ export function getProject(c: Ctx, id: string): ProjectRow {
   const row = c.db.select().from(projects).where(eq(projects.id, id)).get();
   if (!row) throw new NotFoundError(`프로젝트 ${id}`);
   return row;
+}
+
+/** 지시(티켓)의 프로젝트. 프로젝트 없는 지시면 null */
+export function projectOfOrder(c: Ctx, orderId: string): ProjectRow | null {
+  const order = c.db.select().from(orders).where(eq(orders.id, orderId)).get();
+  return order?.projectId ? getProject(c, order.projectId) : null;
 }
 
 export function listProjects(c: Ctx): ProjectRow[] {

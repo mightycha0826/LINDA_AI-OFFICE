@@ -4,14 +4,14 @@
 // - 완료는 조용히 기록(멘션 없음). 예산 상한 근접·초과, 시스템 이상은 즉시 알림 대상.
 // - 시간당 즉시 알림(멘션) 수에 상한을 둔다 (폭주 방지).
 import { eq, gt, like } from 'drizzle-orm';
-import { getState, inTx, setState, type Ctx } from '../context.ts';
-import { budgetStatus } from '../core/budget.ts';
+import { getState, setState, type Ctx } from '../context.ts';
+import { BUDGET_NAME, budgetStatus } from '../core/budget.ts';
 import { approvals, events, meetingMinutes, messages, orders, plans, systemState, tickets } from '../db/schema.ts';
 import { approvalLink } from '../reports.ts';
 import { approvalMessageFor, blockedMessage, blockedPlanMessage, decidedMessage } from './messages.ts';
 import { isCeoPresent } from './presence.ts';
-import { isInCheckWindow } from './schedule.ts';
-import type { ChannelKey, DiscordPort } from './types.ts';
+import { currentSlot } from './schedule.ts';
+import type { Button, ChannelKey, DiscordPort } from './types.ts';
 
 const CURSOR = 'discord.cursor';
 const HELD = 'discord.held';
@@ -58,19 +58,21 @@ export class Notifier {
 
   /** 지금 멘션(휴대폰 알림)을 보내도 되는가: 점검 시간이거나 CEO 접속 중 */
   allowedNow(): boolean {
-    return isInCheckWindow(this.c.config, this.c.clock.now()) || isCeoPresent(this.c);
+    return currentSlot(this.c.config, this.c.clock.now()) !== null || isCeoPresent(this.c);
+  }
+
+  /** 지난 한 시간 동안 보낸 멘션 시각 */
+  private recentMentions(): string[] {
+    const hourAgo = this.c.clock.now().getTime() - 3_600_000;
+    return getState<string[]>(this.c, MENTIONS, []).filter((t) => new Date(t).getTime() > hourAgo);
   }
 
   private mentionBudgetLeft(): boolean {
-    const hourAgo = this.c.clock.now().getTime() - 3_600_000;
-    const recent = getState<string[]>(this.c, MENTIONS, []).filter((t) => new Date(t).getTime() > hourAgo);
-    return recent.length < this.c.config.schedule.maxImmediatePerHour;
+    return this.recentMentions().length < this.c.config.schedule.maxImmediatePerHour;
   }
 
   private useMention(): void {
-    const hourAgo = this.c.clock.now().getTime() - 3_600_000;
-    const recent = getState<string[]>(this.c, MENTIONS, []).filter((t) => new Date(t).getTime() > hourAgo);
-    setState(this.c, MENTIONS, [...recent, this.c.clock.now().toISOString()]);
+    setState(this.c, MENTIONS, [...this.recentMentions(), this.c.clock.now().toISOString()]);
   }
 
   private hold(item: Held): void {
@@ -85,7 +87,7 @@ export class Notifier {
    * 알려야 하는 메시지를 올린다. 지금 멘션해도 되고 시간당 상한 안이면 멘션을 붙이고,
    * 아니면 조용히 올리고 다음 점검 때 묶어서 알린다.
    */
-  private async sendImmediate(channel: ChannelKey, msg: { content: string; buttons?: import('./types.ts').Button[][] }, held: Omit<Held, 'link'>): Promise<string> {
+  private async sendImmediate(channel: ChannelKey, msg: { content: string; buttons?: Button[][] }, held: Omit<Held, 'link'>): Promise<string> {
     const loud = this.allowedNow() && this.mentionBudgetLeft();
     const sent = await this.port.send({ channel, content: loud ? this.mention() + msg.content : msg.content, ...(msg.buttons ? { buttons: msg.buttons } : {}), silent: !loud });
     if (loud) this.useMention();
@@ -222,7 +224,7 @@ export class Notifier {
       return 1;
     }
     if (type === 'usage.updated' && p.reason === 'provider-limit') {
-      const name = { dev: 'Claude 개발 몫', research: 'Claude 리서치 몫', review: 'GPT 리뷰어 몫' }[String(p.budget)] ?? String(p.budget);
+      const name = BUDGET_NAME[p.budget as keyof typeof BUDGET_NAME] ?? String(p.budget);
       await this.sendImmediate('reports', { content: `예산 · ${name}이 제공자 한도에 닿아 ${String(p.blockedUntil).slice(0, 16).replace('T', ' ')}까지 멈춰요` }, { kind: 'alert', text: `${name} 한도 도달` });
       return 1;
     }
@@ -239,7 +241,7 @@ export class Notifier {
       const near = s.fiveHour.limit && s.fiveHour.used >= s.fiveHour.limit * 0.9;
       const last = sent[b] ? new Date(sent[b]).getTime() : 0;
       if (!near || now - last < 5 * 3_600_000) continue;
-      const name = { dev: 'Claude 개발 몫', research: 'Claude 리서치 몫', review: 'GPT 리뷰어 몫' }[b];
+      const name = BUDGET_NAME[b];
       await this.sendImmediate('reports', { content: `예산 · ${name}을 5시간 한도의 ${s.fiveHour.used.toFixed(0)}% 썼어요 (상한 ${s.fiveHour.limit}%, 추정치)` }, { kind: 'alert', text: `${name} 상한 근접` });
       sent[b] = new Date(now).toISOString();
       setState(this.c, NEAR, sent);
@@ -257,9 +259,7 @@ export class Notifier {
     const head = [count('approval') && `결재 대기 ${count('approval')}건`, count('blocked') && `막힘 ${count('blocked')}건`, count('alert') && `알림 ${count('alert')}건`].filter(Boolean).join(' · ');
     const lines = held.map((h) => `- ${h.text}${h.link ? ` — ${h.link}` : ''}`);
     await this.port.send({ channel: count('approval') ? 'approvals' : 'reports', content: `${this.mention()}${head}\n${lines.join('\n')}` });
-    inTx(this.c, (t) => {
-      setState(t, HELD, []);
-    });
+    setState(this.c, HELD, []);
     this.useMention();
     return 1;
   }

@@ -5,21 +5,37 @@
 // - GitHub 토큰은 푸시·fetch를 하는 git 프로세스에만, 그 순간 환경 변수로 넣는다. AI 직원 프로세스에는 없다.
 // - 푸시 전 검사: 비밀 정보·큰 파일은 차단, 리뷰·테스트는 경고 (checks.ts).
 // - 실패해도 티켓 상태는 바꾸지 않는다(done은 끝난 상태). #막힘에 알리고 CEO가 다시 /push 한다 (4단계 결정 K).
-import { eq, gt } from 'drizzle-orm';
+// - 프로젝트 통합 브랜치 (2026-10-23 CEO 결정): 끝난 티켓을 로컬 integration/<프로젝트>에 차례로 합친다. 원격 git은 쓰지 않는다.
+//   충돌은 병합 담당(개발팀장 Claude)이 풀고, 풀렸는지·테스트가 통과하는지는 이 코드가 판정한다.
+import { and, eq, gt, gte, isNotNull } from 'drizzle-orm';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { TestRunner } from '../brains/brain.ts';
 import { runProcess, type RunOptions, type RunResult } from '../brains/process.ts';
-import { emit, getState, newId, setState, type Ctx } from '../context.ts';
+import { emit, getState, newId, nowIso, setState, type Ctx } from '../context.ts';
 import { requestApproval, type ApprovalRow } from '../core/approvals.ts';
-import { approvals, employees, events, messages, orders, tickets } from '../db/schema.ts';
+import { approvals, employees, events, messages, tickets } from '../db/schema.ts';
 import { OfficeError } from '../errors.ts';
-import { getProject, registerProject, validateProject, type ProjectRow } from '../workspace/projects.ts';
-import { assertInside } from '../workspace/paths.ts';
+import { projectOfOrder, registerProject, validateProject, type ProjectRow } from '../workspace/projects.ts';
+import { assertInside, integrationBranch, integrationPathFor } from '../workspace/paths.ts';
+import { runTestCommand } from '../workspace/test-runner.ts';
+import { writeClaudeSettings } from '../workspace/worktrees.ts';
 import type { TicketRow } from '../core/tickets.ts';
 import { largeFiles, secretScan, summarizeChecks, type CheckResult, type Runner } from './checks.ts';
 import { formatCommitMessage, TRAILER, type CommitDraft, type CommitTicketInfo } from './commit-message.ts';
 import { createGithubRepo, type CreatedRepo } from './github-repo.ts';
+
+/** 병합 담당 (2026-10-23 CEO 결정): 통합 브랜치 충돌은 개발팀장(Claude, 개발 몫)이 푼다 */
+export const MERGE_RESOLVER_ID = 'developer';
+
+export interface ConflictRequest {
+  ticket: { id: string; title: string; type: string; acceptanceCriteria: string[] };
+  files: string[];
+  /** 통합 브랜치 작업 폴더 (<wt>\_integration\<프로젝트>) */
+  workdir: string;
+}
+/** resolved: 풀었다고 보고함(판정은 코드) · wait: 한도·연결 문제로 다음 바퀴에 · failed: 형식 오류·호출 실패 */
+export type ConflictResult = 'resolved' | 'wait' | 'failed';
 
 export interface GitCatDeps {
   c: Ctx;
@@ -28,6 +44,8 @@ export interface GitCatDeps {
   removeWorktree?: (t: TicketRow) => Promise<void>;
   /** 커밋 메시지 초안 (Engine.draftCommit, 7-5부터 커밋 서기). 없거나 실패하면 기본 형식 */
   drafter?: (info: CommitTicketInfo, diffStat: string) => Promise<CommitDraft | null>;
+  /** 병합 담당 (Engine.resolveMerge). 없으면 통합 브랜치 충돌은 실패로 본다 */
+  resolveConflict?: (r: ConflictRequest) => Promise<ConflictResult>;
   /** 변경 요약가 (16장 7-5): 푸시 결재 메시지에 붙일 diff 요약 5줄 이내. 없거나 실패하면 요약 없이 */
   summarizeDiff?: (ticket: { id: string; title: string; type: string; acceptanceCriteria: string[] }, diff: string) => Promise<string[] | null>;
   /** 푸시하는 순간에만 꺼낸다 */
@@ -70,6 +88,17 @@ class GitStepError extends Error {
 }
 
 const CURSOR = 'gitcat.cursor';
+/** 통합 브랜치에 합친 기록 (티켓 ID → 결과). 실패한 티켓은 다시 합치지 않는다 */
+const INTEGRATED = 'gitcat.integrated';
+/** 통합 브랜치 기능을 처음 켠 시각. 이 뒤에 끝난 티켓만 합친다 */
+const INTEGRATE_SINCE = 'gitcat.integrateSince';
+
+interface Integrated {
+  ok: boolean;
+  sha: string | null;
+  at: string;
+  reason?: string;
+}
 
 export class GitCat {
   private readonly d: GitCatDeps;
@@ -140,9 +169,8 @@ export class GitCat {
   private context(ticketId: string): { t: TicketRow; p: ProjectRow; url: string } {
     const t = this.c.db.select().from(tickets).where(eq(tickets.id, ticketId)).get();
     if (!t) throw new OfficeError('gitcat', `${ticketId} 티켓이 없어요`);
-    const order = this.c.db.select().from(orders).where(eq(orders.id, t.orderId)).get();
-    if (!order?.projectId) throw new OfficeError('gitcat', `${ticketId}: 등록된 프로젝트가 없어요`);
-    const p = getProject(this.c, order.projectId);
+    const p = projectOfOrder(this.c, t.orderId);
+    if (!p) throw new OfficeError('gitcat', `${ticketId}: 등록된 프로젝트가 없어요`);
     return { t, p, url: this.remoteUrl(p) };
   }
 
@@ -169,6 +197,33 @@ export class GitCat {
     }
     const main = await this.fetchSha(wt, url, p.defaultBranch);
     return this.mustGit(wt, ['merge-base', 'HEAD', main]);
+  }
+
+  /**
+   * 이 티켓 커밋을 하나로 합칠 시작점. 통합 브랜치에서 시작한 티켓이면 통합 브랜치와 갈라진 곳이라
+   * 이어받은 앞 티켓 커밋은 합치지 않고 그대로 둔다. 그곳이 원격 기준(base)보다 앞이 아니면 base.
+   * 검사(비밀 정보·큰 파일)는 원격에 없는 커밋 전부를 봐야 하므로 여전히 base로 한다.
+   */
+  private async squashBaseFor(wt: string, p: ProjectRow, base: string): Promise<string> {
+    const integ = integrationBranch(p.id);
+    if ((await this.git(wt, ['rev-parse', '--verify', '--quiet', `refs/heads/${integ}`])).code !== 0) return base;
+    const fork = await this.mustGit(wt, ['merge-base', 'HEAD', integ]);
+    return (await this.git(wt, ['merge-base', '--is-ancestor', base, fork])).code === 0 ? fork : base;
+  }
+
+  /** GPT 개발자는 커밋하지 않는다. 리뷰 diff에 들어간 커밋하지 않은 변경을 담는다 (.claude는 exclude에 있다) */
+  private async commitLeftovers(wt: string, t: TicketRow, why: string): Promise<void> {
+    if (!(await this.mustGit(wt, ['status', '--porcelain']))) return;
+    await this.mustGit(wt, ['add', '-A']);
+    await this.mustGit(wt, ['commit', '-m', `wip: ${t.id} ${why}`], { author: true });
+  }
+
+  /** 티켓 커밋 메시지: 초안은 커밋 서기(로컬), 형식은 코드 */
+  private async commitMessage(t: TicketRow, diffStat: string): Promise<string> {
+    const review = this.reviewInfo(t);
+    const info: CommitTicketInfo = { id: t.id, title: t.title, acceptanceCriteria: t.acceptanceCriteria, reworkCount: t.reworkCount, reviewPassed: review.passed, reviewerName: review.reviewerName };
+    const draft = this.d.drafter ? await this.d.drafter(info, diffStat).catch(() => null) : null;
+    return formatCommitMessage(info, draft);
   }
 
   private reviewInfo(t: TicketRow): { passed: boolean; reviewerName: string } {
@@ -225,6 +280,7 @@ export class GitCat {
         if (!t.worktreePath || !t.branch || !existsSync(t.worktreePath)) return this.refuse(t.id, `${t.id}에는 작업 공간(worktree)이 없어요`);
         assertInside(this.c.config.paths.wt, t.worktreePath, `Git 고양이(${t.id})`);
         const base = await this.baseFor(t, p, url);
+        const own = await this.squashBaseFor(t.worktreePath, p, base);
         const review = this.reviewInfo(t);
         const test = await this.d.tests.run(t.id, new AbortController().signal);
         const checks: CheckResult[] = [
@@ -232,15 +288,15 @@ export class GitCat {
           { name: '테스트 재실행', ok: test.passed, blocking: false, detail: test.passed ? '통과' : `실패 — ${test.summary.split('\n').slice(-3).join(' ')}` },
           ...(await this.scans(t.worktreePath, base)),
         ];
-        const ahead = await this.mustGit(t.worktreePath, ['rev-list', '--count', `${base}..HEAD`]);
+        const ahead = await this.mustGit(t.worktreePath, ['rev-list', '--count', `${own}..HEAD`]);
         const dirty = await this.mustGit(t.worktreePath, ['status', '--porcelain']);
-        const files = await this.mustGit(t.worktreePath, ['diff', '--name-only', base]);
+        const files = await this.mustGit(t.worktreePath, ['diff', '--name-only', own]);
         const summary = summarizeChecks(checks);
         if (summary.blocked) {
           this.fail(t.id, 'checks', summary.lines.join('\n'));
           return { ok: false, message: `푸시하지 않아요\n${summary.lines.join('\n')}` };
         }
-        const changes = await this.diffSummary(t, base);
+        const changes = await this.diffSummary(t, own);
         requestApproval(this.c, {
           kind: 'push',
           targetId: t.id,
@@ -312,23 +368,17 @@ export class GitCat {
       if (!t.worktreePath || !t.branch || !existsSync(t.worktreePath)) throw new OfficeError('gitcat', 'worktree가 없어요');
       const wt = assertInside(this.c.config.paths.wt, t.worktreePath, `Git 고양이(${t.id})`);
 
-      // 커밋하지 않은 변경도 리뷰 diff에 들어갔으므로 함께 담는다 (.claude는 exclude에 있다)
-      if (await this.mustGit(wt, ['status', '--porcelain'])) {
-        await this.mustGit(wt, ['add', '-A']);
-        await this.mustGit(wt, ['commit', '-m', `wip: ${t.id} 푸시 전 남은 변경`], { author: true });
-      }
+      await this.commitLeftovers(wt, t, '푸시 전 남은 변경');
       const base = await this.baseFor(t, p, url);
-      if ((await this.mustGit(wt, ['rev-parse', 'HEAD'])) === base) throw new OfficeError('gitcat', '새 커밋이 없어요');
+      const own = await this.squashBaseFor(wt, p, base);
+      if ((await this.mustGit(wt, ['rev-parse', 'HEAD'])) === own) throw new OfficeError('gitcat', '새 커밋이 없어요');
 
-      // wip 커밋들을 하나로 합친다 (squash). 메시지 초안은 Qwen, 형식은 코드
-      const review = this.reviewInfo(t);
-      const info: CommitTicketInfo = { id: t.id, title: t.title, acceptanceCriteria: t.acceptanceCriteria, reworkCount: t.reworkCount, reviewPassed: review.passed, reviewerName: review.reviewerName };
-      const diffStat = await this.mustGit(wt, ['diff', '--stat', base, 'HEAD']);
-      const draft = this.d.drafter ? await this.d.drafter(info, diffStat).catch(() => null) : null;
-      await this.mustGit(wt, ['reset', '--soft', base]);
-      await this.mustGit(wt, ['commit', '-F', '-'], { stdin: formatCommitMessage(info, draft), author: true });
+      // 이 티켓의 wip 커밋들을 하나로 합친다 (squash)
+      const message = await this.commitMessage(t, await this.mustGit(wt, ['diff', '--stat', own, 'HEAD']));
+      await this.mustGit(wt, ['reset', '--soft', own]);
+      await this.mustGit(wt, ['commit', '-F', '-'], { stdin: message, author: true });
       const sha = await this.mustGit(wt, ['rev-parse', 'HEAD']);
-      emit(this.c, 'git.commit', { ticketId: t.id, sha, subject: formatCommitMessage(info, draft).split('\n')[0] });
+      emit(this.c, 'git.commit', { ticketId: t.id, sha, subject: message.split('\n')[0] });
 
       // 합친 커밋을 다시 검사한다 (실패하면 닫힘)
       const scans = summarizeChecks(await this.scans(wt, base));
@@ -419,5 +469,120 @@ export class GitCat {
     const token = this.d.githubToken?.();
     if (!token) throw new OfficeError('repo-auth', 'GitHub 토큰이 없어요. scripts\\set-secrets.ps1 -WithGithub로 넣어 주세요');
     return createGithubRepo({ token, name, ...(description ? { description } : {}), ...(this.d.fetchImpl ? { fetchImpl: this.d.fetchImpl } : {}) });
+  }
+
+  // --- 4) 프로젝트 통합 브랜치 (11장, 2026-10-23 CEO 결정) --------------------
+
+  /**
+   * 끝난(done) 코딩 티켓을 프로젝트 통합 브랜치에 끝난 순서대로 합친다. 로컬 브랜치만 바꾸고 원격 git은 쓰지 않는다.
+   * 이 기능을 처음 켠 뒤에 끝난 티켓만 합친다(예전 티켓을 한꺼번에 합치며 한도를 쓰지 않게). 처리한(합쳤거나 실패한) 티켓 수를 돌려준다.
+   */
+  async integrateDone(): Promise<number> {
+    const since = getState<string | null>(this.c, INTEGRATE_SINCE, null);
+    if (!since) {
+      setState(this.c, INTEGRATE_SINCE, nowIso(this.c));
+      return 0;
+    }
+    const record = getState<Record<string, Integrated>>(this.c, INTEGRATED, {});
+    const todo = this.c.db
+      .select()
+      .from(tickets)
+      .where(and(eq(tickets.status, 'done'), eq(tickets.type, 'coding'), isNotNull(tickets.branch), gte(tickets.finishedAt, since)))
+      .orderBy(tickets.finishedAt)
+      .all()
+      .filter((t) => !record[t.id]);
+    let n = 0;
+    for (const t of todo) {
+      // 병합 담당을 기다리면 뒤 티켓도 다음 바퀴에 (끝난 순서를 지킨다)
+      if (!(await this.integrate(t))) break;
+      n++;
+    }
+    return n;
+  }
+
+  private recordIntegration(ticketId: string, r: Omit<Integrated, 'at'>): void {
+    setState(this.c, INTEGRATED, { ...getState<Record<string, Integrated>>(this.c, INTEGRATED, {}), [ticketId]: { ...r, at: nowIso(this.c) } });
+  }
+
+  /** 티켓 하나를 합친다. 병합 담당을 기다려야 하면 합치기 전으로 돌려 두고 false */
+  private async integrate(t: TicketRow): Promise<boolean> {
+    // 되돌릴 자리. 비동기 안에서 채우므로 객체로 둔다
+    const at = { dir: '', before: '' };
+    const undo = async () => {
+      if (!at.dir || !at.before) return;
+      await this.git(at.dir, ['reset', '--hard', at.before]);
+      await this.git(at.dir, ['clean', '-fd']);
+    };
+    try {
+      const { p } = this.context(t.id);
+      const conflicts = await this.serial(async () => {
+        at.dir = await this.integrationWorktree(p);
+        at.before = await this.mustGit(at.dir, ['rev-parse', 'HEAD']);
+        if (t.worktreePath && existsSync(t.worktreePath)) await this.commitLeftovers(assertInside(this.c.config.paths.wt, t.worktreePath, `Git 고양이(${t.id})`), t, '통합 전 남은 변경');
+        const r = await this.git(at.dir, ['merge', '--squash', t.branch!]);
+        const files = (await this.mustGit(at.dir, ['diff', '--name-only', '--diff-filter=U'])).split('\n').filter(Boolean);
+        if (r.code !== 0 && !files.length) throw new GitStepError(classify(r.stderr + r.stdout), `git merge: ${r.stderr || r.stdout || r.spawnError || ''}`);
+        return files;
+      });
+      if (conflicts.length) {
+        const ticket = { id: t.id, title: t.title, type: t.type, acceptanceCriteria: t.acceptanceCriteria };
+        const res = this.d.resolveConflict ? await this.d.resolveConflict({ ticket, files: conflicts, workdir: at.dir }) : 'failed';
+        if (res === 'wait') {
+          await this.serial(undo);
+          return false;
+        }
+        if (res === 'failed') throw new OfficeError('gitcat', `병합 담당이 충돌을 풀지 못했어요: ${conflicts.join(', ')}`);
+      }
+      await this.serial(() => this.finishIntegration(t, p, at.dir, at.before, conflicts.length > 0));
+    } catch (err) {
+      await this.serial(undo).catch(() => undefined);
+      const reason = (err as Error).message;
+      this.recordIntegration(t.id, { ok: false, sha: null, reason });
+      this.fail(t.id, 'integrate', `${reason}\n통합 브랜치에 넣지 않고 되돌렸어요. 이 티켓은 /push로 따로 올릴 수 있어요`);
+    }
+    return true;
+  }
+
+  /**
+   * 합친 상태를 코드가 판정한다: 풀리지 않은 파일·충돌 표시가 없어야 하고, 정해진 형식의 커밋 하나로 남긴 뒤 테스트가 통과해야 한다.
+   * 어긋나면 던진다(되돌리기는 부른 쪽). 병합 담당이 커밋했어도 Git 고양이 커밋 하나로 다시 만든다.
+   */
+  private async finishIntegration(t: TicketRow, p: ProjectRow, dir: string, before: string, hadConflict: boolean): Promise<void> {
+    await this.mustGit(dir, ['add', '-A']);
+    if ((await this.mustGit(dir, ['rev-parse', 'HEAD'])) !== before) await this.mustGit(dir, ['reset', '--soft', before]);
+    if (/^\+(?:<{7}|>{7})(?: |$)/m.test(await this.mustGit(dir, ['diff', '--cached', '-U0', before]))) throw new OfficeError('gitcat', '충돌 표시(<<<<<<< >>>>>>>)가 남아 있어요');
+    const stat = await this.mustGit(dir, ['diff', '--cached', '--stat', before]);
+    if (!stat) {
+      // 충돌을 풀었다는데 합칠 것이 없으면 병합 담당이 변경을 버린 것이다
+      if (hadConflict) throw new OfficeError('gitcat', '충돌을 푼 뒤 합칠 변경이 남지 않았어요');
+      this.recordIntegration(t.id, { ok: true, sha: null });
+      return;
+    }
+    const message = await this.commitMessage(t, stat);
+    await this.mustGit(dir, ['commit', '-F', '-'], { stdin: message, author: true });
+    // ponytail: 테스트도 git 줄(serial) 안에서 돈다. 그동안 푸시가 기다린다. 길어지면 프로젝트별 줄로 나눈다
+    const test = await runTestCommand(this.c, p, dir, undefined, this.run);
+    if (!test.passed) throw new OfficeError('gitcat', `통합 브랜치에 합친 상태에서 테스트가 실패했어요\n${test.summary.split('\n').slice(-5).join('\n')}`);
+    const sha = await this.mustGit(dir, ['rev-parse', 'HEAD']);
+    this.recordIntegration(t.id, { ok: true, sha });
+    emit(this.c, 'git.commit', { ticketId: t.id, sha, subject: message.split('\n')[0], target: integrationBranch(p.id) });
+  }
+
+  /** 통합 브랜치 작업 폴더. 없으면 기본 브랜치에서 만든다. 커밋된 것만 남는 곳이라 지난번에 멈춘 흔적은 지운다 */
+  private async integrationWorktree(p: ProjectRow): Promise<string> {
+    const dir = assertInside(this.c.config.paths.wt, integrationPathFor(this.c.config.paths.wt, p.id), `통합 브랜치(${p.id})`);
+    const branch = integrationBranch(p.id);
+    if (!existsSync(dir)) {
+      mkdirSync(dirname(dir), { recursive: true });
+      const exists = await this.mustGit(p.localPath, ['branch', '--list', branch]);
+      await this.mustGit(p.localPath, exists ? ['worktree', 'add', dir, branch] : ['worktree', 'add', '-b', branch, dir, p.defaultBranch]);
+      // 병합 담당(Claude)이 일하는 곳이라 티켓 worktree와 같은 권한 설정을 둔다 (푸시·원격 조작 거부)
+      await writeClaudeSettings(dir, this.c.config.paths.data);
+    }
+    const head = await this.mustGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    if (head !== branch) throw new OfficeError('gitcat', `${dir} 폴더가 ${branch}가 아니에요(${head}). 폴더를 치워 주세요`);
+    await this.mustGit(dir, ['reset', '--hard', 'HEAD']);
+    await this.mustGit(dir, ['clean', '-fd']);
+    return dir;
   }
 }

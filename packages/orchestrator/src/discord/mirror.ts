@@ -90,6 +90,20 @@ export class Mirror {
     }
   }
 
+  /** 직접 지시로 시작한 티켓은 주인이 말한 채널에, 아니면 티켓 스레드에 올린다. 올렸으면 true */
+  private async post(ticketId: string, m: { username: string; content: string; employeeId?: string }, toId?: string | null): Promise<boolean> {
+    const origin = this.originChannel(ticketId);
+    if (origin && this.direct) {
+      const tag = toId && toId !== m.employeeId ? this.direct.mentionOf(toId) : null;
+      await this.direct.post(origin, { ...m, content: `${tag ? `${tag} ` : ''}${m.content}` });
+      return true;
+    }
+    const threadId = await this.thread(ticketId);
+    if (!threadId) return false;
+    await this.port.post(threadId, m);
+    return true;
+  }
+
   /** 한 번 묶어 보낸다. 보낸 수를 돌려준다. */
   async flush(): Promise<number> {
     const c = this.c;
@@ -102,35 +116,13 @@ export class Mirror {
       try {
         if (ev.type === 'message.sent' && typeof p.ticketId === 'string') {
           const m = c.db.select().from(messages).where(eq(messages.id, String(p.messageId))).get();
-          const origin = m && this.originChannel(p.ticketId);
-          if (m && origin && this.direct) {
-            const content = (await this.readable(m.fromId, m.content)) ?? m.content;
-            const tag = m.toId && m.toId !== m.fromId ? this.direct.mentionOf(m.toId) : null;
-            await this.direct.post(origin, { username: this.name(m.fromId), employeeId: m.fromId, content: `${tag ? `${tag} ` : ''}${clip(content, c.config.mirror.maxChars, c.config.screenUrl, p.ticketId)}` });
-            sent++;
-            setState(c, CURSOR, ev.seq);
-            continue;
-          }
-          const threadId = m && (await this.thread(p.ticketId));
-          if (m && threadId) {
-            const content = (await this.readable(m.fromId, m.content)) ?? m.content;
-            await this.port.post(threadId, { username: this.name(m.fromId), employeeId: m.fromId, content: clip(content, c.config.mirror.maxChars, c.config.screenUrl, p.ticketId) });
-            sent++;
+          if (m) {
+            const content = clip((await this.readable(m.fromId, m.content)) ?? m.content, c.config.mirror.maxChars, c.config.screenUrl, p.ticketId);
+            if (await this.post(p.ticketId, { username: this.name(m.fromId), employeeId: m.fromId, content }, m.toId)) sent++;
           }
         } else if (ev.type === 'meeting.minutes' && typeof p.ticketId === 'string') {
           const m = c.db.select().from(meetingMinutes).where(eq(meetingMinutes.id, String(p.minutesId))).get();
-          const origin = m && this.originChannel(p.ticketId);
-          if (m && origin && this.direct) {
-            await this.direct.post(origin, { username: '회의록', content: minutesText(m) });
-            sent++;
-            setState(c, CURSOR, ev.seq);
-            continue;
-          }
-          const threadId = m && (await this.thread(p.ticketId));
-          if (m && threadId) {
-            await this.port.post(threadId, { username: '회의록', content: minutesText(m) });
-            sent++;
-          }
+          if (m && (await this.post(p.ticketId, { username: '회의록', content: minutesText(m) }))) sent++;
         } else if (ev.type === 'ticket.status' && typeof p.ticketId === 'string' && typeof p.to === 'string' && STATUS_LINE[p.to]) {
           const origin = this.originChannel(p.ticketId);
           if (origin && this.direct) {

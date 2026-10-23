@@ -5,10 +5,9 @@
 import { eq } from 'drizzle-orm';
 import type { Ctx } from '../context.ts';
 import { pendingApprovals, requestApproval, type ApprovalDecision } from '../core/approvals.ts';
-import { budgetStatus } from '../core/budget.ts';
+import { BUDGET_NAME, budgetStatus, isGuest } from '../core/budget.ts';
 import { applyRevision, dismissProposal, getProposal, startDirectOrder } from '../core/direct.ts';
 import { guestLine, loadGuestRegistry, setGuestOn, syncGuests } from '../core/guests.ts';
-import { isGuest } from '../core/budget.ts';
 import { approvals, employees, messages, orders, plans, tickets } from '../db/schema.ts';
 import type { Engine } from '../engine.ts';
 import { AlreadyDecidedError, OfficeError, StaleApprovalError } from '../errors.ts';
@@ -245,10 +244,9 @@ export class InteractionHandler {
         return { kind: 'reply', content: '결재함에 확인 버튼을 올렸어요. 버튼을 눌러야 실행돼요', ephemeral: true };
       }
       case '한도': {
-        const name_ = { dev: 'Claude 개발', research: 'Claude 리서치', review: 'GPT 리뷰' } as const;
         const lines = (['dev', 'research', 'review'] as const).map((b) => {
           const s = budgetStatus(c, b);
-          return `${name_[b]}: 5시간 ${s.fiveHour.used.toFixed(1)}/${s.fiveHour.limit}% · 주간 ${s.weekly.used.toFixed(1)}/${s.weekly.limit}%${s.blockedUntil ? ` · ${s.blockedUntil}까지 막힘` : ''}`;
+          return `${BUDGET_NAME[b]}: 5시간 ${s.fiveHour.used.toFixed(1)}/${s.fiveHour.limit}% · 주간 ${s.weekly.used.toFixed(1)}/${s.weekly.limit}%${s.blockedUntil ? ` · ${s.blockedUntil}까지 막힘` : ''}`;
         });
         return { kind: 'reply', content: `**몫별 사용량** (추정치)\n${lines.join('\n')}`, ephemeral: false };
       }

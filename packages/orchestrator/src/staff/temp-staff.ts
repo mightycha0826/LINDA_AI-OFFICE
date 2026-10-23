@@ -4,7 +4,7 @@
 // - 디자인 시스템 담당만 예외: 계획 단계에서 불려와 조합을 고르고 바로 나간다.
 // - 파일 수정·명령 실행 권한이 없다. 코딩 티켓과 검토는 맡지 않는다. 계획서당 최대 3명.
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { LOCAL_MODEL, type Brain, type TempBrain, type TempKind, type TempStaffRequest, type TicketType } from '@ai-office/shared';
+import { LOCAL_MODEL, OPEN_TICKET_STATUSES, type Brain, type TempBrain, type TempKind, type TempStaffRequest, type TicketType } from '@ai-office/shared';
 import { emit, nowIso, type Ctx } from '../context.ts';
 import type { EmployeeRow } from '../core/budget.ts';
 import { employees, tickets } from '../db/schema.ts';
@@ -71,7 +71,7 @@ export function isTempRef(id: string): boolean {
 export function tempBrain(req: Pick<TempStaffRequest, 'kind' | 'brain'>): Brain {
   // 7-2 전 계획서에 남은 qwen3:14b·gemma4:12b도 지금의 로컬 두뇌로 읽는다
   const asked = req.brain as string | undefined;
-  const b: TempBrain = req.kind === 'design-system' || !asked || asked !== 'claude' ? LOCAL_MODEL : 'claude';
+  const b: TempBrain = req.kind === 'design-system' || asked !== 'claude' ? LOCAL_MODEL : 'claude';
   // Claude를 쓰는 임시 직원은 개발자 몫에서 깎인다 (budgetOf가 isTemporary를 보고 dev로 돌린다)
   return b === 'claude' ? { provider: 'claude-code', budget: 'dev' } : { provider: 'ollama', model: b };
 }
@@ -143,7 +143,7 @@ export function dismissFinishedTemps(c: Ctx, orderId: string): string[] {
     const open = c.db
       .select({ id: tickets.id })
       .from(tickets)
-      .where(and(eq(tickets.assigneeId, t.id), inArray(tickets.status, ['planned', 'in_progress', 'in_review', 'rework', 'meeting', 'blocked', 'awaiting_approval', 'paused'])))
+      .where(and(eq(tickets.assigneeId, t.id), inArray(tickets.status, OPEN_TICKET_STATUSES)))
       .get();
     if (open) continue;
     dismissTemp(c, t.id);

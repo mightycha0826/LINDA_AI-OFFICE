@@ -1,6 +1,6 @@
 // 사무실 화면 스냅샷 (12장 데이터 흐름 1). 화면을 열면 이것으로 현재 전체 상태를 받고, 그다음 SSE로 바뀐 것만 받는다.
 import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
-import type { Brain, ScreenAccountUsage, ScreenEmployee, ScreenLogEntry, ScreenTicket, Snapshot } from '@ai-office/shared';
+import { OPEN_TICKET_STATUSES, type Brain, type ScreenAccountUsage, type ScreenEmployee, type ScreenLogEntry, type ScreenTicket, type Snapshot } from '@ai-office/shared';
 import { getState, isStopped, type Ctx } from '../context.ts';
 import { budgetStatus } from '../core/budget.ts';
 import { approvals, employees, events, meetingMinutes, messages, orders, projects, tickets, usage } from '../db/schema.ts';
@@ -102,7 +102,7 @@ export function buildSnapshot(c: Ctx, extras: SnapshotExtras): Snapshot {
   const ticketRows = c.db
     .select()
     .from(tickets)
-    .where(or(inArray(tickets.status, ['planned', 'in_progress', 'in_review', 'rework', 'meeting', 'blocked', 'awaiting_approval', 'paused']), gte(tickets.finishedAt, today)))
+    .where(or(inArray(tickets.status, OPEN_TICKET_STATUSES), gte(tickets.finishedAt, today)))
     .all();
   const byOrder = orderProjects(
     c,

@@ -8,9 +8,14 @@ import { describe, expect, it } from 'vitest';
 import type { RunOptions } from '../src/brains/process.ts';
 import { runProcess } from '../src/brains/process.ts';
 import { formatCommitMessage } from '../src/gitcat/commit-message.ts';
-import { GitCat, type GitCatDeps } from '../src/gitcat/git-cat.ts';
-import { approvals, events, projects } from '../src/db/schema.ts';
+import { GitCat, MERGE_RESOLVER_ID, type ConflictRequest, type GitCatDeps } from '../src/gitcat/git-cat.ts';
+import { approvals, employees, events, projects } from '../src/db/schema.ts';
 import { GitWorkspace } from '../src/workspace/worktrees.ts';
+import { integrationPathFor, isInside } from '../src/workspace/paths.ts';
+import { claudeProfileFor } from '../src/brains/claude-code.ts';
+import { codexSandboxFor } from '../src/brains/codex.ts';
+import type { BrainRequest } from '../src/brains/brain.ts';
+import { blockBudget } from '../src/core/budget.ts';
 import { CEO, approvedTickets, setup, ticket } from './helpers.ts';
 
 const FAKES = fileURLToPath(new URL('./fakes/', import.meta.url));
@@ -29,7 +34,7 @@ interface Rig {
 }
 
 /** GitHub 역할 bare 저장소 + repos\demo 복제 + 승인된 티켓 T-1의 worktree + wip 커밋 두 개 */
-async function rig(opts: { maxFileMB?: number; gitleaksBin?: string; summarizeDiff?: GitCatDeps['summarizeDiff'] } = {}): Promise<Rig> {
+async function rig(opts: { maxFileMB?: number; gitleaksBin?: string; summarizeDiff?: GitCatDeps['summarizeDiff']; resolveConflict?: GitCatDeps['resolveConflict'] } = {}): Promise<Rig> {
   const s = setup({ config: { gitcat: { gitleaksBin: opts.gitleaksBin ?? process.execPath, gitleaksArgs: opts.gitleaksBin ? [] : [join(FAKES, 'fake-gitleaks.mjs')], maxFileMB: opts.maxFileMB ?? 50 } } });
   const bare = join(s.root, 'github', 'demo.git');
   const seed = join(s.root, 'seed');
@@ -66,6 +71,7 @@ async function rig(opts: { maxFileMB?: number; gitleaksBin?: string; summarizeDi
     drafter: async (info) => ({ type: 'feat', scope: 'demo', subject: `${info.title} 추가` }),
     githubToken: () => TOKEN,
     ...(opts.summarizeDiff ? { summarizeDiff: opts.summarizeDiff } : {}),
+    ...(opts.resolveConflict ? { resolveConflict: opts.resolveConflict } : {}),
     remoteUrlFor: () => bare,
     run: (o) => {
       runs.push(o);
@@ -298,5 +304,174 @@ describe('되돌리기', () => {
     const r = await rig();
     expect(await r.cat.preparePush('T-1', 'revert', 'test')).toMatchObject({ ok: false, message: expect.stringContaining('찾지 못했어요') });
     expect(r.s.db.select().from(approvals).where(eq(approvals.kind, 'revert')).all()).toHaveLength(0);
+  });
+});
+
+// --- 프로젝트 통합 브랜치 (11장, 2026-10-23 CEO 결정) ------------------------------------
+
+const INTEG = 'integration/demo';
+/** 합친 상태에서 돌리는 프로젝트 테스트: BROKEN 파일이 있으면 실패 */
+const INTEGRATION_TEST = `node -e "process.exit(require('fs').existsSync('BROKEN') ? 1 : 0)"`;
+
+async function integrationRig(opts: { resolveConflict?: GitCatDeps['resolveConflict'] } = {}): Promise<Rig> {
+  const r = await rig(opts);
+  r.s.db.update(projects).set({ testCommand: INTEGRATION_TEST }).where(eq(projects.id, 'demo')).run();
+  expect(await r.cat.integrateDone()).toBe(0); // 처음 켠 시각을 남긴다. 그 뒤에 끝난 티켓만 합친다
+  return r;
+}
+
+/** 티켓을 끝낸다(검토를 통과해 done이 된 것과 같다). 끝난 순서대로 합치므로 시각을 1분씩 민다 */
+function finish(r: Rig, id: string): void {
+  r.s.clock.advance(60_000);
+  r.s.db.$client.prepare(`UPDATE tickets SET status = 'done', finished_at = ? WHERE id = ?`).run(r.s.clock.now().toISOString(), id);
+}
+
+/** 같은 프로젝트의 두 번째 티켓과 그 worktree */
+async function secondTicket(r: Rig): Promise<{ id: string; wt: string }> {
+  const { tickets: [tk] } = await approvedTickets(r.s, '두 번째 기능도 추가해줘');
+  const { path } = await new GitWorkspace(r.s.ctx).ensureWorktree(tk!);
+  git(path, 'config', 'user.email', 'dev@localhost');
+  git(path, 'config', 'user.name', 'dev');
+  return { id: tk!.id, wt: path };
+}
+
+function commitFile(wt: string, file: string, text: string): void {
+  writeFileSync(join(wt, file), text);
+  git(wt, 'add', '-A');
+  git(wt, 'commit', '-q', '-m', `wip: ${file}`);
+}
+
+/** 두 티켓이 같은 줄을 고친다. T-2는 통합 브랜치가 생기기 전에 main에서 시작한다 */
+async function conflictingTickets(r: Rig): Promise<string> {
+  const t2 = await secondTicket(r);
+  commitFile(r.wt, 'app.txt', 'line 1 from T-1\n');
+  commitFile(t2.wt, 'app.txt', 'line 1 from T-2\n');
+  finish(r, 'T-1');
+  finish(r, t2.id);
+  return t2.id;
+}
+
+describe('프로젝트 통합 브랜치 (11장, 2026-10-23)', () => {
+  it('끝난 티켓을 로컬 통합 브랜치에 정해진 형식의 커밋 하나로 합친다. 원격에는 아무것도 보내지 않는다', async () => {
+    const r = await integrationRig();
+    writeFileSync(join(r.wt, 'notes.txt'), 'GPT 개발자는 커밋하지 않는다\n'); // 커밋하지 않은 변경도 담는다
+    finish(r, 'T-1');
+    const mainBefore = git(r.bare, 'rev-parse', 'main');
+
+    expect(await r.cat.integrateDone()).toBe(1);
+    expect(git(r.repo, 'log', INTEG, '--format=%s|%an', '-n', '2').split('\n')).toEqual(['feat(demo): 기능 구현 추가 (T-1)|Git 고양이', 'init|owner']);
+    expect(git(r.repo, 'log', INTEG, '-n', '1', '--format=%B')).toContain('AI-Office-Ticket: T-1');
+    expect(git(r.repo, 'ls-tree', '--name-only', INTEG).split(/\r?\n/)).toEqual(expect.arrayContaining(['feature.txt', 'notes.txt']));
+    const commit = r.s.db.select().from(events).all().filter((e) => e.type === 'git.commit').at(-1)?.payload;
+    expect(commit).toMatchObject({ ticketId: 'T-1', target: INTEG });
+
+    // 원격 git은 한 번도 쓰지 않았다: 토큰도, fetch·push도 없다
+    expect(r.runs.filter((x) => (x.bin === 'git' && ['fetch', 'ls-remote', 'push', 'clone'].includes(x.args[0]!)) || x.privilegedEnv)).toEqual([]);
+    expect(git(r.bare, 'rev-parse', 'main')).toBe(mainBefore);
+    expect(git(r.bare, 'branch', '--list')).not.toContain('integration');
+
+    expect(await r.cat.integrateDone()).toBe(0); // 이미 합친 티켓은 다시 합치지 않는다
+  });
+
+  it('같은 프로젝트의 새 티켓은 통합 브랜치에서 시작해 앞 티켓 결과를 이어받는다. 리뷰 diff와 푸시 커밋에는 자기 변경만 들어간다', async () => {
+    const r = await integrationRig();
+    finish(r, 'T-1');
+    await r.cat.integrateDone();
+    const t2 = await secondTicket(r);
+    expect(readFileSync(join(t2.wt, 'feature.txt'), 'utf8')).toContain('step 2'); // T-1 결과
+
+    commitFile(t2.wt, 'second.txt', 'two\n');
+    const diff = await new GitWorkspace(r.s.ctx).reviewDiff(ticket(r.s, t2.id));
+    expect(diff).toContain('second.txt');
+    expect(diff).not.toContain('feature.txt');
+
+    expect(await r.cat.preparePush(t2.id, 'push', 'CEO /push')).toMatchObject({ ok: true });
+    expect(pushApproval(r)!.summary).toContain('커밋 1개');
+    await approveAndRun(r, 'feature');
+    const branch = ticket(r.s, t2.id).branch!;
+    expect(git(r.bare, 'diff', '--name-only', `${branch}~1`, branch)).toBe('second.txt');
+    expect(git(r.bare, 'log', branch, '--format=%s', '-n', '3').split('\n')).toEqual(['feat(demo): 기능 구현 추가 (T-2)', 'feat(demo): 기능 구현 추가 (T-1)', 'init']);
+  });
+
+  it('충돌은 병합 담당이 통합 작업 폴더 안에서 풀고, 코드가 확인한 뒤 커밋 하나로 합친다', async () => {
+    const asked: ConflictRequest[] = [];
+    const r = await integrationRig({
+      resolveConflict: async (req) => {
+        asked.push(req);
+        writeFileSync(join(req.workdir, 'app.txt'), 'line 1 from T-1 and T-2\n');
+        return 'resolved';
+      },
+    });
+    const t2 = await conflictingTickets(r);
+
+    expect(await r.cat.integrateDone()).toBe(2);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({ ticket: { id: t2 }, files: ['app.txt'], workdir: integrationPathFor(r.s.config.paths.wt, 'demo') });
+    expect(isInside(r.s.config.paths.wt, asked[0]!.workdir)).toBe(true);
+    expect(git(r.repo, 'show', `${INTEG}:app.txt`)).toBe('line 1 from T-1 and T-2');
+    expect(git(r.repo, 'log', INTEG, '--format=%s', '-n', '3').split('\n')).toEqual(['feat(demo): 기능 구현 추가 (T-2)', 'feat(demo): 기능 구현 추가 (T-1)', 'init']);
+  });
+
+  it('충돌 표시가 남으면 합치지 않고 되돌린 뒤 #막힘에 알린다. 그 티켓은 다시 시도하지 않는다', async () => {
+    let calls = 0;
+    // 아무것도 고치지 않고 풀었다고만 말한다
+    const r = await integrationRig({ resolveConflict: async () => (calls++, 'resolved') });
+    const t2 = await conflictingTickets(r);
+
+    expect(await r.cat.integrateDone()).toBe(2);
+    expect(git(r.repo, 'log', INTEG, '--format=%s', '-n', '1')).toContain('(T-1)');
+    expect(gitEvents(r).at(-1)).toMatchObject({ ticketId: t2, ok: false, stage: 'integrate', reason: expect.stringContaining('충돌 표시') });
+    expect(git(integrationPathFor(r.s.config.paths.wt, 'demo'), 'status', '--porcelain')).toBe('');
+    expect(await r.cat.integrateDone()).toBe(0);
+    expect(calls).toBe(1);
+  });
+
+  it('합친 상태에서 테스트가 실패하면 통합 브랜치를 되돌린다', async () => {
+    const r = await integrationRig();
+    commitFile(r.wt, 'BROKEN', 'x\n');
+    finish(r, 'T-1');
+
+    expect(await r.cat.integrateDone()).toBe(1);
+    expect(git(r.repo, 'rev-parse', INTEG)).toBe(git(r.repo, 'rev-parse', 'main'));
+    expect(gitEvents(r).at(-1)).toMatchObject({ ticketId: 'T-1', ok: false, stage: 'integrate', reason: expect.stringContaining('테스트가 실패') });
+  });
+
+  it('병합 담당을 기다려야 하면(개발 몫·연결) 되돌려 두고 다음 바퀴에 다시 한다', async () => {
+    const answers: ('wait' | 'resolved')[] = ['wait', 'resolved'];
+    const r = await integrationRig({
+      resolveConflict: async (req) => {
+        const a = answers.shift()!;
+        if (a === 'resolved') writeFileSync(join(req.workdir, 'app.txt'), 'merged\n');
+        return a;
+      },
+    });
+    await conflictingTickets(r);
+
+    expect(await r.cat.integrateDone()).toBe(1); // T-1만. T-2는 기다린다
+    expect(git(integrationPathFor(r.s.config.paths.wt, 'demo'), 'status', '--porcelain')).toBe('');
+    expect(gitEvents(r).filter((e) => e.stage === 'integrate')).toHaveLength(0);
+    expect(await r.cat.integrateDone()).toBe(1);
+    expect(git(r.repo, 'show', `${INTEG}:app.txt`)).toBe('merged');
+  });
+
+  it('병합 담당은 개발팀장(Claude)이고 통합 작업 폴더에서만 쓰기 권한을 받는다. 개발 몫이 없으면 기다리고, 형식 오류면 실패', async () => {
+    const s = setup();
+    const workdir = integrationPathFor(s.config.paths.wt, 'demo');
+    const req: ConflictRequest = { ticket: { id: 'T-1', title: '기능', type: 'coding', acceptanceCriteria: ['단위 테스트 통과'] }, files: ['app.txt'], workdir };
+    expect(await s.engine.resolveMerge(req)).toBe('resolved');
+    const call: BrainRequest = s.mock.callsFor('merge')[0]!;
+    expect(call.employee.id).toBe(MERGE_RESOLVER_ID);
+    expect(call.workdir).toBe(workdir);
+    expect(claudeProfileFor(call)).toBe('dev-work');
+    // GPT 개발자는 merge 일로는 쓰기를 받지 않는다 (7장 7-3: 쓰기는 자기 티켓 worktree의 work만)
+    const devA = s.db.select().from(employees).where(eq(employees.id, 'dev-a')).get()!;
+    expect(codexSandboxFor({ employee: devA, task: 'merge', workdir, ticketId: 'T-1' }, s.config.paths.wt)).toBe('read-only');
+
+    blockBudget(s.ctx, 'dev');
+    expect(await s.engine.resolveMerge(req)).toBe('wait');
+    expect(s.mock.callsFor('merge')).toHaveLength(1);
+
+    const bad = setup({ handlers: { merge: () => ({ nope: true }) } });
+    expect(await bad.engine.resolveMerge(req)).toBe('failed');
   });
 });

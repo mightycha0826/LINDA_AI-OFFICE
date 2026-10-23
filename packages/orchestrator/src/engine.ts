@@ -9,7 +9,7 @@
 // 이 파일은 바깥(결재 봇, 비서실장, Git 고양이, 회고)이 부르는 입구와 한 바퀴(step)만 둔다.
 import { eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { GateOutputSchema, LOCAL_MODEL, StaffChatOutputSchema, type StaffChatOutput } from '@ai-office/shared';
+import { GateOutputSchema, LOCAL_MODEL, MergeOutputSchema, StaffChatOutputSchema, type StaffChatOutput } from '@ai-office/shared';
 import { BrainError, type BrainTask, type TestRunner } from './brains/brain.ts';
 import { Lanes } from './brains/lanes.ts';
 import type { BrainFor } from './brains/registry.ts';
@@ -30,6 +30,7 @@ import { Planning, planBlockedKey } from './engine/planning.ts';
 import { TicketWork } from './engine/ticket-work.ts';
 import { assertCeo, FormatError, NotFoundError, OfficeError } from './errors.ts';
 import { CommitDraftSchema, type CommitDraft, type CommitTicketInfo } from './gitcat/commit-message.ts';
+import { MERGE_RESOLVER_ID, type ConflictRequest, type ConflictResult } from './gitcat/git-cat.ts';
 import { dismissAllTemps } from './staff/temp-staff.ts';
 import { createWeb, type Web } from './web/research.ts';
 import type { Workspace } from './workspace/worktrees.ts';
@@ -120,16 +121,8 @@ export class Engine {
    * 정기 보고문 관문 검사 (10장: 보고는 CEO에게 가기 전에 GPT 관문을 거친다).
    * GPT 한도가 없거나 연결이 끊겨 검사할 수 없으면 null ("관문 미통과"로 올린다).
    */
-  async gateReport(report: string): Promise<z.infer<typeof GateOutputSchema> | null> {
-    const gate = this.calls.employee(GATE_REVIEWER_ID);
-    if (this.calls.spendMode(gate) !== 'ok') return null;
-    try {
-      return await this.calls.call(gate, 'gate', GateOutputSchema, { report }, {}, { workdir: this.workspace.sandbox('gate-report') });
-    } catch (err) {
-      if (isQuiet(err)) this.calls.handleQuietFailure(err, gate);
-      if (err instanceof BrainError || err instanceof FormatError) return null;
-      throw err;
-    }
+  gateReport(report: string): Promise<z.infer<typeof GateOutputSchema> | null> {
+    return this.callAs(GATE_REVIEWER_ID, 'gate', GateOutputSchema, { report }, { workdir: 'gate-report' });
   }
 
   /**
@@ -143,6 +136,30 @@ export class Engine {
       return await this.calls.call(drafter, 'commit', CommitDraftSchema, { ticket: { id: info.id, title: info.title, type: 'coding', acceptanceCriteria: info.acceptanceCriteria }, diffStat }, {});
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * 병합 담당 (11장 통합 브랜치, 2026-10-23 CEO 결정): 개발팀장이 통합 worktree의 충돌을 푼다.
+   * 풀렸는지는 Git 고양이 코드가 판정한다. 개발 몫이 없거나 끊겼으면 'wait'(다음 바퀴), 형식 오류·호출 실패면 'failed'.
+   */
+  async resolveMerge(req: ConflictRequest): Promise<ConflictResult> {
+    const dev = this.calls.employee(MERGE_RESOLVER_ID);
+    if (this.calls.spendMode(dev) !== 'ok') return 'wait';
+    try {
+      const out = await this.calls.call(dev, 'merge', MergeOutputSchema, req, {}, { workdir: req.workdir });
+      this.log(`${req.ticket.id} 통합 충돌 풀기: ${out.summary}`);
+      return 'resolved';
+    } catch (err) {
+      if (isQuiet(err)) {
+        this.calls.handleQuietFailure(err, dev);
+        return 'wait';
+      }
+      if (err instanceof BrainError || err instanceof FormatError || (err instanceof OfficeError && err.code === 'workdir')) {
+        this.log(`${req.ticket.id} 통합 충돌 풀기 실패: ${err.message}`);
+        return 'failed';
+      }
+      throw err;
     }
   }
 

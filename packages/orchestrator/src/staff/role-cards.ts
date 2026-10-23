@@ -44,6 +44,7 @@ const DUTIES: Record<EmployeeRole, Duties> = {
       '커밋은 하지 않아도 된다. 남은 변경은 Git 고양이가 푸시 전에 모아 커밋한다(개발자 A·B는 샌드박스라 커밋할 수 없다)',
       '완료 조건을 테스트로 증명할 수 있게 만든다',
       '재작업이면 수정 요청 목록을 먼저 처리한다',
+      '병합 담당(개발팀장): 프로젝트 통합 브랜치에 끝난 티켓을 합치다 충돌이 나면 통합 worktree 안에서 두 티켓의 의도를 함께 살려 충돌 표시를 푼다',
     ],
     never: [
       'git push, 원격 저장소 변경, git 설정 변경을 하지 않는다 (푸시는 Git 고양이만 한다)',
@@ -127,6 +128,7 @@ const TASK_NAME: Record<BrainTask, string> = {
   interpret: '대화 통역',
   report: '정기 보고 초안',
   chat: '주인과 대화',
+  merge: '병합 충돌 풀기',
 };
 
 export function roleCard(c: Ctx, e: EmployeeRow, task: BrainTask, schema: z.ZodType, ticketType?: TicketType): string {

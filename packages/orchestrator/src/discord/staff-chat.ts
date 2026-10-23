@@ -7,7 +7,7 @@
 // - 2026-10-21 "살아 있는 것처럼": 지금 시각·기분과 같은 채널에서 방금(30분 안) 나눈 대화 4번까지 같이 넘긴다.
 //   대화 기억은 메모리에만 두고(DB·로그에 남기지 않음), 다시 켜면 사라진다.
 import { inArray } from 'drizzle-orm';
-import type { StaffChatOutput } from '@ai-office/shared';
+import { OPEN_TICKET_STATUSES, type StaffChatOutput } from '@ai-office/shared';
 import { isStopped, type Ctx } from '../context.ts';
 import { proposeOrder, proposeRevision, type DirectProposal } from '../core/direct.ts';
 import { tickets } from '../db/schema.ts';
@@ -29,7 +29,6 @@ export interface ChatTurn {
   owner: string;
   me: string;
 }
-const OPEN_STATUSES = ['planned', 'in_progress', 'in_review', 'rework', 'meeting', 'blocked', 'awaiting_approval', 'paused'] as const;
 
 export interface StaffMention {
   guildId: string | null;
@@ -71,7 +70,7 @@ export function chatInput(c: Ctx, employeeId: string, message: string, recent: r
   const mine = c.db
     .select()
     .from(tickets)
-    .where(inArray(tickets.status, [...OPEN_STATUSES]))
+    .where(inArray(tickets.status, OPEN_TICKET_STATUSES))
     .all()
     .filter((t) => t.assigneeId === employeeId || t.reviewerId === employeeId)
     .sort((a, b) => Number(a.id.slice(2)) - Number(b.id.slice(2)))

@@ -168,6 +168,15 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
         'order·revise여도 내가 직접 일을 시작하거나 상태를 바꾸지 않는다. text에는 "버튼을 눌러 주시면 시작할게요"처럼 확인을 기다린다고 쓴다. 결재·푸시는 #결재함 버튼으로 한다.',
     );
   }
+  if (task === 'merge') {
+    parts.push(ticketSection(input));
+    parts.push(`## 충돌난 파일\n\n${dataBlock('충돌 파일 목록', get(input, 'files') ?? [])}`);
+    parts.push(
+      `## 작업 폴더\n\n${String(get(input, 'workdir') ?? '')} (프로젝트 통합 브랜치. 이 안에서만 일한다)\n\n` +
+        '위 티켓의 변경을 통합 브랜치에 합치다 충돌이 났다. 충돌 표시(<<<<<<< ======= >>>>>>>)를 모두 풀어 통합 브랜치에 이미 있는 변경과 이 티켓의 변경이 함께 동작하게 한다. ' +
+        '충돌 파일 말고는 고치지 않는다. git add·commit·merge 같은 git 명령은 쓰지 않는다(Git 고양이가 확인하고 커밋한다). 푼 파일과 한 일을 보고한다.',
+    );
+  }
   if (task === 'commit') {
     parts.push(ticketSection(input));
     parts.push(`## 바뀐 파일 (자료)\n\n${dataBlock('git diff --stat', get(input, 'diffStat') ?? '')}`);

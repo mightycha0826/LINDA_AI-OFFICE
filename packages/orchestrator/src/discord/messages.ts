@@ -57,14 +57,14 @@ export function ceoApprovalMessage(a: ApprovalRow, ticket: TicketRow | null): { 
   return { content: lines.join('\n'), buttons: [row] };
 }
 
-/** ③ 푸시 확인 (Git 고양이). 푸시 전 검사 결과는 4단계에서 채운다 */
-export function pushApprovalMessage(a: ApprovalRow, ticket: TicketRow | null, checks: string[] = []): { content: string; buttons: Button[][] } {
+/** ③ 푸시 확인 (Git 고양이) */
+export function pushApprovalMessage(a: ApprovalRow, ticket: TicketRow | null): { content: string; buttons: Button[][] } {
   const branch = ticket?.branch ?? 'feature/…';
   const isRevert = a.kind === 'revert';
   const lines = [
     `**🐈 ${isRevert ? '되돌리기 확인' : '푸시 확인'} · ${ticket ? `${ticket.id} ${ticket.title}` : a.targetId}**`,
     a.summary,
-    ...(checks.length ? checks : ['푸시 전 검사(테스트 재실행, 비밀 정보 검사)는 Git 고양이가 실행 직전에 해요.']),
+    '푸시 전 검사(테스트 재실행, 비밀 정보 검사)는 Git 고양이가 실행 직전에 해요.',
     `되돌리기: ${REVERSIBLE[a.reversible]}`,
   ];
   const buttons: Button[] = isRevert

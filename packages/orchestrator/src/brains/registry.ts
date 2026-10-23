@@ -1,5 +1,5 @@
 // 직원 → 두뇌 연결. 직원의 brain 설정(4장)으로 어댑터를 고른다.
-// 리서치 몫이 소진된 경영전략은 로컬 Qwen으로 바꿔 쓴다 (8장).
+// 리서치(기획) 몫이 소진된 Claude 리서치 직원은 로컬 두뇌로 바꿔 쓴다 (8장).
 import { LOCAL_MODEL } from '@ai-office/shared';
 import type { Config } from '../config.ts';
 import type { EmployeeRow } from '../core/budget.ts';
@@ -31,63 +31,41 @@ export function createBrainRegistry(config: Config, opts: RegistryOptions = {}):
     fallbackModel: LOCAL_MODEL,
     ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
   });
-  const claude = new ClaudeCodeBrain({
-    bin: config.claude.bin,
-    binArgs: config.claude.binArgs,
-    timeoutMs: config.claude.timeoutMin * 60_000,
-    maxTurns: config.claude.maxTurns,
-    wtRoot: config.paths.wt,
-    dataDir: config.paths.data,
-    ...(config.claude.model ? { model: config.claude.model } : {}),
-    ...(config.claude.effort ? { effort: config.claude.effort } : {}),
-    ...env,
-  });
+  const claudeBrain = (extraEnv?: Record<string, string>) =>
+    new ClaudeCodeBrain({
+      bin: config.claude.bin,
+      binArgs: config.claude.binArgs,
+      timeoutMs: config.claude.timeoutMin * 60_000,
+      maxTurns: config.claude.maxTurns,
+      wtRoot: config.paths.wt,
+      dataDir: config.paths.data,
+      ...(config.claude.model ? { model: config.claude.model } : {}),
+      ...(config.claude.effort ? { effort: config.claude.effort } : {}),
+      ...(extraEnv ? { extraEnv } : {}),
+    });
+  const codexBrain = (home: string) =>
+    new CodexBrain({
+      bin: config.codex.bin,
+      binArgs: config.codex.binArgs,
+      timeoutMs: config.codex.timeoutMin * 60_000,
+      promptVia: config.codex.promptVia,
+      wtRoot: config.paths.wt,
+      dataDir: config.paths.data,
+      home,
+      ...(config.codex.model ? { model: config.codex.model } : {}),
+      ...env,
+    });
+  const claude = claudeBrain(opts.extraEnv);
+  const codex = codexBrain(config.codex.home);
   // 파견 직원(친구 계정, 8장 2026-10-21): 계정마다 따로 만든다. 로그인 폴더만 다르고 권한·옵션은 회사 직원과 같다
   const guests = new Map<string, Brain>();
   const guestBrain = (provider: 'claude-code' | 'codex', account: string): Brain => {
     const key = `${provider}:${account}`;
-    let b = guests.get(key);
-    if (!b) {
-      const home = guestHome(config.paths.data, account);
-      b =
-        provider === 'claude-code'
-          ? new ClaudeCodeBrain({
-              bin: config.claude.bin,
-              binArgs: config.claude.binArgs,
-              timeoutMs: config.claude.timeoutMin * 60_000,
-              maxTurns: config.claude.maxTurns,
-              wtRoot: config.paths.wt,
-              dataDir: config.paths.data,
-              ...(config.claude.model ? { model: config.claude.model } : {}),
-              ...(config.claude.effort ? { effort: config.claude.effort } : {}),
-              extraEnv: { ...opts.extraEnv, ...guestEnv('claude-code', home) },
-            })
-          : new CodexBrain({
-              bin: config.codex.bin,
-              binArgs: config.codex.binArgs,
-              timeoutMs: config.codex.timeoutMin * 60_000,
-              promptVia: config.codex.promptVia,
-              wtRoot: config.paths.wt,
-              dataDir: config.paths.data,
-              home,
-              ...(config.codex.model ? { model: config.codex.model } : {}),
-              ...env,
-            });
-      guests.set(key, b);
-    }
+    const home = guestHome(config.paths.data, account);
+    const b = guests.get(key) ?? (provider === 'claude-code' ? claudeBrain({ ...opts.extraEnv, ...guestEnv('claude-code', home) }) : codexBrain(home));
+    guests.set(key, b);
     return b;
   };
-  const codex = new CodexBrain({
-    bin: config.codex.bin,
-    binArgs: config.codex.binArgs,
-    timeoutMs: config.codex.timeoutMin * 60_000,
-    promptVia: config.codex.promptVia,
-    wtRoot: config.paths.wt,
-    dataDir: config.paths.data,
-    home: config.codex.home,
-    ...(config.codex.model ? { model: config.codex.model } : {}),
-    ...env,
-  });
 
   const brainFor: BrainFor = (e, { lowPrecision }) => {
     if (lowPrecision) return ollama;

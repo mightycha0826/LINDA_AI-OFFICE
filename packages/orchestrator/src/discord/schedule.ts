@@ -28,10 +28,6 @@ export function currentSlot(config: Config, now: Date, windowMin = config.schedu
   return null;
 }
 
-export function isInCheckWindow(config: Config, now: Date): boolean {
-  return currentSlot(config, now) !== null;
-}
-
 /** 다음 점검 시각 표시용 (HH:MM) */
 export function nextCheckTime(config: Config, now: Date): string {
   const t = localTime(now, config.schedule.timezone);

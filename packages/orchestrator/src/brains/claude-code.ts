@@ -41,7 +41,8 @@ export const CLAUDE_PROFILES: Record<ClaudeProfile, { tools: string; permissionM
 export function claudeProfileFor(req: BrainRequest): ClaudeProfile {
   const b = req.employee.brain;
   if (b.provider !== 'claude-code') throw new BrainError('crash', `${req.employee.id}은(는) Claude Code 직원이 아니에요`);
-  if (req.task !== 'work') return 'readonly';
+  // 파일을 고치는 일은 티켓 작업과 병합 담당의 통합 브랜치 충돌 풀기(11장, 2026-10-23)뿐이다
+  if (req.task !== 'work' && req.task !== 'merge') return 'readonly';
   // 임시 직원은 파일 수정·명령 실행 권한이 없다 (2장, 7장). 검색이 허락된 종류만 웹을 읽는다.
   if (req.employee.isTemporary) return req.employee.canSearchWeb ? 'research' : 'readonly';
   return b.budget === 'research' ? 'research' : 'dev-work';

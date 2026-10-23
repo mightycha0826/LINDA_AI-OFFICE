@@ -2,15 +2,8 @@
 import { eq } from 'drizzle-orm';
 import { emit, inTx, nextSeqId, nowIso, type Ctx } from '../context.ts';
 import { orders } from '../db/schema.ts';
-import { NotFoundError } from '../errors.ts';
 
 export type OrderRow = typeof orders.$inferSelect;
-
-export function getOrder(c: Ctx, id: string): OrderRow {
-  const row = c.db.select().from(orders).where(eq(orders.id, id)).get();
-  if (!row) throw new NotFoundError(`지시 ${id}`);
-  return row;
-}
 
 /** projectId: 프로젝트 #작업 채널에서 온 지시면 그 프로젝트로 고정한다 (9장, 6장 PM) */
 export function registerOrder(c: Ctx, input: { discordMessageId: string; rawText: string; projectId?: string }): { order: OrderRow; created: boolean } {

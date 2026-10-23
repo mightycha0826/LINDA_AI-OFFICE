@@ -14,6 +14,8 @@ export const TICKET_STATUSES = [
   'paused',
 ] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
+/** 아직 끝나지 않은 티켓 (done·cancelled 말고 전부) */
+export const OPEN_TICKET_STATUSES = TICKET_STATUSES.filter((s): s is Exclude<TicketStatus, 'done' | 'cancelled'> => s !== 'done' && s !== 'cancelled');
 
 export const TICKET_TYPES = ['coding', 'research', 'marketing', 'strategy', 'writing'] as const;
 export type TicketType = (typeof TICKET_TYPES)[number];
@@ -67,7 +69,6 @@ export const TEMP_BRAINS = [LOCAL_MODEL, 'claude'] as const;
 export type TempBrain = (typeof TEMP_BRAINS)[number];
 
 export const EMPLOYEE_STATUSES = ['idle', 'working', 'meeting', 'blocked', 'paused'] as const;
-export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
 
 /** 앞의 것이 지금 쓰는 모델. qwen3:14b·gemma4:12b는 7-2 전에 저장된 기록을 읽기 위해서만 남긴다 */
 export const OLLAMA_MODELS = [LOCAL_MODEL, 'qwen3:14b', 'gemma4:12b'] as const;
@@ -98,7 +99,6 @@ export function brainModel(brain: Brain): string {
 }
 
 export const ORDER_CATEGORIES = ['coding', 'research', 'marketing', 'strategy', 'mixed'] as const;
-export type OrderCategory = (typeof ORDER_CATEGORIES)[number];
 
 export const ORDER_STATUSES = [
   'planning',
@@ -108,7 +108,6 @@ export const ORDER_STATUSES = [
   'rejected',
   'cancelled',
 ] as const;
-export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export const PLAN_STATUSES = [
   'draft',
@@ -119,7 +118,6 @@ export const PLAN_STATUSES = [
   'rejected',
   'superseded',
 ] as const;
-export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
 export const MESSAGE_KINDS = ['chat', 'review', 'handoff', 'system', 'gate'] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
@@ -138,7 +136,6 @@ export const APPROVAL_KINDS = [
 export type ApprovalKind = (typeof APPROVAL_KINDS)[number];
 
 export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'revision', 'expired'] as const;
-export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
 export const REVERSIBILITY = ['reversible', 'partial', 'irreversible'] as const;
 export type Reversibility = (typeof REVERSIBILITY)[number];
@@ -153,7 +150,6 @@ export const USAGE_SOURCES = ['reported', 'estimated'] as const;
 export type UsageSource = (typeof USAGE_SOURCES)[number];
 
 export const RULE_STATUSES = ['proposed', 'active', 'retired'] as const;
-export type RuleStatus = (typeof RULE_STATUSES)[number];
 
 export const MEETING_KINDS = ['ticket-meeting', 'gate-review'] as const;
 export type MeetingKind = (typeof MEETING_KINDS)[number];
@@ -163,8 +159,6 @@ export type MeetingOutcome = (typeof MEETING_OUTCOMES)[number];
 
 // 회고 (14장)
 export const RETRO_KINDS = ['ticket', 'weekly'] as const;
-export type RetroKind = (typeof RETRO_KINDS)[number];
 
 /** 티켓 회고 "어느 단계에서 막을 수 있었나" */
 export const PREVENT_STAGES = ['plan', 'work', 'review', 'test'] as const;
-export type PreventStage = (typeof PREVENT_STAGES)[number];

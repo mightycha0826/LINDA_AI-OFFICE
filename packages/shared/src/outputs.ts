@@ -117,19 +117,22 @@ export const ProofreadOutputSchema = z.object({
 });
 export type ProofreadOutput = z.infer<typeof ProofreadOutputSchema>;
 
+/**
+ * 병합 담당(개발팀장, 11장 통합 브랜치, 2026-10-23): 통합 worktree의 충돌을 푼 결과 보고.
+ * 판정은 코드가 한다(풀리지 않은 파일·충돌 표시·테스트). 이 출력은 기록용이다.
+ */
+export const MergeOutputSchema = z.object({ summary: text.max(500), resolvedFiles: z.array(text) });
+
 // --- 로컬 보조 직원 (16장 7-5). 모두 참고용 글이다. 상태 전환·결재·판정에 쓰지 않는다 ---------------
 
 /** 막힘 해설가: 무엇이·왜·다음에 누를 것, 2~3줄 */
 export const ExplainOutputSchema = z.object({ lines: z.array(text.max(200)).min(1).max(3) });
-export type ExplainOutput = z.infer<typeof ExplainOutputSchema>;
 
 /** 변경 요약가: 푸시 결재 전 diff 요약, 5줄 이내 */
 export const DiffSummarySchema = z.object({ lines: z.array(text.max(160)).min(1).max(5) });
-export type DiffSummary = z.infer<typeof DiffSummarySchema>;
 
 /** 거울 통역사: 직원끼리 주고받은 JSON을 사람이 읽는 문장으로 */
 export const InterpretOutputSchema = z.object({ text: text.max(600) });
-export type InterpretOutput = z.infer<typeof InterpretOutputSchema>;
 
 /**
  * 직원 봇 대화 (9장, 2026-10-20): 주인이 멘션한 직원 봇의 답. 로컬 Gemma, 참고용.
@@ -149,7 +152,6 @@ export type StaffChatOutput = z.infer<typeof StaffChatOutputSchema>;
 
 /** 보고 초안가: 비서실장 보고가 없을 때의 정기 보고 본문 (숫자는 회사 데이터에서만) */
 export const ReportDraftSchema = z.object({ text: text.max(1500) });
-export type ReportDraft = z.infer<typeof ReportDraftSchema>;
 
 /** 로컬 직원의 검색 1단계: 검색어 (15장, 2.5단계 결정 C). 오케스트레이터가 SearXNG로 검색한다. */
 export const SearchQueriesSchema = z.object({
@@ -173,14 +175,12 @@ export const TicketRetroSchema = z.object({
   why: text,
   preventAt: z.enum(PREVENT_STAGES),
 });
-export type TicketRetro = z.infer<typeof TicketRetroSchema>;
 
 /** 검토 담당의 회고 확인 */
 export const RetroCheckSchema = z.object({
   confirmed: z.boolean(),
   note: z.string(),
 });
-export type RetroCheck = z.infer<typeof RetroCheckSchema>;
 
 /** 규칙 후보 (14장 3). 문제가 생긴 곳보다 앞단에서 막는 규칙을 우선한다 */
 export const RuleCandidateSchema = z.object({
@@ -196,4 +196,3 @@ export const WeeklyRetroSchema = z.object({
   summary: text,
   candidates: z.array(RuleCandidateSchema).max(3),
 });
-export type WeeklyRetro = z.infer<typeof WeeklyRetroSchema>;

@@ -10,14 +10,14 @@ export const TEAM_LEADS = ['chief-of-staff', 'pm', 'developer', 'reviewer', 'str
 const JOBS: Record<string, string> = {
   'chief-of-staff': 'Discord 대화, 지시 등록, 정기 보고',
   pm: '지시 분류, 계획서, 티켓 배정, 토큰 예상',
-  developer: '설계 결정, 어려운 티켓 구현, GPT 개발자 코드 최종 리뷰',
+  developer: '설계 결정, 어려운 티켓 구현, GPT 개발자 코드 최종 리뷰, 통합 브랜치 병합 담당',
   'dev-a': '일반 티켓 구현과 테스트 (작업 공간 안에서만)',
   'dev-b': '일반 티켓 구현과 테스트 (작업 공간 안에서만)',
   reviewer: '코드 리뷰, 보안 감사, 계획서·보고 관문',
   'qa-local': '문서 1차 점검(맞춤법·말투·필수 항목), 문서 검토',
   strategy: '시장·경쟁 조사, 분석 보고서',
   marketing: '문구, 홍보 자료, 웹사이트 원고',
-  'git-cat': '커밋·푸시·main 병합. CEO 버튼으로만',
+  'git-cat': '끝난 티켓을 통합 브랜치에 합치기. 푸시·main 병합은 CEO 버튼으로만',
 };
 
 /** 보조 직원의 한 줄 "하는 일" */
