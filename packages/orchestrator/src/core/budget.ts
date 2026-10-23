@@ -15,7 +15,10 @@ export type EmployeeRow = typeof employees.$inferSelect;
 type LimitedBudget = Exclude<UsageBudget, 'local'>;
 
 const HOUR = 3_600_000;
-const WINDOWS = { fiveHour: 5 * HOUR, weekly: 7 * 24 * HOUR } as const;
+export const WINDOWS = { fiveHour: 5 * HOUR, weekly: 7 * 24 * HOUR } as const;
+
+/** 보고·알림·/한도에 쓰는 몫 이름 (8장: 리서치 몫은 7-1부터 기획 몫, GPT는 직원 전체가 함께 쓰는 GPT 몫) */
+export const BUDGET_NAME = { dev: 'Claude 개발 몫', research: 'Claude 기획 몫', review: 'GPT 몫' } as const;
 
 /** 파견 직원(빌려 온 친구 계정, core/guests.ts): 회사 몫을 쓰지 않는다 */
 export function isGuest(e: EmployeeRow): boolean {
@@ -68,16 +71,23 @@ export interface BudgetStatus {
 }
 
 const blockKey = (b: UsageBudget) => `budgetBlocked:${b}`;
-/** 초기화 시각을 모를 때 막아 두는 시간 */
-const DEFAULT_BLOCK_MS = HOUR;
+
+/**
+ * 제공자가 알려 준 초기화 시각. 모르거나 이미 지났으면 1시간 뒤.
+ * 자체 한도 해제(usagePolicy.enforceEstimates: false, 2026-10-22 CEO 지시)면 30분 뒤에 다시 본다.
+ */
+export function blockedUntil(c: Ctx, resetsAt?: string): string {
+  const now = c.clock.now().getTime();
+  const fallbackMs = c.config.usagePolicy.enforceEstimates ? HOUR : 30 * 60_000;
+  return resetsAt && new Date(resetsAt).getTime() > now ? resetsAt : new Date(now + fallbackMs).toISOString();
+}
 
 /**
  * 제공자가 한도 도달을 알려 왔다. 우리 추정치와 상관없이 그 몫을 막는다.
  * 추정 계수가 틀려도 실제 한도를 넘겨 계속 부르지 않게 하기 위해서다.
  */
 export function blockBudget(c: Ctx, b: UsageBudget, resetsAt?: string): string {
-  const fallback = new Date(c.clock.now().getTime() + (c.config.usagePolicy.enforceEstimates ? DEFAULT_BLOCK_MS : 30 * 60_000)).toISOString();
-  const until = resetsAt && new Date(resetsAt).getTime() > c.clock.now().getTime() ? resetsAt : fallback;
+  const until = blockedUntil(c, resetsAt);
   setState(c, blockKey(b), until);
   emit(c, 'usage.updated', { budget: b, blockedUntil: until, reason: 'provider-limit' });
   return until;

@@ -223,24 +223,22 @@ export const DEFAULTS: Omit<Config, 'ceoDiscordId'> = {
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
-function merge<T>(base: T, over: DeepPartial<T> | undefined): T {
-  if (!over) return base;
+/** 객체끼리만 깊이 합친다. 배열·값은 덮어쓴다 (설정 파일, /설정 덮어쓰기) */
+export function deepMerge<T>(base: T, over: unknown): T {
+  if (!over || typeof over !== 'object' || Array.isArray(over) || !base || typeof base !== 'object') return (over === undefined ? base : over) as T;
   const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
-  for (const [k, v] of Object.entries(over)) {
-    const b = out[k];
-    out[k] = v && typeof v === 'object' && !Array.isArray(v) && b && typeof b === 'object' ? merge(b, v as DeepPartial<typeof b>) : v;
-  }
+  for (const [k, v] of Object.entries(over)) out[k] = deepMerge(out[k], v);
   return out as T;
 }
 
 export function makeConfig(over: DeepPartial<Config> & { ceoDiscordId: string }): Config {
-  return ConfigSchema.parse(merge({ ...DEFAULTS, ceoDiscordId: over.ceoDiscordId }, over));
+  return ConfigSchema.parse(deepMerge({ ...DEFAULTS, ceoDiscordId: over.ceoDiscordId }, over));
 }
 
 /** JSON 설정 파일을 읽어 기본값 위에 덮는다. 형식이 틀리면 시작하지 않는다. */
 export function loadConfig(path: string): Config {
   const raw = JSON.parse(readFileSync(path, 'utf8')) as DeepPartial<Config>;
-  const result = ConfigSchema.safeParse(merge({ ...DEFAULTS, ceoDiscordId: '' }, raw));
+  const result = ConfigSchema.safeParse(deepMerge({ ...DEFAULTS, ceoDiscordId: '' }, raw));
   if (!result.success) throw new Error(`설정 파일 오류 (${path}):\n${z.prettifyError(result.error)}`);
   return result.data;
 }

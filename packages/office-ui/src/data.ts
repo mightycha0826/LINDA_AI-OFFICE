@@ -1,6 +1,6 @@
 // 데이터 연결 (12장 데이터 흐름): GET /snapshot으로 전체 상태를 받고, GET /events(SSE)로 바뀐 것을 받는다.
 // 끊겼다 다시 붙으면 브라우저가 Last-Event-ID를 보내 마지막 순번 다음부터 이어 받는다.
-// 목록은 이벤트가 오면 스냅샷을 다시 받아 맞추고(정확성), 이벤트는 그대로 애니메이션에 쓴다(움직임).
+// 목록은 이벤트가 오면 스냅샷을 다시 받아 맞추고(정확성, 0.8초에 한 번으로 묶음), 이벤트는 그대로 애니메이션에 쓴다(움직임).
 import { useEffect, useRef, useState } from 'react';
 import type { Snapshot } from '@ai-office/shared';
 
@@ -12,8 +12,6 @@ export interface LiveEvent {
 }
 
 export type Connection = 'loading' | 'live' | 'reconnecting' | 'failed';
-
-const REFRESH_TYPES = new Set(['ticket.status', 'approval.requested', 'approval.decided', 'plan.status', 'usage.updated', 'meeting.minutes', 'message.sent', 'git.push', 'git.commit', 'system.paused', 'system.resumed', 'ceo.presence', 'model.loaded', 'employee.move', 'order.created']);
 
 export function useOffice(onEvent: (e: LiveEvent) => void) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -59,7 +57,7 @@ export function useOffice(onEvent: (e: LiveEvent) => void) {
         source.onmessage = (msg) => {
           const e = JSON.parse(msg.data) as LiveEvent;
           handler.current(e);
-          if (REFRESH_TYPES.has(e.type)) refresh();
+          refresh();
         };
         setConnection('live');
       } catch {
@@ -74,11 +72,7 @@ export function useOffice(onEvent: (e: LiveEvent) => void) {
     };
   }, []);
 
-  const retry = () => {
-    setConnection('loading');
-    window.location.reload();
-  };
-  return { snapshot, connection, retry };
+  return { snapshot, connection, retry: () => window.location.reload() };
 }
 
 export async function fetchTicket(id: string) {

@@ -193,6 +193,15 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
         'order·revise는 아직 제안일 뿐이다. 시스템이 내 답장 아래에 합의한 내용과 확인 질문을 붙이므로, text에 버튼 사용법이나 확인 질문을 반복하지 않는다. "이 내용으로 진행할까요?"라는 최종 확인 단계라면 chat이 아니라 order 또는 revise를 쓴다. 사장님의 다음 명확한 동의가 있어야 시작한다. text에는 이해한 내용만 설명하며 "바로 반영할게요", "시작했어요", "등록했어요"처럼 아직 실행하지 않은 일을 약속하거나 완료로 말하지 않는다. 모호한 대답·질문·수정은 동의가 아니다. 결재함의 푸시·배포 결재는 기존 버튼으로 한다.',
     );
   }
+  if (task === 'merge') {
+    parts.push(ticketSection(input));
+    parts.push(`## 충돌난 파일\n\n${dataBlock('충돌 파일 목록', get(input, 'files') ?? [])}`);
+    parts.push(
+      `## 작업 폴더\n\n${String(get(input, 'workdir') ?? '')} (프로젝트 통합 브랜치. 이 안에서만 일한다)\n\n` +
+        '위 티켓의 변경을 통합 브랜치에 합치다 충돌이 났다. 충돌 표시(<<<<<<< ======= >>>>>>>)를 모두 풀어 통합 브랜치에 이미 있는 변경과 이 티켓의 변경이 함께 동작하게 한다. ' +
+        '충돌 파일 말고는 고치지 않는다. git add·commit·merge 같은 git 명령은 쓰지 않는다(Git 고양이가 확인하고 커밋한다). 푼 파일과 한 일을 보고한다.',
+    );
+  }
   if (task === 'commit') {
     parts.push(ticketSection(input));
     parts.push(`## 바뀐 파일 (자료)\n\n${dataBlock('git diff --stat', get(input, 'diffStat') ?? '')}`);

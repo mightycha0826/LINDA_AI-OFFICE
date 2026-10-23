@@ -5,7 +5,7 @@
 //    (7-1: PM이 Claude가 되어 회고 초안은 Claude 한도를 쓰지 않게 로컬로 옮겼다. 회고 서기(7-5)가 생기면 그쪽으로)
 //    효과 없는 규칙과 역할당 10개 초과는 코드가 삭제 제안을 올린다.
 // 4. 후보는 코드 사전 검사 → GPT 관문 → #결재함 "규칙 추가 제안". 승인돼야 적용된다.
-import { and, desc, eq, gt, gte, inArray, sql } from 'drizzle-orm';
+import { and, eq, gt, gte, inArray, sql } from 'drizzle-orm';
 import {
   GateOutputSchema,
   REASON_CATEGORIES,
@@ -283,12 +283,6 @@ export class RetroService {
     }
     for (const r of cleanupCandidates(this.c)) proposeRetire(this.c, r.id, '역할당 10개 초과, 정리 제안');
     return 1;
-  }
-
-  /** 정기 보고에 붙일 최근 주간 회고 (하루 안에 쓴 것) */
-  latestWeekly() {
-    const since = new Date(this.c.clock.now().getTime() - 24 * 3_600_000).toISOString();
-    return this.c.db.select().from(retros).where(and(eq(retros.kind, 'weekly'), gte(retros.createdAt, since))).orderBy(desc(retros.createdAt)).get() ?? null;
   }
 
   // --- 4. 후보 → 관문 → 결재 ---------------------------------------------------------

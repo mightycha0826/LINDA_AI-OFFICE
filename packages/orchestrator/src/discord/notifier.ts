@@ -7,15 +7,15 @@ import { eq, gt, like } from 'drizzle-orm';
 import { staffUpdate } from '../staff/voice.ts';
 import { personalNameOf } from '../staff/org.ts';
 import { chiefRequestMessage, markChiefRequestPosted, unpostedChiefRequests } from '../chief/requests.ts';
-import { getState, inTx, setState, type Ctx } from '../context.ts';
+import { getState, setState, type Ctx } from '../context.ts';
 import type { ApprovalRow } from '../core/approvals.ts';
-import { budgetStatus } from '../core/budget.ts';
+import { BUDGET_NAME, budgetStatus } from '../core/budget.ts';
 import { approvals, events, meetingMinutes, messages, orders, plans, projects, systemState, tickets } from '../db/schema.ts';
 import { approvalLink } from '../reports.ts';
 import { approvalMessageFor, blockedMessage, blockedPlanMessage, clarificationMessage, decidedMessage } from './messages.ts';
 import { clarificationOf, orderChannelKey } from '../core/clarifications.ts';
 import { isCeoPresent } from './presence.ts';
-import { isInCheckWindow } from './schedule.ts';
+import { currentSlot } from './schedule.ts';
 import type { Button, ChannelKey, DiscordPort } from './types.ts';
 import { projectChannel, type ProjectChannelKind } from './project-channels.ts';
 import { roleBotFor } from './staff-bots.ts';
@@ -27,7 +27,6 @@ const MENTIONS = 'discord.mentions';
 const NEAR = 'discord.nearLimit';
 /** #막힘에 이미 올린 "계획 작성 멈춤" 지시 */
 const PLAN_NOTICED = 'discord.planBlockedNoticed';
-const BUDGET_NAME: Readonly<Record<string, string>> = { dev: 'Claude 개발 몫', research: 'Claude 리서치 몫', review: 'GPT 리뷰어 몫' };
 
 interface Held {
   kind: 'approval' | 'blocked' | 'alert';
@@ -77,19 +76,21 @@ export class Notifier {
 
   /** 지금 멘션(휴대폰 알림)을 보내도 되는가: 점검 시간이거나 CEO 접속 중 */
   allowedNow(): boolean {
-    return isInCheckWindow(this.c.config, this.c.clock.now()) || isCeoPresent(this.c);
+    return currentSlot(this.c.config, this.c.clock.now()) !== null || isCeoPresent(this.c);
+  }
+
+  /** 지난 한 시간 동안 보낸 멘션 시각 */
+  private recentMentions(): string[] {
+    const hourAgo = this.c.clock.now().getTime() - 3_600_000;
+    return getState<string[]>(this.c, MENTIONS, []).filter((t) => new Date(t).getTime() > hourAgo);
   }
 
   private mentionBudgetLeft(): boolean {
-    const hourAgo = this.c.clock.now().getTime() - 3_600_000;
-    const recent = getState<string[]>(this.c, MENTIONS, []).filter((t) => new Date(t).getTime() > hourAgo);
-    return recent.length < this.c.config.schedule.maxImmediatePerHour;
+    return this.recentMentions().length < this.c.config.schedule.maxImmediatePerHour;
   }
 
   private useMention(): void {
-    const hourAgo = this.c.clock.now().getTime() - 3_600_000;
-    const recent = getState<string[]>(this.c, MENTIONS, []).filter((t) => new Date(t).getTime() > hourAgo);
-    setState(this.c, MENTIONS, [...recent, this.c.clock.now().toISOString()]);
+    setState(this.c, MENTIONS, [...this.recentMentions(), this.c.clock.now().toISOString()]);
   }
 
   private hold(item: Held): void {
@@ -324,7 +325,7 @@ export class Notifier {
 
   private async onUsageUpdated(p: Payload): Promise<number> {
     if (p.reason !== 'provider-limit') return 0;
-    const name = BUDGET_NAME[String(p.budget)] ?? String(p.budget);
+    const name = BUDGET_NAME[p.budget as keyof typeof BUDGET_NAME] ?? String(p.budget);
     await this.sendImmediate('reports', { content: `예산 · ${name}이 제공자 한도에 닿아 ${String(p.blockedUntil).slice(0, 16).replace('T', ' ')}까지 멈춰요` }, { kind: 'alert', text: `${name} 한도 도달` });
     return 1;
   }
@@ -357,9 +358,7 @@ export class Notifier {
     const head = [count('approval') && `결재 대기 ${count('approval')}건`, count('blocked') && `막힘 ${count('blocked')}건`, count('alert') && `알림 ${count('alert')}건`].filter(Boolean).join(' · ');
     const lines = held.map((h) => `- ${h.text}${h.link ? ` — ${h.link}` : ''}`);
     await this.port.send({ channel: count('approval') ? 'approvals' : 'reports', content: `${this.mention()}${head}\n${lines.join('\n')}` });
-    inTx(this.c, (t) => {
-      setState(t, HELD, []);
-    });
+    setState(this.c, HELD, []);
     this.useMention();
     return 1;
   }

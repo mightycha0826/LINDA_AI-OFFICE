@@ -18,10 +18,3 @@ export const OFFICE_EVENT_TYPES = [
   'ceo.presence',
 ] as const;
 export type OfficeEventType = (typeof OFFICE_EVENT_TYPES)[number];
-
-export interface OfficeEvent {
-  seq: number;
-  type: OfficeEventType;
-  payload: unknown;
-  createdAt: string;
-}

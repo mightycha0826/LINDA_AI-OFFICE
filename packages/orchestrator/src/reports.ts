@@ -3,7 +3,7 @@
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { Ctx } from './context.ts';
 import { getState, isStopped } from './context.ts';
-import { budgetStatus } from './core/budget.ts';
+import { BUDGET_NAME, budgetStatus } from './core/budget.ts';
 import { approvals, events, retros, tickets, usage } from './db/schema.ts';
 
 export interface ReportData {
@@ -13,7 +13,7 @@ export interface ReportData {
   /** cause: 막힘으로 보낸 이유. 같은 반려 반복과 회의의 사장님 판단 요청을 따로 센다 (2026-10-23) */
   blocked: { id: string; title: string; cause: BlockedCause | null }[];
   paused: { id: string; title: string; reason: string }[];
-  usage: { budget: string; fiveHour: number; fiveHourLimit: number | null; weekly: number; weeklyLimit: number | null; blockedUntil: string | null }[];
+  usage: { budget: keyof typeof BUDGET_NAME; fiveHour: number; fiveHourLimit: number | null; weekly: number; weeklyLimit: number | null; blockedUntil: string | null }[];
   estimated: boolean;
   stopped: boolean;
   /** Claude 계정 전체 사용률(실측, 주인 개인 사용 포함) */
@@ -83,7 +83,6 @@ function latestWeeklyRetro(c: Ctx): ReportData['weeklyRetro'] {
   return { week: r.week ?? '', summary: r.summary ?? '', rejections: st.rejections ?? 0, byCategory: st.byCategory ?? {}, ineffectiveRules: (st.rules ?? []).filter((x) => x.ineffective).map((x) => x.text) };
 }
 
-const BUDGET_NAME: Record<string, string> = { dev: 'Claude 개발', research: 'Claude 리서치', review: 'GPT 리뷰' };
 const PAUSE_NAME: Record<string, string> = { 'ceo-stop': '/정지', budget: '한도 소진', offline: '인터넷 끊김', 'system-error': '시스템 이상', cap: '턴·토큰 상한' };
 
 export function formatReportData(d: ReportData): string {

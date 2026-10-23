@@ -2,19 +2,20 @@
 // - 경로는 <wt>\T-12, 브랜치는 feature/T12-<짧은 설명>.
 // - worktree에 비밀 파일(.env, 키)이 있으면 일을 시작하지 않는다.
 // - 등록 저장소의 push 주소를 막아 둔다. Git 고양이는 4단계에서 주소를 직접 지정해 푸시한다.
+// - 프로젝트 통합 브랜치(11장, 2026-10-23)가 있으면 새 티켓은 거기서 시작해 앞 티켓 결과를 이어받는다.
 import { eq } from 'drizzle-orm';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { emit, type Ctx } from '../context.ts';
 import type { TicketRow } from '../core/tickets.ts';
-import { orders, plans, tickets } from '../db/schema.ts';
+import { plans, tickets } from '../db/schema.ts';
 import { OfficeError } from '../errors.ts';
 import { applyPointSystem } from '../design/apply-point.ts';
 import { DS_LINT_CRITERION } from '../design/ds-lint.ts';
 import { runProcess } from '../brains/process.ts';
 import { devSettings } from './claude-settings.ts';
-import { assertInside, sandboxDir, worktreePathFor } from './paths.ts';
-import { getProject } from './projects.ts';
+import { assertInside, integrationBranch, sandboxDir, worktreePathFor } from './paths.ts';
+import { projectOfOrder, type ProjectRow } from './projects.ts';
 
 /** 엔진이 쓰는 작업 공간. 테스트에서는 가짜로 바꿔 끼운다. */
 export interface Workspace {
@@ -74,6 +75,22 @@ async function git(cwd: string, args: string[], timeoutMs = 120_000): Promise<st
   return r.stdout.trim();
 }
 
+/** 새 티켓이 시작할 브랜치: 통합 브랜치가 있으면 그것(앞 티켓 결과를 이어받음), 없으면 기본 브랜치 (11장 통합 브랜치) */
+export async function startBranchOf(p: ProjectRow): Promise<string> {
+  return (await git(p.localPath, ['branch', '--list', integrationBranch(p.id)])) ? integrationBranch(p.id) : p.defaultBranch;
+}
+
+/** Claude 권한 설정을 작업 폴더에 둔다(--settings와 같은 내용). 커밋되지 않게 저장소 공통 exclude에 넣는다 */
+export async function writeClaudeSettings(path: string, dataDir: string): Promise<void> {
+  mkdirSync(join(path, '.claude'), { recursive: true });
+  writeFileSync(join(path, '.claude', 'settings.json'), JSON.stringify(devSettings(dataDir), null, 2), 'utf8');
+  const common = resolve(path, await git(path, ['rev-parse', '--git-common-dir']));
+  const exclude = join(common, 'info', 'exclude');
+  mkdirSync(join(common, 'info'), { recursive: true });
+  const current = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
+  if (!current.split(/\r?\n/).includes('.claude/')) writeFileSync(exclude, `${current.replace(/\s*$/, '')}\n.claude/\n`, 'utf8');
+}
+
 export class GitWorkspace implements Workspace {
   private readonly c: Ctx;
 
@@ -101,9 +118,8 @@ export class GitWorkspace implements Workspace {
   async ensureWorktree(ticket: TicketRow): Promise<{ path: string; branch: string }> {
     const c = this.c;
     if (ticket.worktreePath && ticket.branch && existsSync(ticket.worktreePath)) return { path: ticket.worktreePath, branch: ticket.branch };
-    const order = c.db.select().from(orders).where(eq(orders.id, ticket.orderId)).get();
-    if (!order?.projectId) throw new OfficeError('no-project', `${ticket.id}: 지시에 등록된 프로젝트가 없어요`);
-    const project = getProject(c, order.projectId);
+    const project = projectOfOrder(c, ticket.orderId);
+    if (!project) throw new OfficeError('no-project', `${ticket.id}: 지시에 등록된 프로젝트가 없어요`);
     const path = assertInside(c.config.paths.wt, worktreePathFor(c.config.paths.wt, ticket.id), `worktree(${ticket.id})`);
     const branch = ticket.branch ?? branchFor(ticket);
     mkdirSync(c.config.paths.wt, { recursive: true });
@@ -111,7 +127,7 @@ export class GitWorkspace implements Workspace {
     await this.lockPushUrl(project.localPath);
     if (!existsSync(path)) {
       const exists = await git(project.localPath, ['branch', '--list', branch]);
-      await git(project.localPath, exists ? ['worktree', 'add', path, branch] : ['worktree', 'add', '-b', branch, path, project.defaultBranch]);
+      await git(project.localPath, exists ? ['worktree', 'add', path, branch] : ['worktree', 'add', '-b', branch, path, await startBranchOf(project)]);
     } else {
       // 같은 번호의 폴더가 남아 있으면(시험·예전 DB의 티켓 등) 다른 저장소나 다른 브랜치일 수 있다. 그대로 쓰면 엉뚱한 곳에 커밋한다.
       await this.assertOwnWorktree(path, project.localPath, branch, ticket.id);
@@ -120,14 +136,7 @@ export class GitWorkspace implements Workspace {
     const secrets = findSecretFiles(path);
     if (secrets.length > 0) throw new SecretInWorktreeError(secrets);
 
-    // 권한 설정은 커밋되지 않게 공통 exclude에 넣는다
-    mkdirSync(join(path, '.claude'), { recursive: true });
-    writeFileSync(join(path, '.claude', 'settings.json'), JSON.stringify(devSettings(c.config.paths.data), null, 2), 'utf8');
-    const common = resolve(path, await git(path, ['rev-parse', '--git-common-dir']));
-    const exclude = join(common, 'info', 'exclude');
-    mkdirSync(join(common, 'info'), { recursive: true });
-    const current = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
-    if (!current.split(/\r?\n/).includes('.claude/')) writeFileSync(exclude, `${current.replace(/\s*$/, '')}\n.claude/\n`, 'utf8');
+    await writeClaudeSettings(path, c.config.paths.data);
 
     // 디자인 조합이 붙은 UI 티켓: 포인트 디자인 시스템 파일과 고른 조합을 넣어 둔다 (17장)
     const plan = ticket.planId ? c.db.select().from(plans).where(eq(plans.id, ticket.planId)).get() : undefined;
@@ -147,8 +156,9 @@ export class GitWorkspace implements Workspace {
 
   async reviewDiff(ticket: TicketRow): Promise<string> {
     if (!ticket.worktreePath) return '';
-    const order = this.c.db.select().from(orders).where(eq(orders.id, ticket.orderId)).get();
-    const base = order?.projectId ? getProject(this.c, order.projectId).defaultBranch : 'main';
+    // 시작한 브랜치와 갈라진 곳부터: 통합 브랜치에서 이어받은 앞 티켓 변경은 이 티켓 diff에 넣지 않는다
+    const project = projectOfOrder(this.c, ticket.orderId);
+    const base = project ? await startBranchOf(project) : 'main';
     const committed = await git(ticket.worktreePath, ['diff', '--stat', '--patch', `${base}...HEAD`]).catch((e: Error) => `(diff 실패: ${e.message})`);
     const uncommitted = await git(ticket.worktreePath, ['diff', '--patch', 'HEAD']).catch(() => '');
     const untracked = await git(ticket.worktreePath, ['ls-files', '--others', '--exclude-standard']).catch(() => '');
@@ -160,9 +170,8 @@ export class GitWorkspace implements Workspace {
   /** 4단계 Git 고양이가 푸시를 끝낸 뒤 부른다. 브랜치는 남긴다. */
   async removeWorktree(ticket: TicketRow): Promise<void> {
     if (!ticket.worktreePath) return;
-    const order = this.c.db.select().from(orders).where(eq(orders.id, ticket.orderId)).get();
-    if (!order?.projectId) return;
-    const project = getProject(this.c, order.projectId);
+    const project = projectOfOrder(this.c, ticket.orderId);
+    if (!project) return;
     assertInside(this.c.config.paths.wt, ticket.worktreePath, `worktree 정리(${ticket.id})`);
     await git(project.localPath, ['worktree', 'remove', '--force', ticket.worktreePath]);
     this.c.db.update(tickets).set({ worktreePath: null }).where(eq(tickets.id, ticket.id)).run();

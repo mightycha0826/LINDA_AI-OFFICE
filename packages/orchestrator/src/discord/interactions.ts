@@ -9,11 +9,10 @@ import { answerClarification, clarificationOf } from '../core/clarifications.ts'
 import { assertChiefRequestPending, chiefRequestHead, chiefRequestOf, closeChiefRequest, type ChiefRequest } from '../chief/requests.ts';
 import { readableDiscordText } from './format.ts';
 import { projectChannel } from './project-channels.ts';
-import { budgetStatus } from '../core/budget.ts';
+import { BUDGET_NAME, budgetStatus, isGuest } from '../core/budget.ts';
 import { ticketCapsEnabled } from '../core/guards.ts';
 import { applyRevision, dismissProposal, getProposal, startDirectOrder } from '../core/direct.ts';
 import { guestLine, loadGuestRegistry, setGuestOn, syncGuests } from '../core/guests.ts';
-import { isGuest } from '../core/budget.ts';
 import { approvals, employees, messages, orders, plans, tickets } from '../db/schema.ts';
 import type { Engine } from '../engine.ts';
 import { AlreadyDecidedError, OfficeError, StaleApprovalError } from '../errors.ts';
@@ -357,10 +356,9 @@ export class InteractionHandler {
 
   private budgetCommand(): InteractionReply {
     const c = this.c;
-    const name_ = { dev: 'Claude 개발', research: 'Claude 리서치', review: 'GPT 리뷰' } as const;
     const lines = (['dev', 'research', 'review'] as const).map((b) => {
       const s = budgetStatus(c, b);
-      return `${name_[b]}: 5시간 ${s.fiveHour.used.toFixed(1)}/${s.fiveHour.limit === null ? '자체 제한 없음' : `${s.fiveHour.limit}%`} · 주간 ${s.weekly.used.toFixed(1)}/${s.weekly.limit === null ? '자체 제한 없음' : `${s.weekly.limit}%`}${s.blockedUntil ? ` · ${s.blockedUntil}까지 막힘` : ''}`;
+      return `${BUDGET_NAME[b]}: 5시간 ${s.fiveHour.used.toFixed(1)}/${s.fiveHour.limit === null ? '자체 제한 없음' : `${s.fiveHour.limit}%`} · 주간 ${s.weekly.used.toFixed(1)}/${s.weekly.limit === null ? '자체 제한 없음' : `${s.weekly.limit}%`}${s.blockedUntil ? ` · ${s.blockedUntil}까지 막힘` : ''}`;
     });
     return { kind: 'reply', content: `**몫별 사용량** (추정치)\n${lines.join('\n')}`, ephemeral: false };
   }

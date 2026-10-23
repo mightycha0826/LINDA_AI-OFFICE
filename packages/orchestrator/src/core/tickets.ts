@@ -1,5 +1,6 @@
 // 티켓 상태를 바꾸는 유일한 길. decide()로 판단하고, 조건부 UPDATE와 events 기록을 한 트랜잭션에서 한다.
 import { and, eq, inArray } from 'drizzle-orm';
+import { OPEN_TICKET_STATUSES } from '@ai-office/shared';
 import { emit, inTx, isStopped, newId, nowIso, type Ctx } from '../context.ts';
 import { messages, orders, tickets } from '../db/schema.ts';
 import { ConcurrentUpdateError, NotFoundError } from '../errors.ts';
@@ -68,7 +69,7 @@ function closeOrderIfFinished(c: Ctx, orderId: string): void {
   const open = c.db
     .select({ id: tickets.id })
     .from(tickets)
-    .where(and(eq(tickets.orderId, orderId), inArray(tickets.status, ['planned', 'in_progress', 'in_review', 'rework', 'meeting', 'blocked', 'awaiting_approval', 'paused'])))
+    .where(and(eq(tickets.orderId, orderId), inArray(tickets.status, OPEN_TICKET_STATUSES)))
     .all();
   if (open.length > 0) return;
   const anyDone = c.db.select({ id: tickets.id }).from(tickets).where(and(eq(tickets.orderId, orderId), eq(tickets.status, 'done'))).get();

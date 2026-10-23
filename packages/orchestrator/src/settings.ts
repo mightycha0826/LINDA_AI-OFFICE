@@ -1,7 +1,7 @@
 // /설정 (9장 슬래시 명령어). 한도 비율, 보고 시간, 부재 전환 시간, 티켓 상한을 바꾼다.
 // 값은 설정 검사(Zod)를 통과해야 반영되고, DB에 남아 재시작 뒤에도 유지된다.
 import { z } from 'zod';
-import { ConfigSchema, type Config } from './config.ts';
+import { ConfigSchema, deepMerge, type Config } from './config.ts';
 import { emit, getState, inTx, setState, type Ctx } from './context.ts';
 import { OfficeError } from './errors.ts';
 
@@ -35,13 +35,6 @@ export const SETTINGS: Record<string, SettingSpec> = {
   'ticket-max-turns': { label: '티켓 턴 상한', parse: (r) => ({ ticketCaps: { maxTurns: num(r) } }), show: (c) => `${c.ticketCaps.maxTurns}턴` },
   'ticket-token-multiplier': { label: '티켓 토큰 상한 배수', parse: (r) => ({ ticketCaps: { tokenMultiplier: num(r) } }), show: (c) => `${c.ticketCaps.tokenMultiplier}배` },
 };
-
-function deepMerge(base: unknown, patch: unknown): unknown {
-  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return patch;
-  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
-  for (const [k, v] of Object.entries(patch)) out[k] = deepMerge(out[k], v);
-  return out;
-}
 
 /** 설정 객체를 그 자리에서 바꾼다. 모든 Ctx가 같은 객체를 보므로 바로 반영된다. */
 function replaceInPlace(target: Config, next: Config): void {

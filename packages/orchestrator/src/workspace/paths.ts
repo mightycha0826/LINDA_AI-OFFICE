@@ -24,6 +24,14 @@ export function worktreePathFor(wtRoot: string, ticketId: string): string {
   return join(wtRoot, ticketId);
 }
 
+/** 프로젝트 통합 브랜치 (11장, 2026-10-23): 끝난 티켓을 로컬에서 차례로 합쳐 두고, 새 티켓은 여기서 시작한다 */
+export const integrationBranch = (projectId: string) => `integration/${projectId}`;
+
+/** 통합 브랜치 작업 폴더: <wt>\_integration\<프로젝트>. 병합 담당(개발팀장)이 충돌을 푸는 곳 */
+export function integrationPathFor(wtRoot: string, projectId: string): string {
+  return join(wtRoot, '_integration', projectId);
+}
+
 /** 파일 수정이 필요 없는 일(리서치, 관문, 문서 작업)의 빈 폴더: <wt>\_sandbox\<이름> */
 export function sandboxDir(wtRoot: string, name: string): string {
   const safe = name.replace(/[^A-Za-z0-9_-]/g, '_');

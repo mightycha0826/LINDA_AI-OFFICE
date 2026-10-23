@@ -6,7 +6,7 @@
 // - 대화는 직원·채널별로 최근 20회/6시간/16000자 안에서 DB에 보관하고 재시작 뒤에도 이어간다.
 //   만료 기록은 주기적으로 정리하고 "대화 초기화"로 해당 직원·채널의 기억을 지운다.
 import { inArray } from 'drizzle-orm';
-import type { StaffChatOutput } from '@ai-office/shared';
+import { OPEN_TICKET_STATUSES, type StaffChatOutput } from '@ai-office/shared';
 import { getState, isStopped, type Ctx } from '../context.ts';
 import { answerClarification } from '../core/clarifications.ts';
 import { applyRevision, dismissProposal, pendingProposal, proposalIdForReply, proposeOrder, proposeRevision, shownProposalMessage, startDirectOrder, type DirectProposal } from '../core/direct.ts';
@@ -25,7 +25,6 @@ export const CHAT_MAX_INPUT = 4000;
 /** 대화에 넘기는 맡은 티켓 수 */
 const CHAT_MAX_TICKETS = 10;
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
-const OPEN_STATUSES = ['planned', 'in_progress', 'in_review', 'rework', 'meeting', 'blocked', 'awaiting_approval', 'paused'] as const;
 
 export interface StaffMention {
   guildId: string | null;
@@ -79,7 +78,7 @@ export function chatInput(c: Ctx, employeeId: string, message: string, recent: r
   const mine = c.db
     .select()
     .from(tickets)
-    .where(inArray(tickets.status, [...OPEN_STATUSES]))
+    .where(inArray(tickets.status, OPEN_TICKET_STATUSES))
     .all()
     .filter((t) => t.assigneeId === employeeId || t.reviewerId === employeeId)
     .sort((a, b) => Number(a.id.slice(2)) - Number(b.id.slice(2)))

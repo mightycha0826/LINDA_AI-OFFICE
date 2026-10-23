@@ -14,27 +14,22 @@ export const TOOL_DEFS = {
   get_status: {
     description: '회사 현황 요약: 진행 중, 막힘, 결재 대기 건수와 주요 티켓, CEO 접속 상태. 읽기 전용.',
     input: z.object({}),
-    writes: false,
   },
   get_ticket: {
     description: '티켓 하나의 상세(상태, 담당자, 완료 조건, 최근 대화 요약). 읽기 전용.',
     input: z.object({ ticketId }),
-    writes: false,
   },
   get_pending_approvals: {
     description: 'CEO 결재를 기다리는 목록과 각 Discord 메시지 링크. 읽기 전용.',
     input: z.object({}),
-    writes: false,
   },
   get_report_data: {
     description: '지정 시각 이후의 완료, 결재 대기, 막힘, 사용량, 시스템 상태. 정기 보고 작성용. 읽기 전용.',
     input: z.object({ since: z.string().describe('ISO 8601 시각. 예: 2026-10-15T22:00:00+09:00') }),
-    writes: false,
   },
   get_usage: {
     description: 'Claude·GPT 몫별 사용량과 남은 양(추정치 여부 포함). 읽기 전용.',
     input: z.object({}),
-    writes: false,
   },
   get_ticket_log: {
     description: '티켓 하나의 대화 기록(작업·검토·인계·시스템 기록)과 회의록. 왜 막혔는지, 누가 무슨 말을 했는지 볼 때. 읽기 전용.',
@@ -72,7 +67,6 @@ export const TOOL_DEFS = {
       proposalId: z.string().uuid().describe('create_order가 반환한 등록 제안 ID'),
       decision: z.enum(['register', 'chat']),
     }),
-    writes: true,
   },
   request_confirmation: {
     description:
@@ -82,7 +76,6 @@ export const TOOL_DEFS = {
       targetId: ticketId,
       reason: z.string().max(500).describe('CEO가 한 말 요약'),
     }),
-    writes: true,
   },
   request_action: {
     description:
@@ -107,7 +100,6 @@ export const TOOL_DEFS = {
     description:
       '정기 보고문을 제출한다. GPT 관문 검사를 거쳐 통과하면 시스템 봇이 #보고에 결재 대기 목록과 함께 올린다. 반려되면 지적 사항을 돌려주니 고쳐서 다시 낸다(최대 2번).',
     input: z.object({ text: z.string().min(1).max(6000) }),
-    writes: true,
   },
 } as const;
 

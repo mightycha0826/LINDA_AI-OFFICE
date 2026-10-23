@@ -63,6 +63,8 @@ const gitcat = new GitCat({
   tests: new ProjectTestRunner(ctx),
   removeWorktree: (t) => workspace.removeWorktree(t),
   drafter: (info, diffStat) => engine.draftCommit(info, diffStat),
+  // 병합 담당(개발팀장): 프로젝트 통합 브랜치 충돌 풀기 (11장, 2026-10-23)
+  resolveConflict: (r) => engine.resolveMerge(r),
   // 변경 요약가 (16장 7-5): 푸시 결재 메시지에 붙일 요약
   summarizeDiff: async (ticket, diff) => (await engine.callAs('diff-summarizer', 'summarize', DiffSummarySchema, { ticket, diff }, { workdir: `summarize-${ticket.id}` }))?.lines ?? null,
   // 토큰은 푸시하는 순간에만 파일에서 꺼낸다
@@ -148,6 +150,8 @@ const timers = [
   every(60_000, '30분 한도 점검', async () => engine.recoverQuotas()),
   every(5_000, '알림', async () => notifier?.tick()),
   every(5_000, 'Git 고양이', () => gitcat.tick()),
+  // 끝난 티켓을 프로젝트 통합 브랜치에 차례로 합친다 (로컬만, 11장). 충돌을 푸는 동안에도 푸시 결재는 따로 돈다
+  every(10_000, '통합 브랜치', () => gitcat.integrateDone()),
   every(config.mirror.flushSec * 1000, '거울', async () => mirror?.flush()),
   // 회고와 학습 (14장): 티켓 회고, 같은 분류 3회 자동 트리거, 일요일 주간 회고, 규칙 후보 관문·결재
   every(60_000, '회고', () => retro.tick()),

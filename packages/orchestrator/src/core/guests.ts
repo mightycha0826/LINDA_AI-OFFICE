@@ -14,13 +14,11 @@ import type { Brain } from '@ai-office/shared';
 import { getState, inTx, isStopped, nowIso, setState, type Ctx } from '../context.ts';
 import { employees, tickets } from '../db/schema.ts';
 import { assertCeo, NotFoundError, OfficeError } from '../errors.ts';
-import { isGuest, type EmployeeRow } from './budget.ts';
+import { blockedUntil, isGuest, WINDOWS, type EmployeeRow } from './budget.ts';
 import { applyTicketEvent } from './tickets.ts';
 
 export const GUEST_DEPARTMENT = '파견 라운지';
 export const DEFAULT_GUEST_CAP_PCT = 70;
-const HOUR = 3_600_000;
-const WINDOWS = { fiveHour: 5 * HOUR, weekly: 7 * 24 * HOUR } as const;
 /** 파견 직원이 맡을 수 있는 역할 (검토 전담인 리뷰어, 로컬 직원 역할은 없다) */
 const GUEST_ROLES = ['developer', 'marketing', 'strategy', 'pm'] as const;
 
@@ -156,8 +154,7 @@ export function recordGuestUsage(c: Ctx, e: EmployeeRow, u: { account?: { fiveHo
 export function blockGuest(c: Ctx, e: EmployeeRow, resetsAt?: string): void {
   const id = guestAccountOf(e);
   if (!id) return;
-  const fallback = new Date(c.clock.now().getTime() + (c.config.usagePolicy.enforceEstimates ? HOUR : 30 * 60_000)).toISOString();
-  setState(c, blockKey(id), resetsAt && new Date(resetsAt).getTime() > c.clock.now().getTime() ? resetsAt : fallback);
+  setState(c, blockKey(id), blockedUntil(c, resetsAt));
 }
 
 const SPENDING = ['in_progress', 'rework', 'meeting'] as const;
