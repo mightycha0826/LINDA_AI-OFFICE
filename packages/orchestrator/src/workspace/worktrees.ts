@@ -25,6 +25,8 @@ export interface Workspace {
   sandbox(name: string): string;
   /** 리뷰어에게 넘길 변경 내용 (6장: 입력은 diff) */
   reviewDiff(ticket: TicketRow): Promise<string>;
+  /** 동료 질문용 읽기 폴더: 프로젝트 최신 상태(통합 브랜치가 있으면 그것) */
+  readView(project: ProjectRow): Promise<string>;
 }
 
 export const PUSH_BLOCKED_URL = 'DISABLED-push-only-by-git-cat';
@@ -100,6 +102,22 @@ export class GitWorkspace implements Workspace {
 
   sandbox(name: string): string {
     return sandboxDir(this.c.config.paths.wt, name);
+  }
+
+  /** <wt>/_read/<프로젝트>를 분리된 HEAD로 둔다. 읽기만 하는 폴더라 매번 최신 브랜치로 맞추고 남은 파일을 지운다 */
+  async readView(p: ProjectRow): Promise<string> {
+    const wt = this.c.config.paths.wt;
+    const path = assertInside(wt, join(wt, '_read', p.id), `읽기 폴더(${p.id})`);
+    const ref = await startBranchOf(p);
+    await this.lockPushUrl(p.localPath);
+    if (!existsSync(path)) {
+      mkdirSync(join(wt, '_read'), { recursive: true });
+      await git(p.localPath, ['worktree', 'add', '--detach', path, ref]);
+    } else {
+      await git(path, ['checkout', '--detach', '--force', ref]);
+      await git(path, ['clean', '-fd']);
+    }
+    return path;
   }
 
   private async assertOwnWorktree(path: string, repo: string, branch: string, ticketId: string): Promise<void> {

@@ -18,6 +18,31 @@ export function dataBlock(source: string, value: unknown): string {
 type Obj = Record<string, unknown>;
 const get = (o: unknown, k: string): unknown => (o && typeof o === 'object' ? (o as Obj)[k] : undefined);
 
+/**
+ * 직원끼리 아는 것을 나누는 자료 (2026-10-23 CEO 결정): 회사 기억, 지시에 적힌 티켓·지시 기록, #비서실 대화.
+ * 회사 기억은 사장님 답변 원문이지만 PM 질문이 섞여 있어 다른 자료처럼 감싼다.
+ */
+function sharedKnowledge(input: unknown): string[] {
+  const parts: string[] = [];
+  const memory = get(input, 'memory');
+  if (Array.isArray(memory) && memory.length) parts.push(`## 회사 기억 (자료, 사장님이 답하거나 적어 둔 원문. 오래된 순)\n\n${dataBlock('회사 기억', memory)}`);
+  const refs = get(input, 'references');
+  if (Array.isArray(refs) && refs.length) parts.push(`## 지시에 적힌 티켓·지시의 기록 (자료)\n\n${dataBlock('회사 기록', refs)}`);
+  const chat = get(input, 'secretaryChat');
+  if (Array.isArray(chat) && chat.length) parts.push(`## 이 지시 직전 #비서실 대화 (자료, 사장님과 비서실장 백서진. 오래된 순)\n\n${dataBlock('#비서실 대화', chat)}`);
+  return parts;
+}
+
+/** 사장님께 드린 질문과 답은 그대로, 개발팀장 답은 AI 출력이라 감싼다 */
+function clarificationSections(input: unknown, title: string): string[] {
+  const rounds = (get(input, 'clarifications') ?? []) as { from?: string }[];
+  const dev = rounds.filter((r) => r.from === 'developer');
+  return [
+    `## ${title}\n\n${JSON.stringify(rounds.filter((r) => r.from !== 'developer'), null, 2)}`,
+    ...(dev.length ? [`## 개발팀장이 저장소를 읽고 한 답 (자료)\n\n${dataBlock('개발팀장 답변', dev)}`] : []),
+  ];
+}
+
 function ticketSection(input: unknown): string {
   const t = get(input, 'ticket') as { id: string; title: string; type: string; acceptanceCriteria: string[] } | undefined;
   if (!t) return '';
@@ -31,9 +56,17 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       const order = get(input, 'order') as { id: string; rawText: string };
       parts.push(`## CEO 지시 원문 (${order.id})\n\n${order.rawText}`);
       parts.push(`## 프로젝트\n\n${JSON.stringify(get(input, 'projects') ?? [], null, 2)}`);
-      parts.push(`## 지금까지의 질문과 CEO 답변\n\n${JSON.stringify(get(input, 'clarifications') ?? [], null, 2)}`);
+      parts.push(...sharedKnowledge(input));
+      parts.push(...clarificationSections(input, '지금까지의 질문과 CEO 답변'));
       if (get(input, 'ceoNote')) parts.push(`## CEO 수정 요청\n\n${get(input, 'ceoNote')}`);
       parts.push('계획서·티켓·견적을 쓰기 전에 요구사항을 정확히 이해했는지 확인한다. 이해한 내용은 understanding에 요약한다. 목적, 사용자, 핵심 동작, 포함·제외 범위, 성공 기준 중 계획에 필요한 정보가 부족하거나 답변이 모호하면 questions에 구체적인 질문을 최대 5개 쓴다. 이미 답한 질문은 반복하지 말고 답을 반영한다. 사소한 구현 선택은 직접 판단하되 제품 요구사항을 추측하지 않는다. 충분히 이해했을 때만 questions를 빈 배열로 둔다.');
+      parts.push(
+        '묻기 전에 위 회사 기억, 티켓·지시 기록, #비서실 대화, 개발팀장 답을 먼저 읽는다. 거기서 알 수 있는 것은 묻지 않는다. 사장님께 기록을 붙여 달라고 하거나 다른 직원과 대화해 달라고 하지 않는다. ' +
+          (get(input, 'canAskDeveloper')
+            ? '파일·폴더·브랜치·설정·이미 있는 기능처럼 프로젝트 저장소를 보면 알 수 있는 것은 askDeveloper에 최대 3개 쓴다. 개발팀장이 저장소를 읽고 답한다. questions에는 목적·범위·우선순위·성공 기준처럼 사장님만 아는 것만 쓴다. '
+            : '개발팀장에게는 더 물을 수 없다. askDeveloper는 비운다. ') +
+          '개발팀장이 모른다(known: false)고 한 것 중 계획에 꼭 필요한 것만 questions로 사장님께 여쭌다.',
+      );
       break;
     }
     case 'plan': {
@@ -41,7 +74,8 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       parts.push(`## CEO 지시 원문 (${order.id})\n\n${order.rawText}`);
       parts.push(`## 직원 목록\n\n${JSON.stringify(get(input, 'staff'), null, 2)}`);
       parts.push(`## 등록된 프로젝트\n\n${JSON.stringify(get(input, 'projects') ?? [], null, 2)}`);
-      parts.push(`## 확인한 요구사항과 CEO 답변\n\n${JSON.stringify(get(input, 'clarifications') ?? [], null, 2)}`);
+      parts.push(...sharedKnowledge(input));
+      parts.push(...clarificationSections(input, '확인한 요구사항과 CEO 답변'));
       const ceoNote = get(input, 'ceoNote');
       if (typeof ceoNote === 'string' && ceoNote) parts.push(`## CEO 수정 요청\n\n${ceoNote}`);
       const gateIssues = get(input, 'gateIssues');
@@ -83,6 +117,7 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
       break;
     case 'work': {
       parts.push(ticketSection(input));
+      parts.push(...sharedKnowledge(input));
       const feedback = get(input, 'feedback');
       if (Array.isArray(feedback) && feedback.length) parts.push(`## 앞선 검토·회의·지시 (자료)\n\n${dataBlock('티켓 기록', feedback)}`);
       const search = get(input, 'searchResults');
@@ -94,6 +129,7 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
     }
     case 'review': {
       parts.push(ticketSection(input));
+      parts.push(...sharedKnowledge(input));
       const tests = get(input, 'tests');
       if (tests) parts.push(`## 오케스트레이터가 직접 돌린 테스트 결과\n\n${JSON.stringify(tests, null, 2)}`);
       const diff = get(input, 'diff');
@@ -191,6 +227,17 @@ export function renderTask(task: BrainTask, input: unknown, previousError?: stri
         '합의한 범위가 있고 사장님이 "그 내용으로 작업 제안해줘"라고 하면 새 기능을 보태거나 다시 확인을 되묻지 말고 order로 제안한다. 예: 앞서 이메일·비밀번호 로그인에 합의하고 지금 실패 안내를 한국어로 요청했다면 그 두 내용을 request에 합쳐 order를 쓴다. 계정 잠금·관리자 문의·소셜 로그인처럼 요청하지 않은 기능은 추가하지 않는다. ' +
         '주인이 내가 맡은 티켓(위 목록)을 고쳐 달라고 하면 revise: note(고칠 점 한두 문장)를 쓴다. 그 밖의 질문·잡담은 chat. ' +
         'order·revise는 아직 제안일 뿐이다. 시스템이 내 답장 아래에 합의한 내용과 확인 질문을 붙이므로, text에 버튼 사용법이나 확인 질문을 반복하지 않는다. "이 내용으로 진행할까요?"라는 최종 확인 단계라면 chat이 아니라 order 또는 revise를 쓴다. 사장님의 다음 명확한 동의가 있어야 시작한다. text에는 이해한 내용만 설명하며 "바로 반영할게요", "시작했어요", "등록했어요"처럼 아직 실행하지 않은 일을 약속하거나 완료로 말하지 않는다. 모호한 대답·질문·수정은 동의가 아니다. 결재함의 푸시·배포 결재는 기존 버튼으로 한다.',
+    );
+  }
+  if (task === 'consult') {
+    const order = get(input, 'order') as { id: string; rawText: string };
+    parts.push(`## CEO 지시 원문 (${order.id})\n\n${order.rawText}`);
+    parts.push(...sharedKnowledge(input));
+    parts.push(`## PM의 질문 (자료)\n\n${dataBlock('PM 질문', get(input, 'questions') ?? [])}`);
+    parts.push(
+      `## 읽을 폴더\n\n${String(get(input, 'workdir') ?? '')} (프로젝트 저장소의 최신 상태. 읽기만 한다)\n\n` +
+        'PM이 계획을 쓰려고 동료인 너에게 묻는다. 질문마다 저장소의 파일·설정을 직접 찾아 읽고 답한다. 근거로 본 파일 경로를 답에 적는다. ' +
+        '저장소와 위 자료로 확인할 수 없거나 사장님만 아는 것(목적·우선순위·원하는 동작)은 추측하지 말고 known: false로 두고 무엇을 모르는지 쓴다.',
     );
   }
   if (task === 'merge') {

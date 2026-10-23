@@ -6,6 +6,7 @@ import type { Ctx } from '../context.ts';
 import { isStopped } from '../context.ts';
 import { pendingApprovals, requestApproval } from '../core/approvals.ts';
 import { budgetStatus } from '../core/budget.ts';
+import { allNotes, memoryFor } from '../core/memory.ts';
 import { approvals, messages, tickets } from '../db/schema.ts';
 import { isCeoPresent } from '../discord/presence.ts';
 import { nextCheckTime } from '../discord/schedule.ts';
@@ -85,6 +86,8 @@ export class ChiefTools {
         return staffList(c);
       case 'get_projects':
         return projectList(c);
+      case 'get_memory':
+        return args.projectId ? memoryFor(c, args.projectId) : allNotes(c).map((n) => ({ id: n.id, scope: n.scope, text: n.text, at: n.at }));
       case 'request_action':
         return requestChiefAction(c, parsed.data as ChiefRequestInput);
       case 'emergency_stop': {

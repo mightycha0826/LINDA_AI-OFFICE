@@ -13,13 +13,14 @@ import { BUDGET_NAME, budgetStatus, isGuest } from '../core/budget.ts';
 import { ticketCapsEnabled } from '../core/guards.ts';
 import { applyRevision, dismissProposal, getProposal, startDirectOrder } from '../core/direct.ts';
 import { guestLine, loadGuestRegistry, setGuestOn, syncGuests } from '../core/guests.ts';
+import { allNotes, COMPANY_SCOPE, forget, remember } from '../core/memory.ts';
 import { approvals, employees, messages, orders, plans, tickets } from '../db/schema.ts';
 import type { Engine } from '../engine.ts';
 import { AlreadyDecidedError, OfficeError, StaleApprovalError } from '../errors.ts';
 import { buildReportData, formatReportData } from '../reports.ts';
 import { applySetting, SETTINGS } from '../settings.ts';
 import type { NewProjectService } from '../workspace/new-project.ts';
-import { projectByChannel } from '../workspace/projects.ts';
+import { findProject, projectByChannel } from '../workspace/projects.ts';
 import { approvalMessageFor, decidedMessage, mainMergeConfirm } from './messages.ts';
 import { markCeoActive } from './presence.ts';
 import type { Button, Interaction, InteractionReply } from './types.ts';
@@ -71,6 +72,7 @@ export class InteractionHandler {
     ['프로젝트', (o) => this.projectCommand(o)],
     ['새프로젝트', (o) => this.newProjectCommand(o)],
     ['설정', (o) => this.settingCommand(o)],
+    ['기억', (o) => this.memoryCommand(o)],
   ]);
 
   constructor(c: Ctx, engine: Engine, log: (s: string) => void = () => {}, gitcat: GitCatPort | null = null, projects: NewProjectService | null = null) {
@@ -310,6 +312,26 @@ export class InteractionHandler {
 > ${text.slice(0, 300)}`, ephemeral: false };
   }
 
+  /** /기억 (2026-10-23): 회사 기억 보기·추가·지우기. 직원들이 그 프로젝트 일을 할 때 함께 본다 */
+  private memoryCommand(o: CommandOptions): InteractionReply {
+    const c = this.c;
+    const add = String(o['추가'] ?? '').trim();
+    const del = String(o['지우기'] ?? '').trim();
+    const projectId = String(o['프로젝트'] ?? '').trim() || null;
+    if (projectId && !findProject(c, projectId)) throw new OfficeError('arg', `${projectId} 프로젝트가 없어요`);
+    if (del) {
+      const n = forget(c, Number(del.replace(/\D/g, '')), c.config.ceoDiscordId);
+      return { kind: 'reply', content: `기억 ${n.id}번을 지웠어요\n> ${n.text.slice(0, 200)}`, ephemeral: false };
+    }
+    if (add) {
+      const n = remember(c, projectId ?? COMPANY_SCOPE, { text: add, source: 'ceo' });
+      return { kind: 'reply', content: `기억 ${n.id}번으로 남겼어요 (${projectId ?? '회사 전체'}). ${projectId ? '이 프로젝트' : '모든'} 일을 하는 직원이 함께 봐요`, ephemeral: false };
+    }
+    const notes = allNotes(c).filter((n) => !projectId || n.scope === projectId || n.scope === COMPANY_SCOPE).slice(-15);
+    const lines = notes.map((n) => `**${n.id}.** [${n.scope === COMPANY_SCOPE ? '회사 전체' : n.scope}] ${n.text.replace(/\n/g, ' / ').slice(0, 160)}`);
+    return { kind: 'reply', content: lines.length ? `**회사 기억** (최근 ${lines.length}개)\n${lines.join('\n')}` :'아직 회사 기억이 없어요. PM 질문에 답하거나 /기억 추가로 남길 수 있어요', ephemeral: true };
+  }
+
   private reportCommand(): InteractionReply {
     const c = this.c;
     const since = new Date(c.clock.now().getTime() - 24 * 3_600_000).toISOString();
@@ -415,6 +437,15 @@ export const SLASH_COMMANDS: { name: string; description: string; options: { nam
       { name: '아이디', description: '영문 소문자·숫자·- (저장소·카테고리 이름이 돼요. 예: todo-app)', required: true },
       { name: '테스트', description: '테스트 명령 (비우면 npm test)', required: false },
       { name: '설명', description: 'GitHub 저장소 설명', required: false },
+    ],
+  },
+  {
+    name: '기억',
+    description: '직원들이 함께 보는 회사 기억을 보거나 추가·삭제해요',
+    options: [
+      { name: '추가', description: '기억할 내용 (예: jhwchn 병합은 jhwchn 저장소 main에 합치는 것)', required: false },
+      { name: '지우기', description: '지울 기억 번호', required: false },
+      { name: '프로젝트', description: '프로젝트 아이디 (비우면 회사 전체)', required: false },
     ],
   },
   { name: '정지', description: '모든 직원을 즉시 멈춰요', options: [] },

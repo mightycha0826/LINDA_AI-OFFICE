@@ -31,6 +31,13 @@ export type TempStaffRequest = z.infer<typeof TempStaffRequestSchema>;
 export const PmClarificationOutputSchema = z.object({
   understanding: text,
   questions: z.array(text).max(5),
+  /** 저장소·코드를 보면 알 수 있는 것은 사장님보다 개발팀장에게 먼저 묻는다 (2026-10-23 CEO 결정) */
+  askDeveloper: z.array(text).max(3).optional(),
+});
+
+/** 개발팀장이 PM의 질문에 프로젝트 저장소를 읽고 답한다. 모르면 known: false (사장님께 넘어간다) */
+export const ConsultOutputSchema = z.object({
+  answers: z.array(z.object({ question: text, answer: text, known: z.boolean() })).min(1),
 });
 
 /** PM 계획서. 티켓은 최대 6개 (6장). */

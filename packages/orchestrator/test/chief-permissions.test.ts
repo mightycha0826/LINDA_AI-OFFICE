@@ -32,16 +32,16 @@ async function requestAndPost(s: Setup, args: Record<string, unknown>) {
 const click = (s: Setup, customId: string, userId = CEO) => new InteractionHandler(s.ctx, s.engine).handle({ type: 'button', userId, customId });
 
 describe('비서실장 도구 목록 (코드로 집행)', () => {
-  it('늘어난 것은 읽기 4개·확인 버튼 요청·비상 정지뿐이고, 결재·답변·재개 도구는 없다', async () => {
+  it('늘어난 것은 읽기 5개(회사 기억 포함, 2026-10-23)·확인 버튼 요청·비상 정지뿐이고, 결재·답변·재개·기억 쓰기 도구는 없다', async () => {
     expect([...TOOL_NAMES].sort()).toEqual(
       [
         'get_status', 'get_ticket', 'get_pending_approvals', 'get_report_data', 'get_usage',
-        'get_ticket_log', 'get_order', 'get_staff', 'get_projects',
+        'get_ticket_log', 'get_order', 'get_staff', 'get_projects', 'get_memory',
         'create_order', 'respond_order_proposal', 'request_confirmation', 'request_action', 'emergency_stop', 'submit_report',
       ].sort(),
     );
     const s = setup();
-    for (const name of ['decide_approval', 'approve_plan', 'answer_clarification', 'resume', 'set_setting']) {
+    for (const name of ['decide_approval', 'approve_plan', 'answer_clarification', 'resume', 'set_setting', 'remember', 'forget']) {
       await expect(tools(s).call(name, {})).rejects.toThrow('없는 도구');
     }
   });

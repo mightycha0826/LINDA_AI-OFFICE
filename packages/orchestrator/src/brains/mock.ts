@@ -75,6 +75,7 @@ export const DEFAULT_HANDLERS: Record<BrainTask, MockHandler> = {
   search: (req): SearchQueries => ({ queries: [(req.input as TicketInput).ticket.title] }),
   proofread: () => ({ issues: [{ kind: 'tone', where: '첫 문단', note: '말투가 섞임' }], missingCriteria: [] }),
   merge: () => ({ summary: '충돌을 풀었다', resolvedFiles: [] }),
+  consult: (req) => ({ answers: ((req.input as { questions: string[] }).questions).map((question) => ({ question, answer: 'src/feature.ts에 있어요', known: true })) }),
   explain: () => ({ lines: ['계획서가 규칙에 맞지 않아 멈췄어요', '[다시 시도]를 누르면 다시 써요'] }),
   summarize: () => ({ lines: ['기능 파일을 추가했어요'] }),
   interpret: () => ({ text: '작업을 마치고 검토를 부탁했어요' }),

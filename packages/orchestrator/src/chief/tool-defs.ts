@@ -51,6 +51,11 @@ export const TOOL_DEFS = {
     input: z.object({}),
     writes: false,
   },
+  get_memory: {
+    description: '회사 기억: 사장님이 PM 질문에 답하거나 /기억으로 적어 둔 원문. projectId를 주면 회사 전체와 그 프로젝트 것만. 사장님께 같은 것을 다시 묻기 전에 본다. 읽기 전용.',
+    input: z.object({ projectId: z.string().optional() }),
+    writes: false,
+  },
   create_order: {
     description:
       '대화에서 업무 의도가 분명해졌을 때만 지시 등록 제안을 준비한다. 이 도구는 지시를 등록하지 않는다. 반환한 내용을 보여 주고 "이 내용으로 지시를 추가할까요?"라고 물은 뒤 사용자의 다음 답변을 기다린다. 잡담, 질문, 감정 표현, 아이디어 탐색에는 호출하지 않는다. Discord 메시지 ID를 모르면 비운다. 위험한 실행은 request_confirmation으로 요청한다.',

@@ -178,3 +178,28 @@ describe('오케스트레이터가 직접 돌리는 테스트', () => {
     expect(await runner.run(tk!.id, new AbortController().signal)).toMatchObject({ passed: true });
   });
 });
+
+describe('동료 질문용 읽기 폴더 (2026-10-23)', () => {
+  it('<wt>/_read/<프로젝트>에 통합 브랜치(없으면 기본 브랜치)를 분리 HEAD로 두고, 다시 부르면 최신으로 맞추고 남은 파일을 지운다', async () => {
+    const s = setup();
+    const repo = initRepo(s);
+    const ws = new GitWorkspace(s.ctx);
+    const project = getProject(s.ctx, 'demo');
+    const path = await ws.readView(project);
+    expect(path).toBe(join(s.config.paths.wt, '_read', 'demo'));
+    expect(git(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('HEAD');
+    expect(readFileSync(join(path, 'README.md'), 'utf8')).toBe('# demo\n');
+    expect(git(repo, 'remote', 'get-url', '--push', 'origin')).toBe(PUSH_BLOCKED_URL);
+
+    git(repo, 'branch', 'integration/demo');
+    git(repo, 'checkout', '-q', 'integration/demo');
+    writeFileSync(join(repo, 'merged.txt'), '합친 결과\n');
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', 'merged');
+    git(repo, 'checkout', '-q', 'main');
+    writeFileSync(join(path, 'leftover.txt'), '남은 파일');
+    await ws.readView(project);
+    expect(existsSync(join(path, 'merged.txt'))).toBe(true);
+    expect(existsSync(join(path, 'leftover.txt'))).toBe(false);
+  });
+});

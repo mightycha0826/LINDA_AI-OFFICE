@@ -13,6 +13,7 @@ import { GateOutputSchema, LOCAL_MODEL, MergeOutputSchema, StaffChatOutputSchema
 import { BrainError, type BrainTask, type TestRunner } from './brains/brain.ts';
 import { Lanes } from './brains/lanes.ts';
 import type { BrainFor } from './brains/registry.ts';
+import type { SecretaryChatReader } from './chief/secretary-chat.ts';
 import { Connectivity } from './connectivity.ts';
 import { clearState, emit, inTx, isStopped, type Ctx } from './context.ts';
 import { decideApproval, type DecideInput } from './core/approvals.ts';
@@ -49,6 +50,8 @@ export interface EngineDeps {
   connectivity?: Connectivity;
   /** 웹 검색·근거 링크 읽기 (15장). 기본은 설정의 SearXNG와 fetchPage */
   web?: Web;
+  /** #비서실 대화 읽기 (헤르메스 봇 인증이 있을 때만). PM이 비서실장과 나눈 대화를 읽고 시작한다 */
+  readSecretaryChat?: SecretaryChatReader;
   log?: (line: string) => void;
 }
 
@@ -70,7 +73,7 @@ export class Engine {
     this.lanes = new Lanes({ claude: 1, codex: deps.ctx.config.codex.concurrency });
     this.log = deps.log ?? (() => {});
     this.calls = new BrainCalls({ c: this.c, brainFor: deps.brainFor, connectivity: this.connectivity, lanes: this.lanes, log: this.log });
-    this.planning = new Planning({ c: this.c, calls: this.calls, workspace: this.workspace, log: this.log });
+    this.planning = new Planning({ c: this.c, calls: this.calls, workspace: this.workspace, log: this.log, ...(deps.readSecretaryChat ? { readSecretaryChat: deps.readSecretaryChat } : {}) });
     this.ticketWork = new TicketWork({ c: this.c, calls: this.calls, tests: deps.tests, workspace: this.workspace, web: deps.web ?? createWeb(deps.ctx.config), log: this.log });
   }
 

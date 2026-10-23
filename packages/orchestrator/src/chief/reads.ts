@@ -20,6 +20,9 @@ export function ticketLog(c: Ctx, ticketId: string, limit = 20) {
     title: t.title,
     status: t.status,
     pauseReason: t.pauseReason,
+    orderId: t.orderId,
+    assignee: t.assigneeId,
+    acceptanceCriteria: t.acceptanceCriteria,
     messages: log.map((m) => ({
       at: m.createdAt,
       from: m.fromId,
@@ -72,6 +75,27 @@ export function orderInfo(c: Ctx, orderId?: string) {
       .all()
       .map((t) => ({ id: t.id, title: t.title, status: t.status, assignee: t.assigneeId, reviewer: t.reviewerId })),
   };
+}
+
+/** 직원에게 넘기는 참고 기록의 최대 개수 */
+export const MAX_REFERENCES = 6;
+
+/**
+ * 글에 적힌 티켓(T-9)·지시(O-3) 번호의 기록 (2026-10-23 CEO 결정: 직원이 사장님께 기록을 붙여 달라고 묻지 않게).
+ * 티켓은 최근 대화 6개(각 600자)와 회의 결론만, 지시는 원문·계획 목표·티켓 목록만.
+ */
+export function referencedRecords(c: Ctx, text: string, exclude: string[] = []) {
+  const ids = [...new Set(text.toUpperCase().match(/\b[TO]-\d+\b/g) ?? [])].filter((id) => !exclude.includes(id)).slice(0, MAX_REFERENCES);
+  return ids.flatMap((id): unknown[] => {
+    if (id.startsWith('O-')) {
+      const o = orderInfo(c, id);
+      if (Array.isArray(o) || 'error' in o) return [];
+      return [{ id: o.id, status: o.status, project: o.project, text: o.text.slice(0, 1500), goal: o.plan?.goal ?? null, tickets: o.tickets }];
+    }
+    const t = ticketLog(c, id, 6);
+    if ('error' in t) return [];
+    return [{ ...t, messages: t.messages.map((m) => ({ ...m, text: m.text.slice(0, 600) })), meetings: t.meetings.map((m) => ({ at: m.at, outcome: m.outcome, nextActions: m.nextActions })) }];
+  });
 }
 
 /** 직원 목록. 나간 임시 직원은 뺀다. 파견 직원은 출근 여부와 사용률을 한 줄로 */

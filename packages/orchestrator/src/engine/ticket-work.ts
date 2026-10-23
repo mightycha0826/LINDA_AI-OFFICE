@@ -8,6 +8,7 @@ import { emit, type Ctx } from '../context.ts';
 import { requestApproval } from '../core/approvals.ts';
 import type { EmployeeRow } from '../core/budget.ts';
 import { isOverCap, recordMessage } from '../core/guards.ts';
+import { memoryFor } from '../core/memory.ts';
 import { agendaFromLastReview, concludeMeeting, saveMinutes, type RoundPositions } from '../core/meeting.ts';
 import { applyTicketEvent, getTicket, type TicketRow } from '../core/tickets.ts';
 import type { TicketEvent } from '../core/transitions.ts';
@@ -15,6 +16,7 @@ import { messages, tickets } from '../db/schema.ts';
 import { FormatError, OfficeError } from '../errors.ts';
 import { ASSIGNABLE_ASSISTANTS } from '../staff/assistants.ts';
 import { claimLinks, type Web } from '../web/research.ts';
+import { projectOfOrder } from '../workspace/projects.ts';
 import type { Workspace } from '../workspace/worktrees.ts';
 import { isCloud, isQuiet, type BrainCalls, type CallOptions } from './brain-calls.ts';
 
@@ -88,7 +90,7 @@ export class TicketWork {
     }
 
     const schema = tk.type === 'coding' ? DevOutputSchema : DocOutputSchema;
-    const input = { ticket: ticketInput(tk), feedback: this.feedbackFor(tk), ...(worktree ? { worktree } : {}), ...(searchResults ? { searchResults } : {}) };
+    const input = { ticket: ticketInput(tk), feedback: this.feedbackFor(tk), memory: this.memoryOf(tk), ...(worktree ? { worktree } : {}), ...(searchResults ? { searchResults } : {}) };
     const out = await this.ticketCall(tk, assignee, 'work', schema, input, { lowPrecision, ...this.workdirFor(tk, assignee, lowPrecision) });
     if (!out || getTicket(c, tk.id).status !== 'in_progress') return true; // 그사이 멈췄으면 결과는 버린다
     // 결과물 앞에 붙는 표시: 저정밀 모드, 초안 작가의 초안 (16장 7-5)
@@ -129,7 +131,7 @@ export class TicketWork {
       reviewer,
       'review',
       ReviewOutputSchema,
-      { ticket: ticketInput(tk), submission, tests, ...(diff ? { diff } : {}), ...(sources.length ? { sources } : {}), ...(proofread ? { proofread } : {}) },
+      { ticket: ticketInput(tk), memory: this.memoryOf(tk), submission, tests, ...(diff ? { diff } : {}), ...(sources.length ? { sources } : {}), ...(proofread ? { proofread } : {}) },
       {
         lowPrecision,
         ...this.workdirFor(tk, reviewer, lowPrecision),
@@ -278,6 +280,11 @@ export class TicketWork {
   }
 
   /** 재작업이면 마지막 반려의 수정 요청, 회의 뒤면 회의 결론, CEO 방향 지시를 넘긴다. */
+  /** 회사 기억: 사장님이 답하거나 적어 둔 것 (회사 전체 + 이 티켓의 프로젝트) */
+  private memoryOf(tk: TicketRow) {
+    return memoryFor(this.c, projectOfOrder(this.c, tk.orderId)?.id ?? null);
+  }
+
   private feedbackFor(tk: TicketRow): string[] {
     const recent = this.c.db
       .select()

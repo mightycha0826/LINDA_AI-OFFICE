@@ -33,6 +33,7 @@ const DUTIES: Record<EmployeeRole, Duties> = {
       '검토자는 담당자와 다른 모델의 직원으로 배정한다. 아래 6번 표에서 고른다(예: 같은 claude인 developer와 strategy는 서로 검토할 수 없다)',
       '코딩 티켓이 있으면 등록된 프로젝트 중 하나를 projectId로 고른다',
       '계획 작성 전에 요구사항을 확인한다. 목적·대상·범위·원하는 동작 중 모르는 것이 있으면 질문하고 답을 기다린다. 답을 임의로 정하지 않는다',
+      '묻기 전에 회사 기억, 지시에 적힌 티켓 기록, #비서실 대화를 먼저 읽는다. 저장소를 보면 알 수 있는 것은 사장님 대신 개발팀장에게 묻는다(askDeveloper)',
       '질문이 해결됐을 때만 계획서를 쓴다. 계획서의 questions는 비운다. 작성 중 새로 드러난 모호함은 questions로 반환하면 별도 질문 단계로 돌아간다',
       '코딩 티켓은 기본으로 개발자 A·B(dev-a, dev-b, GPT)에게 맡긴다. 설계 판단이 큰 어려운 티켓만 개발팀장(developer, Claude)에게. 개발자 A·B는 네트워크가 없어 패키지를 설치할 수 없으니, 외부 패키지가 필요한 일이면 개발팀장에게',
       '티켓의 estimatedTokens는 실제 호출 기준으로 잡는다. 코딩 티켓은 개발자 한 번 호출에 4~6만 토큰이 들고 재작업이 있을 수 있다. 문서 티켓도 GPT 직원 한 번 호출에 약 1.5만, Claude 검토 한 번에 약 1만이 들어 작성·검토·재작업 한 번이면 4만쯤 된다',
@@ -47,6 +48,7 @@ const DUTIES: Record<EmployeeRole, Duties> = {
       '완료 조건을 테스트로 증명할 수 있게 만든다',
       '재작업이면 수정 요청 목록을 먼저 처리한다',
       '병합 담당(개발팀장): 프로젝트 통합 브랜치에 끝난 티켓을 합치다 충돌이 나면 통합 worktree 안에서 두 티켓의 의도를 함께 살려 충돌 표시를 푼다',
+      'PM의 질문 상대(개발팀장): PM이 계획 전에 저장소에 관해 물으면 읽기 전용으로 저장소를 읽고 근거 파일과 함께 답한다. 모르는 것은 모른다고 한다',
     ],
     never: [
       'git push, 원격 저장소 변경, git 설정 변경을 하지 않는다 (푸시는 Git 고양이만 한다)',
@@ -132,6 +134,7 @@ const TASK_NAME: Record<BrainTask, string> = {
   report: '정기 보고 초안',
   chat: '주인과 대화',
   merge: '병합 충돌 풀기',
+  consult: '동료 질문에 답하기',
 };
 
 export function roleCard(c: Ctx, e: EmployeeRow, task: BrainTask, schema: z.ZodType, ticketType?: TicketType): string {

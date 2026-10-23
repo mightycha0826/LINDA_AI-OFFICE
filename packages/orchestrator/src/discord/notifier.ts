@@ -191,16 +191,39 @@ export class Notifier {
 
   /** PM 질문 답변 대기: 프로젝트 기획 채널(없으면 지시한 채널)에 질문을 올린다 */
   private async onPlanStatus(p: Payload): Promise<number> {
+    if (p.status === 'consulted') return this.onConsulted(String(p.orderId), Number(p.round));
     if (p.status !== 'awaiting-answers') return 0;
     const c = this.c;
     const orderId = String(p.orderId);
     const order = c.db.select().from(orders).where(eq(orders.id, orderId)).get();
     const state = clarificationOf(c, orderId);
     if (!order || order.status !== 'planning' || state.rounds.length !== p.round || state.rounds.at(-1)?.answer !== null) return 0;
-    const legacyProjectChannel = order.projectId ? c.db.select().from(projects).where(eq(projects.id, order.projectId)).get()?.discordChannelId : null;
-    const channelId = projectChannel(c, order.projectId, 'planning') ?? getState<string | null>(c, orderChannelKey(orderId), null) ?? legacyProjectChannel;
+    const channelId = this.planningChannel(order);
     const messageId = await this.sendImmediate('secretary', { ...clarificationMessage(order, state), employeeId: 'pm', ...(channelId ? { channelId } : {}) }, { kind: 'alert', text: `${orderId} PM 질문 답변 대기` });
     setState(c, `discord.pmQuestion:${messageId}`, { orderId, round: state.rounds.length });
+    return 1;
+  }
+
+  /** PM 질문을 받는 곳: 프로젝트 기획 채널, 없으면 지시한 채널 */
+  private planningChannel(order: typeof orders.$inferSelect): string | null | undefined {
+    const c = this.c;
+    const legacyProjectChannel = order.projectId ? c.db.select().from(projects).where(eq(projects.id, order.projectId)).get()?.discordChannelId : null;
+    return projectChannel(c, order.projectId, 'planning') ?? getState<string | null>(c, orderChannelKey(order.id), null) ?? legacyProjectChannel;
+  }
+
+  /** PM이 개발팀장에게 먼저 물은 질문과 답을 사장님도 볼 수 있게 조용히 올린다 (2026-10-23) */
+  private async onConsulted(orderId: string, round: number): Promise<number> {
+    const order = this.c.db.select().from(orders).where(eq(orders.id, orderId)).get();
+    const r = clarificationOf(this.c, orderId).rounds[round - 1];
+    if (!order || r?.from !== 'developer') return 0;
+    const channelId = this.planningChannel(order);
+    await this.port.send({
+      channel: 'secretary',
+      ...(channelId ? { channelId } : {}),
+      employeeId: 'developer',
+      content: [`**PM → 개발팀장 질문 · ${order.id}**`, '', ...r.questions.map((q, i) => `${i + 1}. ${q}`), '', '**개발팀장 답**', (r.answer ?? '').slice(0, 1500)].join('\n'),
+      silent: true,
+    });
     return 1;
   }
 

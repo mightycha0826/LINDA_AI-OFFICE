@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createBrainRegistry } from './brains/registry.ts';
 import { ChiefTools } from './chief/tools.ts';
 import { ReportService } from './chief/report-service.ts';
+import { secretaryChatReader } from './chief/secretary-chat.ts';
 import { systemClock } from './clock.ts';
 import { DEFAULTS, loadConfig } from './config.ts';
 import { emit, type Ctx } from './context.ts';
@@ -57,7 +58,9 @@ for (const f of backfillRepeatCounts(ctx)) log(`같은 반려 횟수를 기록�
 
 const { brainFor } = createBrainRegistry(config, { onModelSwitch: (from, to) => emit(ctx, 'model.loaded', { from, to }) });
 const workspace = new GitWorkspace(ctx);
-const engine = new Engine({ ctx, brainFor, tests: new ProjectTestRunner(ctx), workspace, web: createWeb(config), log });
+// 헤르메스(백서진) 봇 인증: 프로젝트 채널 관리와, PM이 읽을 #비서실 대화 (6장)
+const chiefToken = loadChiefDiscordToken(config.hermes.homeDir);
+const engine = new Engine({ ctx, brainFor, tests: new ProjectTestRunner(ctx), workspace, web: createWeb(config), log, ...(chiefToken ? { readSecretaryChat: secretaryChatReader(ctx, chiefToken) } : {}) });
 const gitcat = new GitCat({
   c: ctx,
   tests: new ProjectTestRunner(ctx),
@@ -81,7 +84,6 @@ let presence: StaffPresence | null = null;
 // /새프로젝트 (11장): 봇은 명령 처리기가 있어야 뜨므로, 채널 포트는 봇이 뜬 뒤에 꺼내 쓴다
 const newProjects = new NewProjectService({ c: ctx, gitcat, channels: () => bot?.projectChannels ?? null, discord: () => bot?.port ?? null, log });
 if (secrets.discordToken && config.discord.guildId) {
-  const chiefToken = loadChiefDiscordToken(config.hermes.homeDir);
   bot = await startDiscordBot({ c: ctx, handler: new InteractionHandler(ctx, engine, log, gitcat, newProjects), token: secrets.discordToken, ...(chiefToken ? { chiefToken } : {}), ...(secrets.mirrorWebhookUrl ? { webhookUrl: secrets.mirrorWebhookUrl } : {}), log });
   // 막힘 해설가·거울 통역사 (16장 7-5). 실패하면 해설·통역 없이 원래대로
   notifier = new Notifier(ctx, bot.port, log, async (notice) => (await engine.callAs('explainer', 'explain', ExplainOutputSchema, { notice }, { workdir: 'explain' }))?.lines ?? null);

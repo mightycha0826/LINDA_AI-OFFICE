@@ -2,36 +2,44 @@
 // 상태 전환은 core/plans.ts의 규칙 함수만 한다. 형식 오류·호출 실패가 두 번이면 멈추고 CEO의 [다시 시도]를 기다린다.
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { brainModel, DesignComboOutputSchema, GateOutputSchema, PmClarificationOutputSchema, PmPlanOutputSchema } from '@ai-office/shared';
+import { brainModel, ConsultOutputSchema, DesignComboOutputSchema, GateOutputSchema, PmClarificationOutputSchema, PmPlanOutputSchema } from '@ai-office/shared';
 import { BrainError } from '../brains/brain.ts';
+import { referencedRecords } from '../chief/reads.ts';
+import { snowflakeAt, type ChatLine, type SecretaryChatReader } from '../chief/secretary-chat.ts';
 import { emit, getState, inTx, setState, type Ctx } from '../context.ts';
 import { isGuest } from '../core/budget.ts';
-import { askClarification, clarificationKey, clarificationOf } from '../core/clarifications.ts';
+import { askClarification, clarificationKey, clarificationOf, consultRounds, MAX_CONSULT_ROUNDS, orderChannelKey, recordConsultation } from '../core/clarifications.ts';
 import { recordMessage } from '../core/guards.ts';
+import { memoryFor } from '../core/memory.ts';
+import type { OrderRow } from '../core/orders.ts';
 import { checkPlanRules, createPlanVersion, fixReviewers, GATE_REVIEWER_ID, latestPlan, recordGateResult, setDesignCombo, startGateReview, type PlanRow } from '../core/plans.ts';
 import { employees, orders } from '../db/schema.ts';
 import { FormatError } from '../errors.ts';
 import { ASSIGNABLE_ASSISTANTS } from '../staff/assistants.ts';
 import { designComboTable } from '../staff/design-combos.ts';
 import { dismissTemp, hireTemp, needsDesignCombo } from '../staff/temp-staff.ts';
-import { listProjects } from '../workspace/projects.ts';
+import { findProject, listProjects, type ProjectRow } from '../workspace/projects.ts';
 import type { Workspace } from '../workspace/worktrees.ts';
 import { isCloud, isQuiet, type BrainCalls } from './brain-calls.ts';
 
 /** 계획 작성이 멈춘 지시의 상태 키. 값은 { issues, at } (at: 멈춘 시각, #막힘 알림 기준) */
 export const planBlockedKey = (orderId: string) => `planBlocked:${orderId}`;
+/** PM이 저장소에 관해 먼저 묻는 동료 (개발팀장, Claude) */
+export const CONSULTANT_ID = 'developer';
 
 export class Planning {
   private readonly c: Ctx;
   private readonly calls: BrainCalls;
   private readonly workspace: Workspace;
   private readonly log: (line: string) => void;
+  private readonly readChat: SecretaryChatReader | null;
 
-  constructor(o: { c: Ctx; calls: BrainCalls; workspace: Workspace; log: (line: string) => void }) {
+  constructor(o: { c: Ctx; calls: BrainCalls; workspace: Workspace; log: (line: string) => void; readSecretaryChat?: SecretaryChatReader }) {
     this.c = o.c;
     this.calls = o.calls;
     this.workspace = o.workspace;
     this.log = o.log;
+    this.readChat = o.readSecretaryChat ?? null;
   }
 
   /** 지시 하나의 계획을 한 걸음 진행한다. 한 일이 있으면 true */
@@ -97,10 +105,13 @@ export class Planning {
       .filter((p) => !order.projectId || p.id === order.projectId)
       .map((p) => ({ id: p.id, repoUrl: p.repoUrl, testCommand: p.testCommand }));
     const afterGateRejection = !!plan && plan.ceoNote === null;
+    const project = this.projectFor(order);
+    const knowledge = await this.knowledge(order, project?.id ?? null);
     const input = {
       order: { id: order.id, rawText: order.rawText },
       staff,
       projects,
+      ...knowledge,
       clarifications: clarificationOf(c, orderId).rounds,
       ...(order.projectId ? { fixedProjectId: order.projectId } : {}),
       ...(plan && !afterGateRejection ? { ceoNote: plan.ceoNote ?? '' } : {}),
@@ -108,10 +119,15 @@ export class Planning {
     };
     const clarification = clarificationOf(c, orderId);
     if (!clarification.ready || (plan?.status === 'revision-requested' && plan.ceoNote && getState(c, `clarifiedRevision:${orderId}`, '') !== plan.id)) {
-      const assessment = await this.calls.call(pm, 'clarify', PmClarificationOutputSchema, input, { orderId }, {
+      const canAskDeveloper = !!project && consultRounds(clarification) < MAX_CONSULT_ROUNDS;
+      const assessment = await this.calls.call(pm, 'clarify', PmClarificationOutputSchema, { ...input, canAskDeveloper }, { orderId }, {
         ...(isCloud(pm) ? { workdir: this.workspace.sandbox(`clarify-${orderId}`) } : {}),
       });
-      if (assessment.questions.length) askClarification(c, orderId, assessment.questions);
+      // 저장소를 보면 알 수 있는 것은 개발팀장에게 먼저 묻고, 답을 받으면 PM이 다시 판단한다 (2026-10-23 CEO 결정)
+      const forDeveloper = canAskDeveloper ? assessment.askDeveloper ?? [] : [];
+      if (forDeveloper.length && project && (await this.consult(order, project, forDeveloper, knowledge))) return true;
+      const questions = [...assessment.questions, ...forDeveloper];
+      if (questions.length) askClarification(c, orderId, questions);
       else {
         setState(c, clarificationKey(orderId), { ...clarification, ready: true });
         if (plan) setState(c, `clarifiedRevision:${orderId}`, plan.id);
@@ -131,6 +147,64 @@ export class Planning {
     if (!needsDesignCombo(created.tempStaff)) startGateReview(c, created.id);
     this.log(`${created.id} v${created.version} 작성`);
     return true;
+  }
+
+  /** 지시의 프로젝트: 정해져 있으면 그것, 아니면 글에 이름이 하나만 나온 프로젝트, 등록된 게 하나뿐이면 그것 */
+  private projectFor(order: OrderRow): ProjectRow | null {
+    if (order.projectId) return findProject(this.c, order.projectId);
+    const all = listProjects(this.c);
+    const text = [order.rawText, ...clarificationOf(this.c, order.id).rounds.map((r) => r.answer ?? '')].join('\n');
+    const named = all.filter((p) => new RegExp(`(^|[^a-z0-9-])${p.id}([^a-z0-9-]|$)`, 'i').test(text));
+    return named.length === 1 ? named[0]! : all.length === 1 ? all[0]! : null;
+  }
+
+  /** 직원끼리 아는 것: 회사 기억, 글에 적힌 티켓·지시 기록, #비서실 대화 (2026-10-23 CEO 결정) */
+  private async knowledge(order: OrderRow, projectId: string | null) {
+    const answers = clarificationOf(this.c, order.id).rounds.map((r) => r.answer ?? '').join('\n');
+    return {
+      memory: memoryFor(this.c, projectId),
+      references: referencedRecords(this.c, `${order.rawText}\n${answers}`, [order.id]),
+      secretaryChat: await this.secretaryChat(order),
+    };
+  }
+
+  /** #비서실에서 온 지시면 그 직전 대화. 처음 한 번만 읽어 저장한다. 못 읽으면 대화 없이 진행 */
+  private async secretaryChat(order: OrderRow): Promise<ChatLine[]> {
+    const c = this.c;
+    const key = `secretaryChat:${order.id}`;
+    const saved = getState<ChatLine[] | null>(c, key, null);
+    if (saved) return saved;
+    const secretary = c.config.discord.channels.secretary;
+    if (!this.readChat || !secretary || getState<string | null>(c, orderChannelKey(order.id), null) !== secretary) return [];
+    try {
+      const lines = await this.readChat(snowflakeAt(order.createdAt));
+      setState(c, key, lines);
+      return lines;
+    } catch (err) {
+      this.log(`${order.id} #비서실 대화를 읽지 못해 없이 진행: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * PM이 저장소에 관해 개발팀장에게 먼저 묻는다(읽기 전용, 프로젝트 최신 상태). 답을 기록했으면 true.
+   * 개발 몫이 없으면 false(사장님께 여쭌다). 답을 받지 못해도 한 번으로 세고 사장님께 여쭌다.
+   */
+  private async consult(order: OrderRow, project: ProjectRow, questions: string[], knowledge: Awaited<ReturnType<Planning['knowledge']>>): Promise<boolean> {
+    const dev = this.calls.employee(CONSULTANT_ID);
+    if (this.calls.spendMode(dev) !== 'ok') return false;
+    try {
+      const workdir = await this.workspace.readView(project);
+      const out = await this.calls.call(dev, 'consult', ConsultOutputSchema, { order: { id: order.id, rawText: order.rawText }, questions, workdir, ...knowledge }, { orderId: order.id }, { workdir });
+      recordConsultation(this.c, order.id, questions, out.answers.map((a) => `${a.question}\n→ ${a.known ? '' : '(모름) '}${a.answer}`).join('\n\n'));
+      this.log(`${order.id} PM → 개발팀장 질문 ${questions.length}개 답 받음`);
+      return true;
+    } catch (err) {
+      if (isQuiet(err)) throw err;
+      recordConsultation(this.c, order.id, questions, `(개발팀장이 답하지 못함: ${(err as Error).message.slice(0, 200)})`);
+      this.log(`${order.id} 개발팀장 질문 실패, 사장님께 여쭘: ${(err as Error).message}`);
+      return false;
+    }
   }
 
   /** 형식 오류·호출 실패 두 번: 계획 작성을 멈추고 CEO의 [다시 시도]를 기다린다 (#막힘 알림은 notifier) */
