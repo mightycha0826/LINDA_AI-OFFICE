@@ -71,6 +71,13 @@
       "when": 1792712317622,
       "tag": "0009_repeat_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792734453701,
+      "tag": "0010_repeat_core",
+      "breakpoints": true
     }
   ]
 }

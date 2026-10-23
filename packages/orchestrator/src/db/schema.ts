@@ -169,6 +169,8 @@ export const tickets = sqliteTable(
     // 같은 반려 반복 (2026-10-23): 직전 반려에서 통과하지 못한 완료 조건과, 그 묶음이 연속으로 반려된 횟수
     lastFailedCriteria: text('last_failed_criteria', { mode: 'json' }).$type<string[]>(),
     sameFailCount: integer('same_fail_count').notNull().default(0),
+    // 완료 조건별 연속 반려 횟수 (2026-10-23 보강). 묶음이 번갈아 바뀌어도 같은 조건이 계속 반려되면 센다
+    failStreaks: text('fail_streaks', { mode: 'json' }).$type<Record<string, number>>(),
     lowPrecision: integer('low_precision', { mode: 'boolean' }).notNull().default(false),
     startedAt: text('started_at'),
     finishedAt: text('finished_at'),

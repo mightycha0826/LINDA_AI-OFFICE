@@ -54,7 +54,7 @@ try {
 }
 loadSettingOverrides(ctx);
 // 같은 반려 반복 막기(5장, 2026-10-23): 업데이트 전부터 돌던 티켓의 횟수를 기존 기록으로 한 번 채운다
-for (const f of backfillRepeatCounts(ctx)) log(`같은 반려 횟수를 기록으로 채움: ${f.ticketId} ${f.sameFailCount}회`);
+for (const f of backfillRepeatCounts(ctx)) log(`같은 반려 횟수를 기록으로 채움: ${f.ticketId} 같은 묶음 ${f.sameFailCount}회 · 한 조건 최대 ${f.maxStreak}회 연속`);
 
 const { brainFor } = createBrainRegistry(config, { onModelSwitch: (from, to) => emit(ctx, 'model.loaded', { from, to }) });
 const workspace = new GitWorkspace(ctx);

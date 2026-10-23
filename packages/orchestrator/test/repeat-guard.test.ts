@@ -120,9 +120,9 @@ describe('기존 기록으로 같은 반려 횟수 채우기 (업데이트 전�
     const { tickets: [tk] } = await approvedTickets(s);
     const crit = tk!.acceptanceCriteria;
     for (let i = 0; i < 5; i++) review(s, tk!.id, failReview(crit));
-    expect(repeatFromHistory(s.ctx, tk!.id)).toEqual({ lastFailedCriteria: [crit[0]], sameFailCount: 5 });
+    expect(repeatFromHistory(s.ctx, tk!.id)).toEqual({ lastFailedCriteria: [crit[0]], sameFailCount: 5, failStreaks: { [crit[0]!]: 5 } });
 
-    expect(backfillRepeatCounts(s.ctx)).toEqual([{ ticketId: tk!.id, sameFailCount: 5 }]);
+    expect(backfillRepeatCounts(s.ctx)).toEqual([{ ticketId: tk!.id, sameFailCount: 5, maxStreak: 5 }]);
     expect(backfillRepeatCounts(s.ctx)).toEqual([]); // 한 번만
     expect(ticket(s, tk!.id)).toMatchObject({ status: 'in_progress', sameFailCount: 5 });
 
@@ -146,7 +146,7 @@ describe('기존 기록으로 같은 반려 횟수 채우기 (업데이트 전�
     expect(repeatFromHistory(s.ctx, tk!.id).sameFailCount).toBe(1);
     recordMessage(s.ctx, { ticketId: tk!.id, fromId: 'reviewer', kind: 'review', content: '읽을 수 없는 글', reviewVerdict: 'fail', reasonCategory: 'criteria-unmet', countsForPingpong: false });
     s.clock.advance(60_000);
-    expect(repeatFromHistory(s.ctx, tk!.id)).toEqual({ lastFailedCriteria: null, sameFailCount: 0 });
+    expect(repeatFromHistory(s.ctx, tk!.id)).toEqual({ lastFailedCriteria: null, sameFailCount: 0, failStreaks: null });
     review(s, tk!.id, failReview(crit));
     review(s, tk!.id, passReview(crit));
     expect(repeatFromHistory(s.ctx, tk!.id).sameFailCount).toBe(0);
@@ -159,5 +159,41 @@ describe('기존 기록으로 같은 반려 횟수 채우기 (업데이트 전�
     backfillRepeatCounts(s.ctx);
     expect(blockRepeatedFailures(s.ctx)).toEqual([]);
     expect(ticket(s, tk!.id)).toMatchObject({ status: 'in_progress', sameFailCount: 3 });
+  });
+});
+
+describe('같은 조건 하나가 연속 6회 반려 (2026-10-23 보강)', () => {
+  const twoCriteria = () => planOutput({ tickets: [{ ...planOutput().tickets[0]!, acceptanceCriteria: ['선행 티켓 통과', '병합 보고'] }] });
+  /** 홀수 번째는 두 조건 모두, 짝수 번째는 '병합 보고'만 반려 (T-19처럼 묶음이 번갈아 바뀜) */
+  const alternating = (req: BrainRequest, n: number) => {
+    const all = criteriaOf(req);
+    const failing = n % 2 ? all : all.slice(1);
+    return { verdict: 'fail', criteria: all.map((criterion) => ({ criterion, pass: !failing.includes(criterion), ...(failing.includes(criterion) ? { reason: 'x' } : {}) })), reasonCategory: 'criteria-unmet', fixRequests: ['x'] };
+  };
+
+  it('묶음이 번갈아 바뀌어도 6번째 반려에서 막히고, #막힘에 그 조건과 횟수가 붙는다', async () => {
+    const s = setup({ handlers: { plan: twoCriteria, review: alternating, meeting: agreeOnly } });
+    const { tickets: [tk] } = await approvedTickets(s);
+    await s.engine.runUntilIdle();
+    expect(ticket(s, tk!.id)).toMatchObject({ status: 'blocked', reworkCount: 6, sameFailCount: 1, failStreaks: { '병합 보고': 6 } });
+    const discord = new FakeDiscord();
+    await new Notifier(s.ctx, discord).tick();
+    const [blocked] = discord.in('blocked');
+    expect(blocked!.content).toContain('같은 완료 조건이 6번 연속 반려됐어요 (다른 조건은 반려와 통과를 오감)');
+    expect(blocked!.content).toContain('- 병합 보고 (6번)');
+  });
+
+  it('기존 기록으로 조건별 횟수도 채워서, 재개하면 바로 막힌다', async () => {
+    const s = setup({ handlers: { plan: twoCriteria } });
+    const { tickets: [tk] } = await approvedTickets(s);
+    const req = { input: { ticket: { acceptanceCriteria: tk!.acceptanceCriteria } } } as unknown as BrainRequest;
+    for (let n = 1; n <= 7; n++) {
+      recordMessage(s.ctx, { ticketId: tk!.id, fromId: 'reviewer', toId: 'developer', kind: 'review', content: JSON.stringify(alternating(req, n)), reviewVerdict: 'fail', reasonCategory: 'criteria-unmet', countsForPingpong: false });
+      s.clock.advance(60_000);
+    }
+    expect(repeatFromHistory(s.ctx, tk!.id)).toMatchObject({ sameFailCount: 1, failStreaks: { '선행 티켓 통과': 1, '병합 보고': 7 } });
+    expect(backfillRepeatCounts(s.ctx)).toEqual([{ ticketId: tk!.id, sameFailCount: 1, maxStreak: 7 }]);
+    expect(blockRepeatedFailures(s.ctx)).toEqual([tk!.id]);
+    expect(ticket(s, tk!.id).status).toBe('blocked');
   });
 });

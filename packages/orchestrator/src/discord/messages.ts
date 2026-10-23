@@ -5,6 +5,7 @@ import type { DirectProposal } from '../core/direct.ts';
 import type { PlanRow } from '../core/plans.ts';
 import type { TicketRow } from '../core/tickets.ts';
 import { ceoRequestsOf, type MinutesRow } from '../core/meeting.ts';
+import { maxFailStreak, SAME_CRITERION_LIMIT, SAME_FAIL_LIMIT } from '../core/transitions.ts';
 import type { Button } from './types.ts';
 import type { OrderRow } from '../core/orders.ts';
 import type { Clarification } from '../core/clarifications.ts';
@@ -115,7 +116,12 @@ export function mainMergeConfirm(a: ApprovalRow, original: string): { content: s
  */
 export function blockedMessage(ticket: TicketRow, minutes: MinutesRow | null, event?: string): { content: string; buttons: Button[][] } {
   const lines = [`**막힘 · ${ticket.id} ${ticket.title}**`];
-  if (event === 'review.failed' || event === 'guard.repeat') {
+  const topStreak = maxFailStreak(ticket.failStreaks);
+  if ((event === 'review.failed' || event === 'guard.repeat') && ticket.sameFailCount < SAME_FAIL_LIMIT && topStreak >= SAME_CRITERION_LIMIT) {
+    // 묶음은 바뀌었지만 같은 조건이 계속 반려된 경우 (2026-10-23 보강)
+    const stuck = Object.entries(ticket.failStreaks ?? {}).filter(([, n]) => n >= SAME_CRITERION_LIMIT).sort((a, b) => b[1] - a[1]);
+    lines.push(`**막힌 이유**: 같은 완료 조건이 ${topStreak}번 연속 반려됐어요 (다른 조건은 반려와 통과를 오감)`, ...stuck.map(([x, n]) => `- ${x} (${n}번)`));
+  } else if (event === 'review.failed' || event === 'guard.repeat') {
     lines.push(`**막힌 이유**: 같은 완료 조건이 ${ticket.sameFailCount}번 연속 반려됐어요`, ...(ticket.lastFailedCriteria ?? []).map((x) => `- ${x}`));
   }
   if (event === 'meeting.escalated' && minutes) {

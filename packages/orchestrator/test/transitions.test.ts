@@ -1,7 +1,7 @@
 // 전환표 (DESIGN.md 5장): 표에 없는 전환 거부, 반려 횟수, 요청 주체, 멈춘 이유별 재개.
 import { describe, expect, it } from 'vitest';
 import { TICKET_STATUSES, type TicketStatus } from '@ai-office/shared';
-import { decide, SAME_FAIL_LIMIT, TRANSITIONS, type Actor, type TicketEvent, type TicketSnapshot } from '../src/core/transitions.ts';
+import { decide, SAME_CRITERION_LIMIT, SAME_FAIL_LIMIT, TRANSITIONS, type Actor, type TicketEvent, type TicketSnapshot } from '../src/core/transitions.ts';
 import { TransitionRejected } from '../src/errors.ts';
 import { CEO, STRANGER } from './helpers.ts';
 
@@ -13,7 +13,7 @@ const stranger: Actor = { kind: 'approval-bot', discordUserId: STRANGER };
 const orch: Actor = { kind: 'orchestrator' };
 
 function snap(status: TicketStatus, over: Partial<TicketSnapshot> = {}): TicketSnapshot {
-  return { status, reworkCount: 0, needsCeoApproval: false, assigneeId: 'developer', reviewerId: 'reviewer', pausedFrom: null, pauseReason: null, lastFailedCriteria: null, sameFailCount: 0, ...over };
+  return { status, reworkCount: 0, needsCeoApproval: false, assigneeId: 'developer', reviewerId: 'reviewer', pausedFrom: null, pauseReason: null, lastFailedCriteria: null, sameFailCount: 0, failStreaks: null, ...over };
 }
 
 const SAMPLE_EVENTS: TicketEvent[] = [
@@ -249,7 +249,7 @@ describe('같은 반려 반복 → 막힘 (2026-10-23)', () => {
       ['in_review', { type: 'ceo.revise' }, ceo, {}],
     ];
     for (const [status, ev, actor, over] of cases) {
-      expect(decide(snap(status, { ...counted, ...over }), ev, actor, ctx).patch, `${status} --${ev.type}`).toMatchObject({ sameFailCount: 0, lastFailedCriteria: null });
+      expect(decide(snap(status, { ...counted, ...over }), ev, actor, ctx).patch, `${status} --${ev.type}`).toMatchObject({ sameFailCount: 0, lastFailedCriteria: null, failStreaks: null });
     }
   });
 
@@ -257,6 +257,47 @@ describe('같은 반려 반복 → 막힘 (2026-10-23)', () => {
     const afterRetry = decide(snap('blocked', { reworkCount: 4, lastFailedCriteria: ['조건 1'], sameFailCount: 4 }), { type: 'ceo.retry' }, ceo, ctx);
     const trail = replay(Array.from({ length: 5 }, () => ['조건 1']), { reworkCount: 4, ...afterRetry.patch });
     expect(trail).toEqual(['meeting', 'meeting', 'meeting', 'blocked']);
+  });
+});
+
+describe('같은 조건 하나가 연속 6회 반려 → 막힘 (2026-10-23 보강)', () => {
+  const failOn = (failedCriteria: string[]): TicketEvent => ({ type: 'review.failed', reasonCategory: 'criteria-unmet', failedCriteria });
+  function replay(sets: string[][]): string[] {
+    let t = snap('in_review');
+    const trail: string[] = [];
+    for (const set of sets) {
+      const d = decide(t, failOn(set), reviewer, ctx);
+      trail.push(d.to);
+      if (d.to === 'blocked') break;
+      t = { ...t, ...d.patch, status: 'in_review' };
+    }
+    return trail;
+  }
+
+  it(`묶음이 번갈아 바뀌어도 같은 조건이 ${SAME_CRITERION_LIMIT}번 연속 반려되면 막힘 (T-19 기록)`, () => {
+    expect(SAME_CRITERION_LIMIT).toBe(6);
+    const core = ['2 브랜치 확인', '3 병합 테스트', '4 병합 보고'];
+    const all = ['1 선행 티켓 통과', ...core];
+    // 실제 T-19 앞부분: {1,2,3,4} 3번 뒤 {2,3,4}·{1,2,3,4}가 번갈아 나옴. 같은 묶음 규칙은 3에서 끊긴다
+    expect(replay([all, all, all, core, core, all, core, all])).toEqual(['rework', 'meeting', 'meeting', 'meeting', 'meeting', 'blocked']);
+    const alternating = Array.from({ length: 10 }, (_, i) => (i % 2 ? all : core));
+    expect(replay(alternating)).toEqual(['rework', 'meeting', 'meeting', 'meeting', 'meeting', 'blocked']);
+  });
+
+  it('막을 때 조건별 횟수를 기록하고, 이번에 통과한 조건은 빠진다', () => {
+    const d = decide(snap('in_review', { reworkCount: 5, lastFailedCriteria: ['가'], sameFailCount: 1, failStreaks: { 가: 5, 나: 2 } }), failOn(['가', '다']), reviewer, ctx);
+    expect(d).toMatchObject({ to: 'blocked', rule: '같은 조건 반복 반려 → 막힘', patch: { failStreaks: { 가: 6, 다: 1 }, sameFailCount: 1 } });
+  });
+
+  it('한 조건이 5번 연속 반려된 뒤 통과하던 T-10 기록은 막지 않는다', () => {
+    const one = ['빌드 성공'];
+    const four = ['빌드 성공', '테스트 통과', '언어 전환', '변환 기록'];
+    expect(replay([one, four, one, one, one])).not.toContain('blocked');
+  });
+
+  it(`guard.repeat도 조건별 ${SAME_CRITERION_LIMIT}회를 본다`, () => {
+    expect(decide(snap('meeting', { sameFailCount: 1, failStreaks: { 가: SAME_CRITERION_LIMIT } }), { type: 'guard.repeat' }, orch, ctx).to).toBe('blocked');
+    expect(rejectCode(() => decide(snap('meeting', { sameFailCount: 1, failStreaks: { 가: SAME_CRITERION_LIMIT - 1 } }), { type: 'guard.repeat' }, orch, ctx))).toBe('condition');
   });
 });
 

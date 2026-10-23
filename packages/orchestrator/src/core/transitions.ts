@@ -45,6 +45,8 @@ export interface TicketSnapshot {
   lastFailedCriteria: string[] | null;
   /** 같은 완료 조건 묶음이 연속으로 반려된 횟수 */
   sameFailCount: number;
+  /** 완료 조건별 연속 반려 횟수 (이번에 통과한 조건은 빠진다) */
+  failStreaks: Record<string, number> | null;
 }
 
 export interface TransitionContext {
@@ -59,6 +61,7 @@ export interface TicketPatch {
   pauseReason?: PauseReason | null;
   lastFailedCriteria?: string[] | null;
   sameFailCount?: number;
+  failStreaks?: Record<string, number> | null;
 }
 
 export interface Decision {
@@ -98,6 +101,13 @@ const failedCount = (t: TicketSnapshot) => t.reworkCount + 1; // 반려 횟수�
  */
 export const SAME_FAIL_LIMIT = 4;
 
+/**
+ * 같은 완료 조건 하나가 이 횟수만큼 연속으로 반려되면 막힘 (5장, 2026-10-23 CEO 결정, 보강).
+ * 다른 조건이 반려와 통과를 오가서 묶음이 계속 바뀌는 티켓(T-19)을 잡는다.
+ * 5 이하로 하면 고쳐 나가다 6번째에 통과한 티켓(T-10, 한 조건 5연속)을 잘못 막는다.
+ */
+export const SAME_CRITERION_LIMIT = 6;
+
 /** 비교용 완료 조건 묶음: 중복을 빼고 정렬한다. 문구는 검토 출력 검사가 원문과 같게 강제한다 */
 export function failedCriteriaKey(criteria: readonly string[]): string[] {
   return [...new Set(criteria)].sort();
@@ -113,14 +123,31 @@ function sameFailAfter(t: TicketSnapshot, ev: TicketEvent): number {
   return sameCriteria(t.lastFailedCriteria, failed) ? t.sameFailCount + 1 : 1;
 }
 
+/** 이번 반려를 넣은 조건별 연속 횟수. 이번에 반려된 조건은 +1, 나머지는 빠진다(0) */
+export function nextFailStreaks(prev: Readonly<Record<string, number>> | null, failed: readonly string[]): Record<string, number> {
+  return Object.fromEntries(failedCriteriaKey(failed).map((c) => [c, (prev?.[c] ?? 0) + 1]));
+}
+
+/** 조건별 연속 횟수 중 가장 큰 값 */
+export function maxFailStreak(streaks: Readonly<Record<string, number>> | null): number {
+  return Math.max(0, ...Object.values(streaks ?? {}));
+}
+
+const failedOf = (ev: TicketEvent) => (ev as Extract<TicketEvent, { type: 'review.failed' }>).failedCriteria;
+
+/** 같은 묶음 4회 연속이거나, 같은 조건 하나가 6회 연속이면 막힘 */
+export const repeatLimitReached = (sameFail: number, streaks: Readonly<Record<string, number>> | null): boolean =>
+  sameFail >= SAME_FAIL_LIMIT || maxFailStreak(streaks) >= SAME_CRITERION_LIMIT;
+
 const failPatch = (t: TicketSnapshot, ev: TicketEvent): TicketPatch => ({
   reworkCount: failedCount(t),
-  lastFailedCriteria: failedCriteriaKey((ev as Extract<TicketEvent, { type: 'review.failed' }>).failedCriteria),
+  lastFailedCriteria: failedCriteriaKey(failedOf(ev)),
   sameFailCount: sameFailAfter(t, ev),
+  failStreaks: nextFailStreaks(t.failStreaks, failedOf(ev)),
 });
 
 /** 통과하거나 사장님이 손대면 같은 반려 횟수는 처음부터 다시 센다 */
-const clearRepeat = (): TicketPatch => ({ lastFailedCriteria: null, sameFailCount: 0 });
+const clearRepeat = (): TicketPatch => ({ lastFailedCriteria: null, sameFailCount: 0, failStreaks: null });
 
 export const TRANSITIONS: readonly Rule[] = [
   { name: '계획 승인', from: ['planned'], event: 'plan.approved', to: 'in_progress', by: ['ceo'] },
@@ -133,7 +160,7 @@ export const TRANSITIONS: readonly Rule[] = [
     event: 'review.failed',
     to: 'blocked',
     by: ['reviewer'],
-    when: (t, ev) => sameFailAfter(t, ev) >= SAME_FAIL_LIMIT,
+    when: (t, ev) => repeatLimitReached(sameFailAfter(t, ev), nextFailStreaks(t.failStreaks, failedOf(ev))),
     patch: failPatch,
   },
   {
@@ -175,7 +202,7 @@ export const TRANSITIONS: readonly Rule[] = [
     event: 'guard.repeat',
     to: 'blocked',
     by: ['orchestrator'],
-    when: (t) => t.sameFailCount >= SAME_FAIL_LIMIT,
+    when: (t) => repeatLimitReached(t.sameFailCount, t.failStreaks),
   },
   {
     name: '일시정지',
